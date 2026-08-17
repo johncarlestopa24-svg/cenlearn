@@ -1,7 +1,5 @@
 # Never commit credentials
 system/includes/db_config.php
-.cenlearn.env
-.env
 
 # Never commit uploaded files
 system/uploads/*
@@ -11,4 +9,3 @@ system/uploads/*
 .DS_Store
 Thumbs.db
 *.log
-
