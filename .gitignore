@@ -1,0 +1,14 @@
+# Never commit credentials
+system/includes/db_config.php
+.cenlearn.env
+.env
+
+# Never commit uploaded files
+system/uploads/*
+!system/uploads/.gitkeep
+
+# Common junk
+.DS_Store
+Thumbs.db
+*.log
+
