@@ -1,6 +1,13 @@
-# CenLearn Local Apache Root Handler
+# CenLearn Local Apache Root Rewrite Handler
 <IfModule mod_rewrite.c>
-RewriteEngine On
-# If requesting root directory without filename, let index.php handle redirect
-DirectoryIndex index.php
+    RewriteEngine On
+    DirectoryIndex index.php
+
+    # Do not rewrite existing files or directories in root
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Rewrite asset and sub-page requests to system/ directory seamlessly
+    RewriteRule ^(.*)$ system/$1 [L]
 </IfModule>
