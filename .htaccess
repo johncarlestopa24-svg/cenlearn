@@ -1,11 +1,12 @@
-# CenLearn Local Apache Handler — Hide .php and /system/ from Address Bar
+# CenLearn Local Apache Handler — Pretty Extensionless URLs (Windows XAMPP Safe)
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    RewriteBase /cenlearn/
     DirectoryIndex index.php
 
-    # 1. External Redirect: Automatically strip .php from browser address bar
-    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?(system/)?([^\s?]+)\.php[\s?] [NC]
-    RewriteRule ^ %2 [R=301,L]
+    # 1. Strip .php extension safely without filesystem path leakage
+    RewriteCond %{THE_REQUEST} \s/cenlearn/(?:system/)?([^\s?]+)\.php[\s?] [NC]
+    RewriteRule ^ /cenlearn/%1 [R=301,L]
 
     # 2. Allow existing static assets & directories in root to load directly
     RewriteCond %{REQUEST_FILENAME} -f [OR]
@@ -13,13 +14,11 @@
     RewriteRule ^ - [L]
 
     # 3. Internal Rewrite: Map extensionless URLs to system/ subfolder .php files
-    RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{DOCUMENT_ROOT}/cenlearn/system/$1.php -f
     RewriteRule ^(.*)$ system/$1.php [QSA,L]
 
-    # 4. Internal Rewrite: Map extensionless URLs to current folder .php files
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME}.php -f
+    # 4. Internal Rewrite: Map extensionless URLs to root .php files
+    RewriteCond %{DOCUMENT_ROOT}/cenlearn/$1.php -f
     RewriteRule ^(.*)$ $1.php [QSA,L]
 
     # 5. Route remaining requests to system/ directory
