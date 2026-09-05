@@ -1,8 +1,9 @@
-Flask==3.0.3
+flask==3.0.3
 scikit-learn==1.5.1
 numpy==1.26.4
 mysql-connector-python==8.4.0
 joblib==1.4.2
-opencv-python-headless==4.11.0.86
-Pillow==12.3.0
+opencv-python-headless
+Pillow
 gunicorn==22.0.0
+
