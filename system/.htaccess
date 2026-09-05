@@ -1,14 +1,18 @@
-# CenLearn Online Production Apache Handler — Pretty Extensionless URLs
+# CenLearn Online Production Apache Handler — Hide .php from Address Bar
 <IfModule mod_rewrite.c>
     RewriteEngine On
     DirectoryIndex index.php
 
-    # 1. Allow existing static files and directories to load directly
+    # 1. Canonical Redirect: Strip .php extension from browser address bar
+    RewriteCond %{THE_REQUEST} \s/+(?!index\.php)(.+?)\.php[\s?] [NC]
+    RewriteRule ^ /%1 [R=302,L]
+
+    # 2. Allow existing static files and directories to load directly
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
-    # 2. Hide .php extension (e.g. /student/dashboard -> /student/dashboard.php)
+    # 3. Hide .php extension (e.g. /student/dashboard -> /student/dashboard.php)
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME}.php -f
     RewriteRule ^(.*)$ $1.php [QSA,L]

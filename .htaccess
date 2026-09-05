@@ -1,23 +1,27 @@
-# CenLearn Local Apache Handler — Pretty Extensionless URLs
+# CenLearn Local Apache Handler — Hide .php & /system/ from Address Bar
 <IfModule mod_rewrite.c>
     RewriteEngine On
     DirectoryIndex index.php
 
-    # 1. Allow existing static files & directories in root to load directly
+    # 1. Canonical Redirect: Strip .php extension from browser address bar
+    RewriteCond %{THE_REQUEST} \s/+(?:system/)?(?!index\.php)(.+?)\.php[\s?] [NC]
+    RewriteRule ^ %1 [R=302,L]
+
+    # 2. Allow existing static files & directories in root to load directly
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
-    # 2. Support extensionless PHP URLs inside system/ (e.g., /student/dashboard -> system/student/dashboard.php)
+    # 3. Support extensionless PHP URLs inside system/ (e.g., /student/dashboard -> system/student/dashboard.php)
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{DOCUMENT_ROOT}/cenlearn/system/$1.php -f
     RewriteRule ^(.*)$ system/$1.php [QSA,L]
 
-    # 3. Support extensionless PHP URLs if file exists with .php
+    # 4. Support extensionless PHP URLs if file exists with .php
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME}.php -f
     RewriteRule ^(.*)$ $1.php [QSA,L]
 
-    # 4. Route remaining requests to system/ directory
+    # 5. Route remaining requests to system/ directory
     RewriteRule ^(.*)$ system/$1 [QSA,L]
 </IfModule>
