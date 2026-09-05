@@ -3,11 +3,15 @@
     RewriteEngine On
     DirectoryIndex index.php
 
-    # Do not rewrite existing files or directories in root
+    # 1. Do not rewrite existing files or directories in root
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
-    # Rewrite asset and sub-page requests to system/ directory seamlessly
+    # 2. Allow extensionless URLs (e.g. /student/dashboard -> system/student/dashboard.php)
+    RewriteCond %{DOCUMENT_ROOT}/system/$1.php -f
+    RewriteRule ^(.*)$ system/$1.php [L]
+
+    # 3. Rewrite all remaining page and asset requests seamlessly to system/
     RewriteRule ^(.*)$ system/$1 [L]
 </IfModule>
