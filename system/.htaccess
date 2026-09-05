@@ -1,0 +1,15 @@
+# CenLearn Online Production Apache Handler — Pretty Extensionless URLs
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    DirectoryIndex index.php
+
+    # 1. Allow existing static files and directories to load directly
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # 2. Hide .php extension (e.g. /student/dashboard -> /student/dashboard.php)
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME}.php -f
+    RewriteRule ^(.*)$ $1.php [QSA,L]
+</IfModule>

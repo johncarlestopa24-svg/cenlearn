@@ -1,17 +1,23 @@
-# CenLearn Local Apache Root Rewrite Handler
+# CenLearn Local Apache Handler — Pretty Extensionless URLs
 <IfModule mod_rewrite.c>
     RewriteEngine On
     DirectoryIndex index.php
 
-    # 1. Do not rewrite existing files or directories in root
+    # 1. Allow existing static files & directories in root to load directly
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
-    # 2. Allow extensionless URLs (e.g. /student/dashboard -> system/student/dashboard.php)
-    RewriteCond %{DOCUMENT_ROOT}/system/$1.php -f
-    RewriteRule ^(.*)$ system/$1.php [L]
+    # 2. Support extensionless PHP URLs inside system/ (e.g., /student/dashboard -> system/student/dashboard.php)
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{DOCUMENT_ROOT}/cenlearn/system/$1.php -f
+    RewriteRule ^(.*)$ system/$1.php [QSA,L]
 
-    # 3. Rewrite all remaining page and asset requests seamlessly to system/
-    RewriteRule ^(.*)$ system/$1 [L]
+    # 3. Support extensionless PHP URLs if file exists with .php
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME}.php -f
+    RewriteRule ^(.*)$ $1.php [QSA,L]
+
+    # 4. Route remaining requests to system/ directory
+    RewriteRule ^(.*)$ system/$1 [QSA,L]
 </IfModule>
