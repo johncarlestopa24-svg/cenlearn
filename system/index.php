@@ -644,6 +644,7 @@ function login(){
         else if(role === 'TEACHER' || role === 'FACULTY') targetUrl = 'teacher/dashboard';
         else if(role === 'SUPERADMIN' || role === 'ADMIN') targetUrl = 'superadmin/dashboard';
 
+
         window.location.href = targetUrl;
       }
     },
