@@ -1,7 +1,50 @@
 <?php
-session_start();
-session_unset();
-session_destroy();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Single-URL Application Container (Address bar stays strictly as localhost/cenlearn/ or domain root)
+if (!empty($_SESSION['user']) && !empty($_SESSION['user']['is_valid'])) {
+    $user = $_SESSION['user'];
+    $role = strtoupper($user['user_group'] ?? '');
+    $isGrad = !empty($user['graduated_at']) || $role === 'ALUMNI';
+    $profileIncomplete = ($role === 'STUDENT') && (empty($user['first_name']) || empty($user['program_code']) || empty($user['year_level']) || empty($user['section']));
+
+    $targetUrl = 'student/dashboard.php';
+    if ($role === 'STUDENT' && $isGrad) {
+        $targetUrl = 'student/graduated.php';
+    } elseif ($role === 'STUDENT' && $profileIncomplete) {
+        $targetUrl = 'complete_profile.php';
+    } elseif ($role === 'STUDENT') {
+        $targetUrl = 'student/dashboard.php';
+    } elseif ($role === 'TEACHER' || $role === 'FACULTY') {
+        $targetUrl = 'teacher/dashboard.php';
+    } elseif ($role === 'SUPERADMIN' || $role === 'ADMIN') {
+        $targetUrl = 'superadmin/dashboard.php';
+    }
+
+    if (!empty($_GET['app_page'])) {
+        $targetUrl = $_GET['app_page'];
+    }
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>CenLearn &mdash; Bago City College</title>
+      <style>
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0c1a2e; }
+        #cl-app-viewport { width: 100vw; height: 100vh; border: none; margin: 0; padding: 0; display: block; }
+      </style>
+    </head>
+    <body>
+      <iframe id="cl-app-viewport" src="<?php echo htmlspecialchars($targetUrl); ?>"></iframe>
+    </body>
+    </html>
+    <?php
+    exit;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -644,7 +687,8 @@ function login(){
         else if(role === 'TEACHER' || role === 'FACULTY') targetUrl = 'teacher/dashboard.php';
         else if(role === 'SUPERADMIN' || role === 'ADMIN') targetUrl = 'superadmin/dashboard.php';
 
-        window.location.href = targetUrl;
+        window.location.href = 'index.php';
+
       }
     },
     error: function(xhr, status, err){
