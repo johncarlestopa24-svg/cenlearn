@@ -153,21 +153,29 @@ function buildDataFromRow($r){
     ];
 }
 
-// ── Step 1: Check local password hash ────────────────────────────────────
+// ── Step 1: Fast-Path Local Verification (Instant Login < 10ms) ───────────
 $u_esc     = $conn->real_escape_string($username);
 $cache_q   = $conn->query("SELECT * FROM users WHERE user_code='$u_esc' AND is_active=1 LIMIT 1");
-$use_cache = false;
 $cached_row = null;
 
 if($cache_q && $cache_q->num_rows > 0){
     $cached_row = $cache_q->fetch_assoc();
     if(!empty($cached_row['password_hash']) && password_verify($password, $cached_row['password_hash'])){
-        $use_cache = true;
+        if(!$cached_row['is_active']){
+            echo json_encode(['is_valid'=>false,'err_msg'=>'ACCOUNT_DISABLED']); exit;
+        }
+        $conn->query("UPDATE users SET last_login=NOW() WHERE user_code='$u_esc'");
+        $ug      = normalizeRole($cached_row['user_group'] ?? 'STUDENT');
+        $session = buildSession($conn, $cached_row['user_code'], $ug, buildDataFromRow($cached_row));
+        if($session['user_group'] === 'STUDENT' && empty($session['graduated_at']))
+            autoEnrollStudent($conn, $session['user_code'], $session['program_code'], $session['year_level'], $session['section']);
+        $_SESSION['user'] = $session;
+        echo json_encode($session);
+        exit;
     }
 }
 
-// ── Step 2: Always try TechnoPal with real credentials ───────────────────
-// This keeps year_level/section in sync on every login
+// ── Step 2: Try TechnoPal if not locally verified ────────────────────────
 $api_data = callTechnoPal($username, $password, $callback, $requestId);
 $api_ok   = isApiSuccess($api_data);
 

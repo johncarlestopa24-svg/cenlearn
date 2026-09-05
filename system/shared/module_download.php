@@ -17,12 +17,16 @@ if($repo_id){
     $mod = $q->fetch_assoc();
 } elseif($id){
     $q = $conn->query("SELECT * FROM class_modules WHERE id=$id");
-    if($q->num_rows === 0){ die('File not found'); }
+    if(!$q || $q->num_rows === 0){ die('File not found'); }
     $mod = $q->fetch_assoc();
-    // Check user is a member of this class
-    $cid = intval($mod['class_id']);
-    $chk = $conn->query("SELECT id FROM class_members WHERE class_id=$cid AND user_code='$uc'");
-    if($chk->num_rows === 0){ die('Access denied'); }
+    // Teachers/Admin can view any module (e.g. from subject repository)
+    // Students must be enrolled in the class
+    $role = strtoupper($user['role'] ?? $user['user_group'] ?? '');
+    if (!in_array($role, ['TEACHER', 'ADMIN', 'SUPERADMIN'])) {
+        $cid = intval($mod['class_id']);
+        $chk = $conn->query("SELECT id FROM class_members WHERE class_id=$cid AND user_code='$uc'");
+        if(!$chk || $chk->num_rows === 0){ die('Access denied'); }
+    }
 } else {
     die('Invalid request');
 }
@@ -30,9 +34,24 @@ if($repo_id){
 $filepath = __DIR__.'/../uploads/modules/'.$mod['filename'];
 if(!file_exists($filepath)){ die('File not found on server'); }
 
-header('Content-Description: File Transfer');
-header('Content-Type: application/octet-stream');
-header('Content-Disposition: attachment; filename="'.addslashes($mod['original_name']).'"');
+$viewInline = isset($_GET['view']) && $_GET['view'] === '1';
+$ext = strtolower(pathinfo($mod['filename'], PATHINFO_EXTENSION));
+$mimeMap = [
+    'pdf'  => 'application/pdf',
+    'jpg'  => 'image/jpeg', 'jpeg' => 'image/jpeg',
+    'png'  => 'image/png',  'gif'  => 'image/gif',
+    'webp' => 'image/webp',
+    'mp4'  => 'video/mp4',  'webm' => 'video/webm',
+];
+$mime = $mimeMap[$ext] ?? 'application/octet-stream';
+
+header('Content-Type: ' . $mime);
+if($viewInline && $mime !== 'application/octet-stream'){
+    header('Content-Disposition: inline; filename="'.addslashes($mod['original_name'] ?? $mod['filename']).'"');
+} else {
+    header('Content-Description: File Transfer');
+    header('Content-Disposition: attachment; filename="'.addslashes($mod['original_name'] ?? $mod['filename']).'"');
+}
 header('Content-Length: '.filesize($filepath));
 header('Pragma: no-cache');
 readfile($filepath);

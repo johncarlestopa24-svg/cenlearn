@@ -79,6 +79,7 @@ if($programCode){
         WHERE UPPER(c.program_code)=UPPER('$pc')
           AND c.teacher_code!='$uc'
           AND (c.is_archived=0 OR c.is_archived IS NULL)
+          AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)
         GROUP BY c.id
         ORDER BY c.class_name ASC
     ");
@@ -112,6 +113,8 @@ $paq = $conn->query("
     JOIN classes c ON a.class_id=c.id
     JOIN class_members cm ON cm.class_id=c.id AND cm.user_code='$uc'
     WHERE NOT EXISTS (SELECT 1 FROM assignment_submissions s WHERE s.assignment_id=a.id AND s.student_code='$uc')
+      AND (c.is_archived=0 OR c.is_archived IS NULL)
+      AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)
       AND (a.due_date IS NULL OR a.due_date > NOW())
 ");
 if($paq) $pendingCount = (int)$paq->fetch_assoc()['c'];

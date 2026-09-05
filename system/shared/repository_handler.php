@@ -90,7 +90,7 @@ if ($action === 'get_subjects') {
             GROUP BY class_id
         ) cm ON cm.class_id = c.id
         WHERE $whereSql
-        ORDER BY c.is_archived ASC, c.id DESC
+        ORDER BY c.is_archived DESC, c.archived_at DESC, c.id DESC
     ";
 
     $res = $conn->query($sql);
@@ -117,17 +117,30 @@ if ($action === 'get_subjects') {
         }
     }
 
-    // Summary metrics
-    $totalFaculty = count($teachersList);
-    $totalSubs    = count($subjects);
-    $totalQz      = array_sum(array_column($subjects, 'quiz_count'));
-    $archivedCnt  = count(array_filter($subjects, fn($s) => !empty($s['is_archived'])));
+    // Summary metrics (Global institutional overview)
+    $gStatsQ = $conn->query("
+        SELECT 
+            COUNT(DISTINCT c.id) AS total_subjects,
+            COUNT(DISTINCT q.id) AS total_quizzes,
+            COUNT(DISTINCT c.teacher_code) AS total_faculty,
+            SUM(CASE WHEN c.is_archived = 1 THEN 1 ELSE 0 END) AS archived_count
+        FROM classes c
+        LEFT JOIN quizzes q ON q.class_id = c.id
+        WHERE (c.is_subject_only = 0 OR c.is_subject_only IS NULL)
+    ");
+    $gStats = $gStatsQ ? $gStatsQ->fetch_assoc() : [];
+
+    $totalFaculty = intval($gStats['total_faculty'] ?? count($teachersList));
+    $totalSubs    = intval($gStats['total_subjects'] ?? count($subjects));
+    $totalQz      = intval($gStats['total_quizzes'] ?? 0);
+    $archivedCnt  = intval($gStats['archived_count'] ?? 0);
 
     echo json_encode([
-        'success'      => true,
-        'subjects'     => $subjects,
-        'teachers'     => $teachersList,
-        'stats'        => [
+        'success'        => true,
+        'subjects'       => $subjects,
+        'teachers'       => $teachersList,
+        'filtered_count' => count($subjects),
+        'stats'          => [
             'total_subjects'  => $totalSubs,
             'total_quizzes'   => $totalQz,
             'total_faculty'   => $totalFaculty,
@@ -187,9 +200,9 @@ if ($action === 'get_subject_details') {
         }
     }
 
-    // Fetch learning modules
+    // Fetch learning modules (column is 'filename' not 'file_name')
     $modulesQ = $conn->query("
-        SELECT id, title, description, file_name, original_name, file_size, topic, uploaded_at
+        SELECT id, title, filename, original_name, file_size, topic, uploaded_at
         FROM class_modules
         WHERE class_id = $class_id
         ORDER BY id DESC
@@ -201,26 +214,11 @@ if ($action === 'get_subject_details') {
         }
     }
 
-    // Fetch assignments
-    $assignQ = $conn->query("
-        SELECT id, title, instructions, points, due_date, term, created_at
-        FROM assignments
-        WHERE class_id = $class_id
-        ORDER BY id DESC
-    ");
-    $assignments = [];
-    if ($assignQ) {
-        while ($a = $assignQ->fetch_assoc()) {
-            $assignments[] = $a;
-        }
-    }
-
     echo json_encode([
         'success'     => true,
         'class'       => $classInfo,
         'quizzes'     => $quizzes,
-        'modules'     => $modules,
-        'assignments' => $assignments
+        'modules'     => $modules
     ]);
     exit;
 }

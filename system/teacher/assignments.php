@@ -91,22 +91,25 @@ foreach($rawAssignments as $row){
         if(intval($row['is_active']) == 1) $groupedAssignments[$titleKey]['is_active'] = 1;
     }
 
-    $dispCode = trim($row['display_code'] ?? '');
-    if(empty($dispCode) || $dispCode === $row['class_name']) {
-        $dispCode = trim($row['subject'] ?? '');
-    }
-    $cName = trim($row['class_name'] ?? '');
-    
-    $subKey = $dispCode . '___' . $cName . '___' . intval($row['class_id'] ?? 0);
-    if(!isset($groupedAssignments[$titleKey]['subjects'][$subKey])){
-        $groupedAssignments[$titleKey]['subjects'][$subKey] = [
-            'assignment_id' => intval($row['id']),
-            'class_id' => intval($row['class_id'] ?? 0),
-            'code' => $dispCode,
-            'name' => $cName,
-            'section' => trim($row['section'] ?? ''),
-            'submissions' => intval($row['submission_count'])
-        ];
+    $cid = intval($row['class_id'] ?? 0);
+    if($cid > 0){
+        $dispCode = trim($row['display_code'] ?? '');
+        if(empty($dispCode) || $dispCode === $row['class_name']) {
+            $dispCode = trim($row['subject'] ?? '');
+        }
+        $cName = trim($row['class_name'] ?? '');
+        
+        $subKey = $dispCode . '___' . $cName . '___' . $cid;
+        if(!isset($groupedAssignments[$titleKey]['subjects'][$subKey])){
+            $groupedAssignments[$titleKey]['subjects'][$subKey] = [
+                'assignment_id' => intval($row['id']),
+                'class_id' => $cid,
+                'code' => $dispCode,
+                'name' => $cName,
+                'section' => trim($row['section'] ?? ''),
+                'submissions' => intval($row['submission_count'])
+            ];
+        }
     }
 }
 
@@ -521,19 +524,22 @@ $overallAvgPct = $assignmentsWithSubmissions > 0 ? round($sumAvgPct / $assignmen
                   <span class="qz-class-badge" style="cursor:pointer;" onclick="viewAssignedClasses('<?php echo addslashes($a['title']); ?>', <?php echo $subjectsJson; ?>)" title="Click to view all assigned classes">
                     <i class="fa fa-users"></i> <strong><?php echo $classCount; ?></strong> Classes Assigned <i class="fa fa-chevron-down" style="font-size:9px;margin-left:3px;"></i>
                   </span>
-                <?php else: 
+                <?php elseif($classCount === 1): 
                   $firstSub = reset($a['subjects']);
                   $sCode = trim($firstSub['code'] ?? '');
                   $sName = trim($firstSub['name'] ?? '');
                   $sLabel = (!empty($sCode) && strtolower($sCode) !== 'general' && strtolower($sCode) !== strtolower($sName))
                     ? '<strong>' . htmlspecialchars($sCode) . '</strong>: ' . htmlspecialchars($sName)
                     : htmlspecialchars($sName);
-                  if(!empty($sLabel)):
                 ?>
                   <span class="qz-class-badge" style="cursor:pointer;" onclick="viewAssignedClasses('<?php echo addslashes($a['title']); ?>', <?php echo $subjectsJson; ?>)" title="Click to view class details">
                     <i class="fa fa-graduation-cap"></i> <?php echo $sLabel; ?>
                   </span>
-                <?php endif; endif; ?>
+                <?php else: ?>
+                  <span class="qz-class-badge" style="background:#f1f5f9;color:#64748b;border-color:#e2e8f0;">
+                    <i class="fa fa-file-text-o"></i> Unassigned Template
+                  </span>
+                <?php endif; ?>
                 <span class="qz-term-badge <?php echo $termClass; ?>"><?php echo strtoupper($a['term']); ?></span>
                 
                 <div class="qrc-meta">
@@ -917,17 +923,24 @@ function toggleActive(ids, isChecked) {
 
 function viewAssignedClasses(title, subjects) {
   $('#acModalTitle').html('<i class="fa fa-users"></i> Assigned Classes: ' + escapeHtml(title));
+  var realSubjects = (subjects || []).filter(function(s){
+    return s && parseInt(s.class_id) > 0 && s.name !== 'Unassigned Class';
+  });
   var html = '<div class="list-group" style="margin:0;">';
-  if(!subjects || subjects.length === 0) {
-    html += '<div class="alert alert-info">No assigned classes found.</div>';
+  if(realSubjects.length === 0) {
+    html += '<div style="text-align:center;padding:24px 16px;color:#64748b;"><i class="fa fa-info-circle" style="font-size:24px;color:#94a3b8;margin-bottom:8px;display:block;"></i><p style="margin:0;font-size:13.5px;font-weight:500;">No classes assigned to this assignment yet.<br><span style="font-size:12px;color:#94a3b8;">Use the green <strong>+ (Add Class)</strong> button on the card to assign it to a class section.</span></p></div>';
   } else {
-    subjects.forEach(function(s){
-      html += '<div class="list-group-item" style="border-radius:8px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;">';
+    realSubjects.forEach(function(s){
+      var classUrl = `../shared/class_view.php?id=${s.class_id}&tab=classwork`;
+      html += '<div class="list-group-item" style="border-radius:10px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;padding:12px 16px;">';
       html += '<div>';
-      html += '<h6 style="margin:0;font-weight:700;color:#0f172a;">' + escapeHtml(s.name) + '</h6>';
-      html += '<span style="font-size:11px;color:#64748b;">Code: <strong>' + escapeHtml(s.code) + '</strong> | Section: <strong>' + escapeHtml(s.section || 'N/A') + '</strong></span>';
+      html += '<h6 style="margin:0 0 3px 0;font-weight:700;color:#0f172a;font-size:13px;">' + escapeHtml(s.name) + '</h6>';
+      html += '<span style="font-size:11px;color:#64748b;"><span class="badge-code-green" style="margin-right:6px;"><i class="fa fa-tag"></i> ' + escapeHtml(s.code) + '</span> ' + (s.section ? 'Section: <strong>' + escapeHtml(s.section) + '</strong>' : '') + '</span>';
       html += '</div>';
-      html += '<span class="badge badge-success" style="font-size:11px;background:#10b981;">' + s.submissions + ' Submissions</span>';
+      html += '<div style="display:flex;align-items:center;gap:10px;">';
+      html += '<span class="badge badge-success" style="font-size:11px;background:#10b981;padding:6px 10px;">' + (s.submissions || 0) + ' Submissions</span>';
+      html += '<a href="' + classUrl + '" class="btn btn-xs btn-info" style="border-radius:6px;font-weight:700;padding:5px 12px;background:linear-gradient(135deg,#0284c7,#0369a1);border:none;"><i class="fa fa-external-link"></i> Open</a>';
+      html += '</div>';
       html += '</div>';
     });
   }

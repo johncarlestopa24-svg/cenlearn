@@ -1,19 +1,17 @@
 /**
- * CenLearn Universal Network & Loading Engine
- * ============================================
- * - Universal Floating Transparent Loader Screen (CenLearn, Logo, Loading...)
- * - Automatic Real-Time No Network / Offline Indicator
- * - Multi-WiFi Switch & Smart AJAX Retry with Backoff
- * - Universal Exposure: window.showCenLoader(), window.hideCenLoader(), window.showCenOffline()
+ * CenLearn Universal Network & Loading Engine (v2.7 - Production Resilient)
+ * =========================================================================
+ * - Non-blocking network notifications
+ * - Safe manual loader controls (showCenLoader / hideCenLoader)
+ * - Auto-dismiss and escape hatch to prevent permanent screen freezing
+ * - Responsive resize handlers
  */
 
 (function (window, $) {
   'use strict';
 
   var CenNetwork = {
-    isOnline: navigator.onLine !== undefined ? navigator.onLine : true,
-    retryCount: 0,
-    maxRetries: 3,
+    isOnline: typeof navigator.onLine !== 'undefined' ? navigator.onLine : true,
     autoHideTimeout: null,
     logoPath: 'dist/img/bcc_logo.jpg',
 
@@ -21,7 +19,6 @@
       this.resolveAssetPath();
       this.createUniversalOverlay();
       this.bindNetworkEvents();
-      this.setupAjaxRetry();
       this.setupResponsiveResize();
     },
 
@@ -38,13 +35,13 @@
         }
       }
 
-      // Fallback based on pathname depth
+      // Fallback based on pathname depth (works both locally /system/student/ and online /student/)
       var path = window.location.pathname.replace(/\\/g, '/');
-      if (path.indexOf('/system/student/') !== -1 ||
-          path.indexOf('/system/teacher/') !== -1 ||
-          path.indexOf('/system/superadmin/') !== -1 ||
-          path.indexOf('/system/admin/') !== -1 ||
-          path.indexOf('/system/shared/') !== -1) {
+      if (path.indexOf('/student/') !== -1 ||
+          path.indexOf('/teacher/') !== -1 ||
+          path.indexOf('/superadmin/') !== -1 ||
+          path.indexOf('/admin/') !== -1 ||
+          path.indexOf('/shared/') !== -1) {
         this.logoPath = '../dist/img/bcc_logo.jpg';
       } else {
         this.logoPath = 'dist/img/bcc_logo.jpg';
@@ -57,6 +54,7 @@
 
       var overlayHtml = [
         '<div id="cenlearn-universal-overlay" class="cl-fs-loader">',
+        '  <button type="button" id="cl-overlay-close-btn" class="cl-loader-close-btn" title="Dismiss">&times;</button>',
         '  <div class="cl-loader-brand">',
         '    <span class="brand-cen">Cen</span><span class="brand-learn">Learn</span>',
         '  </div>',
@@ -75,27 +73,35 @@
 
       $('body').append(overlayHtml);
 
+      var self = this;
+      $(document).on('click', '#cl-overlay-close-btn', function () {
+        self.hideLoader();
+      });
+
       // Bind retry click
       $(document).on('click', '#cl-overlay-retry-btn', function () {
-        $(this).prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Checking...');
+        var $btn = $(this);
+        $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Checking...');
         setTimeout(function () {
           if (navigator.onLine) {
-            CenNetwork.showOnline('Connection Restored!');
+            self.showOnline('Connection Restored!');
           } else {
-            $('#cl-overlay-retry-btn').prop('disabled', false).html('<i class="fa fa-refresh"></i> Retry Connection');
+            $btn.prop('disabled', false).html('<i class="fa fa-refresh"></i> Retry Connection');
           }
-        }, 800);
+        }, 600);
       });
     },
 
     // ── Show / Hide Public Methods ───────────────────────────────────────────
-    showLoader: function (message) {
+    showLoader: function (message, maxDuration) {
       this.createUniversalOverlay();
+      var self = this;
       var $overlay = $('#cenlearn-universal-overlay');
       var $ring = $('#cl-overlay-ring');
       var $label = $('#cl-overlay-label');
       var $dots = $('#cl-overlay-dots');
       var $retry = $('#cl-overlay-retry-btn');
+      var $close = $('#cl-overlay-close-btn');
 
       clearTimeout(this.autoHideTimeout);
 
@@ -103,30 +109,41 @@
       $label.text(message || 'Loading');
       $dots.show();
       $retry.hide();
+      $close.show();
 
       $overlay.css('display', 'flex');
       setTimeout(function () {
         $overlay.addClass('active');
       }, 10);
+
+      // Safety timeout: auto-hide after duration (default 8s) if never explicitly hidden
+      var limit = maxDuration || 8000;
+      this.autoHideTimeout = setTimeout(function () {
+        self.hideLoader();
+      }, limit);
     },
 
     hideLoader: function () {
       var $overlay = $('#cenlearn-universal-overlay');
+      if (!$overlay.length) return;
+      clearTimeout(this.autoHideTimeout);
       $overlay.removeClass('active');
       setTimeout(function () {
         if (!$overlay.hasClass('active')) {
           $overlay.hide();
         }
-      }, 250);
+      }, 200);
     },
 
     showOffline: function (message) {
       this.createUniversalOverlay();
+      var self = this;
       var $overlay = $('#cenlearn-universal-overlay');
       var $ring = $('#cl-overlay-ring');
       var $label = $('#cl-overlay-label');
       var $dots = $('#cl-overlay-dots');
       var $retry = $('#cl-overlay-retry-btn');
+      var $close = $('#cl-overlay-close-btn');
 
       clearTimeout(this.autoHideTimeout);
 
@@ -134,11 +151,17 @@
       $label.text(message || 'No Internet Connection');
       $dots.hide();
       $retry.show().prop('disabled', false).html('<i class="fa fa-refresh"></i> Retry Connection');
+      $close.show();
 
       $overlay.css('display', 'flex');
       setTimeout(function () {
         $overlay.addClass('active');
       }, 10);
+
+      // Auto-dismiss offline warning after 6 seconds so user is never locked out
+      this.autoHideTimeout = setTimeout(function () {
+        self.hideLoader();
+      }, 6000);
     },
 
     showOnline: function (message) {
@@ -164,10 +187,10 @@
 
       this.autoHideTimeout = setTimeout(function () {
         self.hideLoader();
-      }, 1500);
+      }, 1200);
     },
 
-    // ── Online / Offline Events ──────────────────────────────────────────────
+    // ── Online Events ────────────────────────────────────────────────────────
     bindNetworkEvents: function () {
       var self = this;
 
@@ -175,45 +198,6 @@
         self.isOnline = true;
         self.showOnline('Connection Restored!');
         $(document).trigger('cenlearn:online');
-      });
-
-      window.addEventListener('offline', function () {
-        self.isOnline = false;
-        self.showOffline('No Internet Connection');
-        $(document).trigger('cenlearn:offline');
-      });
-    },
-
-    // ── Smart AJAX Auto-Retry for WiFi Handshakes ────────────────────────────
-    setupAjaxRetry: function () {
-      if (!$) return;
-      var self = this;
-
-      $.ajaxPrefilter(function (options, originalOptions, jqXHR) {
-        if (options.noRetry) return;
-
-        var originalError = options.error;
-        var retryCount = 0;
-
-        options.error = function (xhr, status, error) {
-          if ((xhr.status === 0 || status === 'timeout') && retryCount < self.maxRetries) {
-            retryCount++;
-            var delay = Math.pow(2, retryCount) * 400; // 800ms, 1600ms, 3200ms
-
-            self.showLoader('Reconnecting to network...', true);
-
-            setTimeout(function () {
-              $.ajax($.extend({}, originalOptions, {
-                noRetry: retryCount >= self.maxRetries
-              }));
-            }, delay);
-            return;
-          }
-
-          if (typeof originalError === 'function') {
-            originalError.apply(this, arguments);
-          }
-        };
       });
     },
 
@@ -245,7 +229,7 @@
 
   // ── Global Helper Bindings ─────────────────────────────────────────────────
   window.CenNetwork = CenNetwork;
-  window.showCenLoader  = function (msg, backdrop) { CenNetwork.showLoader(msg, backdrop); };
+  window.showCenLoader  = function (msg, maxDuration) { CenNetwork.showLoader(msg, maxDuration); };
   window.hideCenLoader  = function () { CenNetwork.hideLoader(); };
   window.showCenOffline = function (msg) { CenNetwork.showOffline(msg); };
   window.showCenOnline  = function (msg) { CenNetwork.showOnline(msg); };

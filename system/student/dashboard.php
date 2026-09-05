@@ -83,19 +83,21 @@ $user['middle_name']         = $user['middle_name']         ?? '';
 $isGraduated = !empty($user['graduated_at']) || strtoupper($user['user_group'] ?? '') === 'ALUMNI';
 $graduatedAt = $user['graduated_at'] ?? null;
 
-$classCount = $conn->query("SELECT COUNT(*) AS c FROM class_members cm JOIN classes c ON cm.class_id=c.id WHERE cm.user_code='$uc' AND c.teacher_code!='$uc'")->fetch_assoc()['c'];
+$classCount = $conn->query("SELECT COUNT(*) AS c FROM class_members cm JOIN classes c ON cm.class_id=c.id WHERE cm.user_code='$uc' AND c.teacher_code!='$uc' AND (c.is_archived=0 OR c.is_archived IS NULL) AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)")->fetch_assoc()['c'];
 
 // Quiz & Assignment KPI stats
-$totalQuizzesCount = (int)($conn->query("SELECT COUNT(*) AS c FROM quizzes q JOIN class_members cm ON cm.class_id=q.class_id WHERE cm.user_code='$uc' AND q.is_active=1")->fetch_assoc()['c'] ?? 0);
+$totalQuizzesCount = (int)($conn->query("SELECT COUNT(*) AS c FROM quizzes q JOIN class_members cm ON cm.class_id=q.class_id JOIN classes c ON q.class_id=c.id WHERE cm.user_code='$uc' AND q.is_active=1 AND (c.is_archived=0 OR c.is_archived IS NULL) AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)")->fetch_assoc()['c'] ?? 0);
 $completedQuizzesCount = (int)($conn->query("SELECT COUNT(DISTINCT quiz_id) AS c FROM quiz_submissions WHERE student_code='$uc'")->fetch_assoc()['c'] ?? 0);
 
-$totalAssignCount = (int)($conn->query("SELECT COUNT(*) AS c FROM assignments a JOIN class_members cm ON cm.class_id=a.class_id WHERE cm.user_code='$uc'")->fetch_assoc()['c'] ?? 0);
+$totalAssignCount = (int)($conn->query("SELECT COUNT(*) AS c FROM assignments a JOIN class_members cm ON cm.class_id=a.class_id JOIN classes c ON a.class_id=c.id WHERE cm.user_code='$uc' AND (c.is_archived=0 OR c.is_archived IS NULL) AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)")->fetch_assoc()['c'] ?? 0);
 $completedAssignCount = (int)($conn->query("SELECT COUNT(DISTINCT assignment_id) AS c FROM assignment_submissions WHERE student_code='$uc'")->fetch_assoc()['c'] ?? 0);
 
 $pendingAssign = $conn->query("
     SELECT a.id AS assignment_id, a.title, a.due_date, a.points, a.instructions, c.class_name, c.id AS class_id
     FROM assignments a JOIN classes c ON a.class_id=c.id JOIN class_members cm ON cm.class_id=c.id
     WHERE cm.user_code='$uc'
+      AND (c.is_archived=0 OR c.is_archived IS NULL)
+      AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)
       AND NOT EXISTS (SELECT 1 FROM assignment_submissions s WHERE s.assignment_id=a.id AND s.student_code='$uc')
     ORDER BY a.due_date IS NULL, a.due_date ASC LIMIT 10
 ");
@@ -104,7 +106,10 @@ $pendingQuiz = $conn->query("
     SELECT q.id, q.title, q.due_date, q.time_limit, (SELECT COUNT(*) FROM quiz_questions qq WHERE qq.quiz_id=q.id) AS q_count, c.class_name, c.id AS class_id
     FROM quizzes q JOIN classes c ON q.class_id=c.id JOIN class_members cm ON cm.class_id=c.id
     WHERE cm.user_code='$uc' AND q.is_active=1
+      AND (c.is_archived=0 OR c.is_archived IS NULL)
+      AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)
       AND NOT EXISTS (SELECT 1 FROM quiz_submissions s WHERE s.quiz_id=q.id AND s.student_code='$uc')
+    GROUP BY q.id
     ORDER BY q.due_date IS NULL, q.due_date ASC LIMIT 10
 ");
 
@@ -112,6 +117,8 @@ $recentGrades = $conn->query("
     SELECT s.grade, s.submitted_at, a.title, a.points, c.class_name
     FROM assignment_submissions s JOIN assignments a ON s.assignment_id=a.id JOIN classes c ON a.class_id=c.id
     WHERE s.student_code='$uc' AND s.grade IS NOT NULL
+      AND (c.is_archived=0 OR c.is_archived IS NULL)
+      AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)
     ORDER BY s.submitted_at DESC LIMIT 5
 ");
 
@@ -121,13 +128,18 @@ $publishedGrades = $conn->query("
     JOIN classes c ON pg.class_id=c.id
     LEFT JOIN users u ON c.teacher_code=u.user_code
     WHERE pg.student_code='$uc'
+      AND (c.is_archived=0 OR c.is_archived IS NULL)
+      AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)
     ORDER BY pg.published_at DESC
 ");
 
 $liveSessions = $conn->query("
     SELECT ls.*, c.class_name, c.id AS class_id
     FROM live_sessions ls JOIN classes c ON ls.class_id=c.id JOIN class_members cm ON cm.class_id=c.id
-    WHERE cm.user_code='$uc' AND ls.status='live' LIMIT 3
+    WHERE cm.user_code='$uc' AND ls.status='live'
+      AND (c.is_archived=0 OR c.is_archived IS NULL)
+      AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)
+    LIMIT 3
 ");
 
 // Initials for avatar
@@ -500,375 +512,370 @@ $fullName  = trim($user['first_name'].' '.($user['middle_name']?$user['middle_na
       </div>
     </div>
  
-    <!-- Recommendations Card -->
-    <?php if ($student_analytics['status'] === 'active'): ?>
-    <div class="ai-assistant-card">
-      <div class="ai-hdr">
-        <div class="ai-title">
-          <i class="fa fa-lightbulb-o"></i> Recommendations
-        </div>
-        <span class="ai-badge" style="background: <?php echo $student_analytics['overall_bg']; ?>; color: <?php echo $student_analytics['overall_textColor']; ?>;">
-          Overall Status: <?php echo htmlspecialchars($student_analytics['overall_label']); ?>
-        </span>
-      </div>
- 
-      <div class="ai-recs-title">
-        <i class="fa fa-lightbulb-o" style="color: #f59e0b; font-size: 14px;"></i> Actionable Study Recommendations
-      </div>
-      <div class="ai-recs-list">
-        <?php foreach ($student_analytics['recommendations'] as $rec): ?>
-        <div class="ai-rec-item <?php echo $rec['type']; ?>">
-          <div class="ai-rec-ico <?php echo $rec['type']; ?>">
-            <i class="fa <?php echo $rec['icon']; ?>"></i>
-          </div>
-          <div class="ai-rec-body">
-            <strong><?php echo htmlspecialchars($rec['title']); ?></strong>
-            <p><?php echo $rec['desc']; ?></p>
-          </div>
-        </div>
-        <?php endforeach; ?>
-      </div>
-    </div>
-    <?php endif; ?>
 
-    <!-- Topic Weakness & ML Recommendations Card -->
-    <?php if($topic_recs['has_data']): ?>
-    <div class="ai-assistant-card" style="margin-bottom:24px;">
-      <div class="ai-hdr">
-        <div class="ai-title">
-          <i class="fa fa-bar-chart" style="color:#8b5cf6;"></i> Topic Performance &amp; Recommendations
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <?php if($topic_recs['ml_active']): ?>
-          <span class="ai-badge" style="background:#ede9fe;color:#5b21b6;">
-            <i class="fa fa-magic" style="font-size:10px;"></i> ML Active
-          </span>
-          <?php endif; ?>
-          <span class="ai-badge" style="background:#f1f5f9;color:#475569;">
-            <?php echo $topic_recs['total_topics']; ?> topic<?php echo $topic_recs['total_topics']!==1?'s':''; ?> tracked
-          </span>
-        </div>
-      </div>
 
-      <?php if($topic_recs['weak_count'] > 0): ?>
-      <!-- Weak topic bars with module links & standard references -->
-      <div style="margin-bottom:16px;">
-        <div class="ai-recs-title" style="margin-bottom:10px;">
-          <i class="fa fa-exclamation-triangle" style="color:#ef4444;font-size:13px;"></i>
-          Weak Topics (<?php echo $topic_recs['weak_count']; ?> need improvement) &bull; <span style="font-size:11px;color:#6366f1;font-weight:600;"><i class="fa fa-globe"></i> International Standards Tracked</span>
-        </div>
-        <?php foreach(array_slice($topic_recs['weak_topics'], 0, 5) as $wt_idx => $wt):
-          $wpct  = $wt['score_pct'];
-          $wclr  = $wpct < 40 ? '#ef4444' : '#f97316';
-          $wbg   = $wpct < 40 ? '#fee2e2' : '#ffedd5';
-          $wtxt  = $wpct < 40 ? '#991b1b' : '#9a3412';
-          $badge = $wpct < 40 ? '🔴 Critical Gap' : '🟡 Needs Practice';
-          $stdRef = $wt['standard_ref'] ?? null;
-          $uid   = 'wt_'.$wt_idx;
-        ?>
-        <div style="margin-bottom:14px;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
-          <!-- Topic header row -->
-          <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:#fafafa;cursor:pointer;" onclick="toggleWtPanel('<?php echo $uid; ?>')">
-            <div style="flex:1;min-width:0;">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
-                <span style="font-size:12.5px;font-weight:700;color:#0f172a;"><?php echo htmlspecialchars($wt['topic']); ?></span>
-                <span style="background:<?php echo $wbg;?>;color:<?php echo $wtxt;?>;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;"><?php echo $badge; ?></span>
-                <?php if($stdRef): ?>
-                <span style="background:#ede9fe;color:#5b21b6;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;" title="<?php echo htmlspecialchars($stdRef['bloom_desc']); ?>">
-                  <i class="fa fa-graduation-cap"></i> <?php echo htmlspecialchars($stdRef['bloom_level']); ?>
-                </span>
-                <?php endif; ?>
-                <span style="font-size:10.5px;color:#94a3b8;"><?php echo htmlspecialchars($wt['subject']); ?></span>
-              </div>
-              <div style="height:7px;background:#f1f5f9;border-radius:99px;overflow:hidden;">
-                <div style="height:100%;width:<?php echo $wpct;?>%;background:<?php echo $wclr;?>;border-radius:99px;transition:width .5s;"></div>
-              </div>
-            </div>
-            <span style="background:<?php echo $wbg;?>;color:<?php echo $wclr;?>;padding:4px 12px;border-radius:99px;font-size:13px;font-weight:800;flex-shrink:0;"><?php echo $wpct; ?>%</span>
-            <i class="fa fa-chevron-down" id="<?php echo $uid;?>_arrow" style="color:#94a3b8;font-size:11px;transition:transform .2s;flex-shrink:0;"></i>
-          </div>
-
-          <!-- Expandable detail panel -->
-          <div id="<?php echo $uid;?>_panel" style="display:none;border-top:1px solid #f1f5f9;">
-
-            <!-- International Standard Reference Banner -->
-            <?php if($stdRef): ?>
-            <div style="padding:10px 14px;background:#f5f3ff;border-bottom:1px solid #ede9fe;">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
-                <div style="font-size:10.5px;font-weight:800;color:#5b21b6;text-transform:uppercase;letter-spacing:.8px;display:flex;align-items:center;gap:5px;">
-                  <i class="fa fa-globe"></i> International Standard Competency Benchmark
-                </div>
-                <span style="font-size:9.5px;background:#ddd6fe;color:#4c1d95;padding:1px 6px;border-radius:4px;font-weight:700;"><?php echo htmlspecialchars($stdRef['standard_code']); ?></span>
-              </div>
-              <p style="font-size:11.5px;color:#475569;margin:0 0 4px;line-height:1.4;"><?php echo htmlspecialchars($stdRef['standard_rec']); ?></p>
-              <div style="font-size:10px;color:#6d28d9;font-weight:600;">
-                <i class="fa fa-bullseye"></i> Target Standard: <strong><?php echo htmlspecialchars($stdRef['target_benchmark']); ?></strong>
-              </div>
-            </div>
-            <?php endif; ?>
-
-            <!-- Quiz context (Tracked Weak Quizzes) -->
-            <?php if(!empty($wt['quiz_context'])): ?>
-            <div style="padding:10px 14px;background:#fffbeb;border-bottom:1px solid #fef3c7;">
-              <div style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;">
-                <i class="fa fa-question-circle" style="margin-right:4px;"></i>Tracked Quiz Performance on this Topic
-              </div>
-              <?php foreach($wt['quiz_context'] as $qc):
-                $qpct = $qc['total'] > 0 ? round(($qc['earned'] / $qc['total']) * 100) : 0;
-                $qclr = $qpct >= 75 ? '#10b981' : ($qpct >= 50 ? '#f59e0b' : '#ef4444');
-                $gapPct = max(0, 100 - $qpct);
-              ?>
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;padding:7px 10px;background:#fff;border-radius:8px;border:1px solid #fde68a;">
-                <i class="fa fa-file-text-o" style="color:#f59e0b;font-size:13px;flex-shrink:0;"></i>
-                <div style="flex:1;min-width:0;">
-                  <span style="font-size:12px;font-weight:700;color:#0f172a;"><?php echo htmlspecialchars($qc['quiz_title']); ?></span>
-                  <span style="font-size:10px;color:#94a3b8;margin-left:6px;"><?php echo htmlspecialchars($qc['class_name']); ?></span>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-                  <span style="font-size:11px;font-weight:800;color:<?php echo $qclr;?>;"><?php echo $qc['earned']; ?>/<?php echo $qc['total']; ?> pts (<?php echo $qpct; ?>%)</span>
-                  <span style="font-size:9.5px;background:#fee2e2;color:#991b1b;padding:2px 6px;border-radius:4px;font-weight:700;">-<?php echo $gapPct; ?>% Gap</span>
-                </div>
-              </div>
-              <?php endforeach; ?>
-            </div>
-            <?php endif; ?>
-
-            <!-- Study materials (Weak Module Tracker) -->
-            <div style="padding:10px 14px;">
-              <div style="font-size:10px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px;">
-                <i class="fa fa-book" style="margin-right:4px;"></i>Weak Module Study Materials
-              </div>
-              <?php if(!empty($wt['modules'])): ?>
-                <?php foreach($wt['modules'] as $mod):
-                  $ext = strtolower(pathinfo($mod['original_name'], PATHINFO_EXTENSION));
-                  $modIco = in_array($ext,['pdf']) ? 'fa-file-pdf-o' : (in_array($ext,['doc','docx']) ? 'fa-file-word-o' : (in_array($ext,['ppt','pptx']) ? 'fa-file-powerpoint-o' : 'fa-file-o'));
-                  $modClr = in_array($ext,['pdf']) ? '#ef4444' : (in_array($ext,['doc','docx']) ? '#1d4ed8' : (in_array($ext,['ppt','pptx']) ? '#ea580c' : '#64748b'));
-                ?>
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
-                  <i class="fa <?php echo $modIco;?>" style="color:<?php echo $modClr;?>;font-size:16px;flex-shrink:0;"></i>
-                  <div style="flex:1;min-width:0;">
-                    <div style="font-size:12px;font-weight:700;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?php echo htmlspecialchars($mod['title']); ?></div>
-                    <div style="font-size:10px;color:#64748b;"><?php echo htmlspecialchars($mod['original_name']); ?> &bull; <?php echo htmlspecialchars($mod['class_name']); ?></div>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-                    <a href="../shared/module_view.php?id=<?php echo $mod['id']; ?>" target="_blank"
-                       style="display:inline-flex;align-items:center;gap:4px;padding:5px 12px;background:linear-gradient(135deg,#1792bb,#0f5f80);color:#fff;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none;transition:opacity .2s;"
-                       onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
-                      <i class="fa fa-eye"></i> View
-                    </a>
-                    <a href="../shared/module_download.php?id=<?php echo $mod['id']; ?>" target="_blank"
-                       style="display:inline-flex;align-items:center;gap:4px;padding:5px 12px;background:rgba(23,146,187,.12);color:#0f5f80;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none;transition:background .2s;"
-                       onmouseover="this.style.background='rgba(23,146,187,.22)'" onmouseout="this.style.background='rgba(23,146,187,.12)'">
-                      <i class="fa fa-download"></i> Download
-                    </a>
-                  </div>
-                </div>
-                <?php endforeach; ?>
-              <?php else: ?>
-              <div style="display:flex;align-items:center;gap:8px;padding:10px;background:#f8fafc;border-radius:8px;border:1px dashed #cbd5e1;">
-                <i class="fa fa-info-circle" style="color:#94a3b8;font-size:13px;"></i>
-                <span style="font-size:12px;color:#64748b;">No study materials tagged for this topic yet. Ask your teacher to upload materials tagged <strong>"<?php echo htmlspecialchars($wt['topic']); ?>"</strong>.</span>
-              </div>
-              <?php endif; ?>
-            </div>
-          </div><!-- /panel -->
-        </div>
-        <?php endforeach; ?>
-      </div>
-      <?php endif; ?>
-
-      <?php if($topic_recs['strong_count'] > 0): ?>
-      <!-- Strong topics -->
-      <div style="margin-bottom:16px;">
-        <div class="ai-recs-title" style="margin-bottom:10px;">
-          <i class="fa fa-check-circle" style="color:#10b981;font-size:13px;"></i>
-          Strong Topics (<?php echo $topic_recs['strong_count']; ?> mastered) &bull; <span style="font-size:11px;color:#10b981;font-weight:600;">Bloom L5-L6 Competency Met</span>
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;">
-          <?php foreach(array_slice($topic_recs['strong_topics'], 0, 8) as $st): ?>
-          <span style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;padding:4px 12px;border-radius:99px;font-size:12px;font-weight:600;">
-            <i class="fa fa-star" style="font-size:10px;color:#10b981;"></i>
-            <?php echo htmlspecialchars($st['topic']); ?> &mdash; <?php echo $st['score_pct']; ?>%
-          </span>
-          <?php endforeach; ?>
-        </div>
-      </div>
-      <?php endif; ?>
-
-      <!-- ML Recommendations with Standard Citations -->
-      <div class="ai-recs-title" style="margin-bottom:10px;">
-        <i class="fa fa-lightbulb-o" style="color:#f59e0b;font-size:14px;"></i>
-        <?php echo $topic_recs['ml_active'] ? 'ML-Powered' : 'Pedagogical'; ?> Standard Study Suggestions
-      </div>
-      <div>
-        <?php foreach($topic_recs['recommendations'] as $rec):
-          $rStd = $rec['standard_ref'] ?? null;
-        ?>
-        <div class="ai-rec-item <?php echo $rec['type']; ?>" style="margin-bottom:10px;">
-          <div class="ai-rec-ico <?php echo $rec['type']; ?>">
-            <i class="fa <?php echo $rec['icon']; ?>"></i>
-          </div>
-          <div class="ai-rec-body">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px;">
-              <strong><?php echo $rec['title']; ?></strong>
-              <?php if($rStd): ?>
-              <span style="font-size:9.5px;background:#f3e8ff;color:#6b21a8;padding:1px 6px;border-radius:4px;font-weight:700;">
-                <i class="fa fa-globe"></i> <?php echo htmlspecialchars($rStd['standard_code']); ?>
-              </span>
-              <?php endif; ?>
-            </div>
-            <p style="margin-bottom:6px;"><?php echo $rec['desc']; ?></p>
-            <?php if($rStd && !empty($rStd['remedial_steps'])): ?>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
-              <?php foreach($rStd['remedial_steps'] as $sKey => $sVal): ?>
-              <span style="font-size:10px;background:#fff;border:1px solid #e2e8f0;padding:2px 7px;border-radius:5px;color:#334155;">
-                <strong><?php echo htmlspecialchars($sVal['phase']); ?>:</strong> <?php echo htmlspecialchars($sVal['standard']); ?>
-              </span>
-              <?php endforeach; ?>
-            </div>
-            <?php endif; ?>
-          </div>
-          <?php if($rec['score_pct'] !== null): ?>
-          <div style="font-size:13px;font-weight:800;color:<?php echo $rec['score_pct']<40?'#ef4444':'#f97316';?>;flex-shrink:0;white-space:nowrap;"><?php echo $rec['score_pct']; ?>%</div>
-          <?php endif; ?>
-        </div>
-        <?php endforeach; ?>
-      </div>
-    </div>
-
-    <!-- ── Suggested International Standard Study Plan card ── -->
+    <!-- ── Study Plan & Learning Recommendations Card ── -->
     <?php
-    $planItems = array_filter($topic_recs['recommendations'], fn($r) => !empty($r['modules']) || $r['score_pct'] !== null);
-    $criticalRecs = array_filter($planItems, fn($r) => ($r['priority'] ?? '') === 'High');
-    $reviewRecs   = array_filter($planItems, fn($r) => ($r['priority'] ?? '') === 'Medium');
-    if(!empty($planItems)):
+    // Pre-fetch ALL teacher-uploaded modules this student can access, keyed by class_id
+    // Ensures Phase 1 ALWAYS shows a specific module, never a generic button
+    $studentModulesCache = [];
+    $smRes = $conn->query("
+        SELECT cm.id, cm.title, cm.original_name, cm.topic, cm.class_id
+        FROM class_modules cm
+        JOIN class_members mem ON mem.class_id = cm.class_id AND mem.user_code = '$uc'
+        ORDER BY cm.class_id, cm.uploaded_at DESC
+    ");
+    if ($smRes) {
+        while ($smRow = $smRes->fetch_assoc()) {
+            $cId = intval($smRow['class_id']);
+            if (!isset($studentModulesCache[$cId])) $studentModulesCache[$cId] = [];
+            $studentModulesCache[$cId][] = [
+                'id'   => intval($smRow['id']),
+                'title'=> $smRow['title'],
+                'topic'=> $smRow['topic'] ?? '',
+            ];
+        }
+    }
+
+    // Resolve the best module from ONLY the same class as the quiz/assignment.
+    // NEVER returns a module from a different class — that would mislead the student.
+    function cenlearn_card_resolve_module($classId, $topic, $quizTitle, &$cache) {
+        $cid = intval($classId);
+        $mods = $cache[$cid] ?? [];
+        if (empty($mods)) return null; // No module in this class — return null, don't cross classes
+        if (count($mods) === 1) return $mods[0]; // Only one module — return it directly
+        $key = strtolower(trim($topic . ' ' . $quizTitle));
+        $best = $mods[0]; $bestScore = 0;
+        foreach ($mods as $mod) {
+            $s = 0;
+            $mt = strtolower($mod['topic'] ?? '');
+            $ml = strtolower($mod['title'] ?? '');
+            if ($mt && strpos($key, $mt) !== false) $s += 10;
+            if ($ml && strpos($key, $ml) !== false) $s += 8;
+            foreach (preg_split('/[\s,\.\-_]+/', $mt . ' ' . $ml) as $w) {
+                if (strlen($w) >= 4 && strpos($key, $w) !== false) $s += 2;
+            }
+            if ($s > $bestScore) { $bestScore = $s; $best = $mod; }
+        }
+        return $best;
+    }
+
+    $planItems = !empty($topic_recs['recommendations'])
+      ? array_values(array_filter($topic_recs['recommendations'], fn($r) => $r['score_pct'] !== null || !empty($r['modules'])))
+      : [];
+    if(!empty($planItems) || !empty($topic_recs['motivational_quote'])):
+      $mq = $topic_recs['motivational_quote'] ?? null;
     ?>
-    <div class="ai-assistant-card" style="margin-bottom:24px;border-top:4px solid #8b5cf6;">
+    <div class="ai-assistant-card" style="margin-bottom:24px;border-top:4px solid #6366f1;">
       <div class="ai-hdr" style="margin-bottom:14px;">
         <div class="ai-title">
-          <i class="fa fa-map" style="color:#8b5cf6;"></i> International Standard Remediation Study Plan
+          <i class="fa fa-book" style="color:#6366f1;"></i> Study Plan &amp; Learning Recommendations
         </div>
-        <span class="ai-badge" style="background:#ede9fe;color:#5b21b6;">
-          <i class="fa fa-graduation-cap"></i> Bloom's Taxonomy &amp; ACM/IEEE CC2020 Aligned
+        <span class="ai-badge" style="background:#ede9fe;color:#4f46e5;">
+          <i class="fa fa-lightbulb-o"></i> Personalized Guidance
         </span>
       </div>
 
-      <?php if(!empty($criticalRecs)): ?>
-      <div style="margin-bottom:16px;">
-        <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ef4444;flex-shrink:0;"></span>
-          🔴 Critical Priority (Bloom L1-L2 Recall Deficit) &mdash; Remediate First
+      <!-- ── AI Performance Coach & Diagnostic Feedback Banner ── -->
+      <?php if(!empty($mq)): ?>
+      <div style="background:<?php echo $mq['bg']; ?>;border:1px solid <?php echo $mq['border']; ?>;border-left:4px solid <?php echo $mq['color']; ?>;border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:flex-start;gap:14px;box-shadow:0 2px 8px rgba(0,0,0,0.03);">
+        <div style="width:36px;height:36px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;color:<?php echo $mq['color']; ?>;font-size:16px;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,.08);border:1px solid <?php echo $mq['border']; ?>;">
+          <i class="fa <?php echo $mq['icon'] ?? 'fa-graduation-cap'; ?>"></i>
         </div>
-        <?php foreach($criticalRecs as $ci => $rec): 
-          $rStd = $rec['standard_ref'] ?? null;
-        ?>
-        <div style="display:flex;align-items:flex-start;gap:12px;padding:14px;background:#fff5f5;border:1px solid #fecaca;border-radius:12px;margin-bottom:10px;">
-          <div style="width:30px;height:30px;background:linear-gradient(135deg,#ef4444,#dc2626);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 6px rgba(239,68,68,.3);">
-            <span style="color:#fff;font-size:12px;font-weight:800;"><?php echo $ci+1; ?></span>
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:5px;">
+            <strong style="font-size:13px;color:#0f172a;letter-spacing:-0.2px;">
+              <?php echo $mq['title']; ?>
+            </strong>
+            <span style="font-size:11px;font-weight:800;color:<?php echo $mq['color']; ?>;background:#fff;padding:2px 10px;border-radius:99px;border:1px solid <?php echo $mq['border']; ?>;">
+              <?php echo htmlspecialchars($mq['badge']); ?>
+            </span>
           </div>
+          <div style="font-size:12.5px;color:#334155;line-height:1.55;">
+            <?php echo $mq['message']; ?>
+          </div>
+          <?php if(!empty($mq['action'])): ?>
+          <div style="font-size:11.5px;color:#475569;margin-top:7px;display:flex;align-items:center;gap:6px;font-weight:600;">
+            <i class="fa fa-arrow-circle-right" style="color:<?php echo $mq['color']; ?>;"></i> <?php echo $mq['action']; ?>
+          </div>
+          <?php endif; ?>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <?php foreach($planItems as $idx => $rec):
+          $isHigh       = ($rec['priority'] ?? '') === 'High' || ($rec['score_pct'] !== null && $rec['score_pct'] < 50);
+          $isMedium     = ($rec['score_pct'] !== null && $rec['score_pct'] >= 50 && $rec['score_pct'] < 75);
+          $isSuccess    = ($rec['type'] ?? '') === 'success';
+          $cardBg       = $isHigh ? '#fff8f8' : ($isMedium ? '#fffef5' : ($isSuccess ? '#f0fdf4' : '#f8fafc'));
+          $cardBorder   = $isHigh ? '#fecaca' : ($isMedium ? '#fde68a' : ($isSuccess ? '#bbf7d0' : '#e2e8f0'));
+          $badgeBg      = $isHigh ? '#fee2e2' : ($isMedium ? '#fef9c3' : '#e0f2fe');
+          $badgeClr     = $isHigh ? '#991b1b' : ($isMedium ? '#92400e' : '#0369a1');
+          $numGrad      = $isHigh ? 'linear-gradient(135deg,#ef4444,#dc2626)' : ($isMedium ? 'linear-gradient(135deg,#f59e0b,#d97706)' : ($isSuccess ? 'linear-gradient(135deg,#10b981,#059669)' : 'linear-gradient(135deg,#3b82f6,#2563eb)'));
+          $isAssignment = !empty($rec['is_assignment']);
+          $quizId       = !empty($rec['quiz_id']) ? $rec['quiz_id'] : null;
+          $recClassId   = intval($rec['class_id'] ?? 0);
+          $recTopic     = $rec['topic'] ?? '';
+          $recQuizTitle = $rec['quiz_title'] ?? '';
+          // Resolve module ONLY from the same class — no cross-class fallback
+          $firstMod = !empty($rec['primary_module']) ? $rec['primary_module']
+                    : (!empty($rec['modules'][0]) ? $rec['modules'][0] : null);
+          if (!$firstMod && $recClassId > 0) {
+              $firstMod = cenlearn_card_resolve_module($recClassId, $recTopic, $recQuizTitle, $studentModulesCache);
+          }
+          // Only show module pills from the SAME class — never cross-class
+          $allRecMods = !empty($rec['modules']) ? array_filter($rec['modules'], fn($m) => empty($m['class_id']) || intval($m['class_id']) === $recClassId) : [];
+          if (empty($allRecMods) && $recClassId > 0 && !empty($studentModulesCache[$recClassId])) {
+              $allRecMods = array_slice($studentModulesCache[$recClassId], 0, 4);
+          }
+          $hasClassModule  = !empty($firstMod);  // true only if this class has a module
+          $isAutoMatched   = $hasClassModule && !empty($firstMod['auto_matched']);
+          $noModuleInClass = !$hasClassModule;    // teacher hasn't uploaded module to this class yet
+        ?>
+        <div style="display:flex;align-items:flex-start;gap:12px;padding:14px;background:<?php echo $cardBg; ?>;border:1px solid <?php echo $cardBorder; ?>;border-radius:12px;">
+          <div style="width:30px;height:30px;background:<?php echo $numGrad; ?>;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,.08);">
+            <span style="color:#fff;font-size:12px;font-weight:800;"><?php echo $idx+1; ?></span>
+          </div>
+
           <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-              <span style="font-size:13.5px;font-weight:700;color:#0f172a;"><?php echo $rec['topic'] ? htmlspecialchars($rec['topic']) : $rec['title']; ?></span>
-              <span style="font-size:11px;font-weight:800;color:#ef4444;background:#fee2e2;padding:1px 8px;border-radius:99px;"><?php echo $rec['score_pct']; ?>% Mastery</span>
-              <?php if($rStd): ?>
-              <span style="font-size:10px;font-weight:700;color:#6d28d9;background:#ede9fe;padding:1px 6px;border-radius:4px;"><?php echo htmlspecialchars($rStd['standard_code']); ?></span>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+              <strong style="font-size:13.5px;color:#0f172a;"><?php echo $rec['title']; ?></strong>
+              <?php if($rec['score_pct'] !== null): ?>
+              <span style="font-size:11.5px;font-weight:800;color:<?php echo $badgeClr; ?>;background:<?php echo $badgeBg; ?>;padding:2px 9px;border-radius:99px;">
+                Score: <?php echo $rec['score_pct']; ?>% <?php echo $isHigh ? '(Needs Improvement)' : '(Developing)'; ?>
+              </span>
               <?php endif; ?>
             </div>
 
-            <!-- 3-Phase Roadmap -->
-            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:8px;margin-top:8px;margin-bottom:8px;">
-              <div style="background:#fff;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;">
-                <div style="font-size:10px;font-weight:800;color:#991b1b;text-transform:uppercase;"><i class="fa fa-book"></i> Phase 1: Module Study</div>
-                <div style="font-size:11px;color:#475569;margin-top:2px;">Re-read core principles &amp; definitions in module.</div>
+            <p style="font-size:12px;color:#475569;margin-bottom:8px;line-height:1.45;"><?php echo $rec['desc']; ?></p>
+
+            <?php if(!$isSuccess): ?>
+            <!-- Topic to Study highlight -->
+            <?php if(!empty($recTopic)): ?>
+            <div style="background:#fafafa;border:1px solid #e2e8f0;border-left:3px solid #6366f1;border-radius:8px;padding:8px 12px;margin-bottom:10px;display:flex;align-items:center;gap:10px;">
+              <i class="fa fa-graduation-cap" style="color:#6366f1;font-size:15px;flex-shrink:0;"></i>
+              <div>
+                <div style="font-size:10px;font-weight:800;color:#6366f1;text-transform:uppercase;letter-spacing:.5px;">Topic to Study</div>
+                <div style="font-size:13px;font-weight:700;color:#0f172a;margin-top:1px;"><?php echo htmlspecialchars($recTopic); ?></div>
+                <?php if(!empty($recQuizTitle)): ?>
+                <div style="font-size:11px;color:#64748b;margin-top:2px;">Based on: <em><?php echo htmlspecialchars($recQuizTitle); ?></em></div>
+                <?php endif; ?>
               </div>
-              <div style="background:#fff;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;">
-                <div style="font-size:10px;font-weight:800;color:#b45309;text-transform:uppercase;"><i class="fa fa-check-square-o"></i> Phase 2: Formative Retake</div>
-                <div style="font-size:11px;color:#475569;margin-top:2px;">Analyze missed quiz items and solve practice test.</div>
+            </div>
+            <?php endif; ?>
+
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));gap:8px;margin-top:6px;margin-bottom:8px;">
+              
+              <!-- Phase 1: Module Study -->
+              <div style="background:#fff;border:1px solid <?php echo $hasClassModule ? '#c7d2fe' : '#fde68a'; ?>;border-top:3px solid <?php echo $hasClassModule ? '#6366f1' : '#f59e0b'; ?>;border-radius:9px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;">
+                <div style="font-size:10px;font-weight:800;color:<?php echo $hasClassModule ? '#4f46e5' : '#b45309'; ?>;text-transform:uppercase;letter-spacing:.4px;">
+                  <i class="fa <?php echo $hasClassModule ? 'fa-book' : 'fa-warning'; ?>"></i>
+                  Phase 1: <?php echo $hasClassModule ? 'Module Study' : 'No Module Yet'; ?>
+                  <?php if($isAutoMatched): ?>
+                  <span style="background:#ede9fe;color:#5b21b6;border-radius:4px;padding:1px 5px;font-size:8.5px;border:1px solid #c4b5fd;margin-left:3px;"><i class="fa fa-magic"></i> ML</span>
+                  <?php endif; ?>
+                </div>
+                <?php if($hasClassModule): ?>
+                <div style="font-size:11px;color:#475569;line-height:1.35;">
+                  Read this teacher-uploaded module to review the topics tested in your <?php echo $isAssignment ? 'assignment' : 'quiz'; ?>.
+                </div>
+                <a href="../shared/module_view.php?id=<?php echo $firstMod['id']; ?>" target="_blank"
+                   style="display:inline-flex;align-items:center;gap:5px;padding:6px 11px;background:#4f46e5;color:#fff;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none;margin-top:2px;box-shadow:0 2px 6px rgba(79,70,229,.25);">
+                  <i class="fa fa-file-text-o"></i> Open: <?php echo htmlspecialchars(mb_strimwidth($firstMod['title'], 0, 22, '…')); ?>
+                </a>
+                <?php else: ?>
+                <div style="font-size:11px;color:#92400e;line-height:1.4;">
+                  Your teacher has not uploaded a learning module for <strong><?php echo htmlspecialchars($rec['class_name'] ?? $rec['subject'] ?? 'this class'); ?></strong> yet.
+                  Ask your teacher to upload a module so you can review the topics for this <?php echo $isAssignment ? 'assignment' : 'quiz'; ?>.
+                </div>
+                <a href="classes.php" style="display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:#fef9c3;color:#92400e;border:1px solid #fde68a;border-radius:7px;font-size:11px;font-weight:700;text-decoration:none;margin-top:2px;">
+                  <i class="fa fa-arrow-right"></i> View My Classes
+                </a>
+                <?php endif; ?>
               </div>
-              <div style="background:#fff;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;">
-                <div style="font-size:10px;font-weight:800;color:#15803d;text-transform:uppercase;"><i class="fa fa-bullseye"></i> Phase 3: Benchmark Target</div>
-                <div style="font-size:11px;color:#475569;margin-top:2px;">Target &ge; 75% score on next assessment.</div>
+
+              <!-- Phase 2: Practice Retake / Resubmit -->
+              <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:9px 11px;display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                  <div style="font-size:10px;font-weight:800;color:#f59e0b;text-transform:uppercase;">
+                    <i class="fa <?php echo $isAssignment ? 'fa-upload' : 'fa-pencil'; ?>"></i>
+                    Phase 2: <?php echo $isAssignment ? 'Improve & Resubmit' : 'Practice Retake'; ?>
+                  </div>
+                  <div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.35;">
+                    <?php if($isAssignment): ?>
+                      Review the matched module then resubmit a stronger answer.
+                    <?php else: ?>
+                      Analyze missed quiz questions and retake assessment.
+                    <?php endif; ?>
+                  </div>
+                </div>
+                <div style="margin-top:8px;">
+                  <?php if($isAssignment): ?>
+                  <a href="classwork.php" style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;background:#fffbeb;color:#b45309;border:1px solid #fde68a;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;">
+                    <i class="fa fa-upload"></i> Go to Assignments
+                  </a>
+                  <?php else: ?>
+                  <a href="quizzes.php<?php echo $quizId ? '?open_quiz='.$quizId : ''; ?>"
+                     style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;background:#fffbeb;color:#b45309;border:1px solid #fde68a;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;">
+                    <i class="fa fa-play-circle"></i> Retake Practice Quiz
+                  </a>
+                  <?php endif; ?>
+                </div>
+              </div>
+
+              <!-- Phase 3: Mastery Target -->
+              <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:9px 11px;display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                  <div style="font-size:10px;font-weight:800;color:#10b981;text-transform:uppercase;"><i class="fa fa-bullseye"></i> Phase 3: Mastery Target</div>
+                  <div style="font-size:11px;color:#475569;margin-top:3px;line-height:1.35;">
+                    Target &ge; 75% score on next assessment to achieve standard proficiency.
+                  </div>
+                </div>
+                <div style="margin-top:8px;">
+                  <span style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:6px;font-size:11px;font-weight:700;">
+                    <i class="fa fa-check-circle"></i> Benchmark: &ge; 75%
+                  </span>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Teacher-Uploaded Modules for this class -->
+            <?php if(!empty($allRecMods)): ?>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:10px 12px;margin-top:8px;">
+              <div style="font-size:10.5px;font-weight:800;color:#334155;margin-bottom:7px;">
+                <i class="fa fa-folder-open" style="color:#6366f1;"></i>
+                Teacher Modules for <?php echo htmlspecialchars($rec['class_name'] ?? $rec['subject'] ?? 'this class'); ?>:
+                <?php if($isAutoMatched): ?>
+                <span style="font-size:9px;color:#5b21b6;background:#ede9fe;padding:1px 6px;border-radius:4px;border:1px solid #c4b5fd;margin-left:4px;"><i class="fa fa-magic"></i> ML-Matched</span>
+                <?php endif; ?>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                <?php foreach(array_slice($allRecMods,0,4) as $m):
+                  $mlTag = !empty($m['auto_matched']);
+                  $mTopic = !empty($m['topic']) ? $m['topic'] : null;
+                ?>
+                <a href="../shared/module_view.php?id=<?php echo $m['id']; ?>" target="_blank"
+                   style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;background:<?php echo $mlTag?'#f5f3ff':'#eef2ff'; ?>;color:<?php echo $mlTag?'#5b21b6':'#4f46e5'; ?>;border:1px solid <?php echo $mlTag?'#c4b5fd':'#c7d2fe'; ?>;border-radius:7px;font-size:11.5px;font-weight:700;text-decoration:none;">
+                  <i class="fa fa-file-text-o" style="font-size:11px;"></i>
+                  <?php echo htmlspecialchars($m['title']); ?>
+                  <?php if($mTopic): ?><em style="font-size:10px;color:#6366f1;font-weight:500;"> [<?php echo htmlspecialchars($mTopic); ?>]</em><?php endif; ?>
+                </a>
+                <?php endforeach; ?>
+              </div>
+            </div>
+            <?php elseif($noModuleInClass && !$isSuccess): ?>
+            <!-- No module uploaded yet for this class -->
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:9px;padding:10px 14px;margin-top:8px;display:flex;align-items:flex-start;gap:10px;">
+              <i class="fa fa-info-circle" style="color:#f59e0b;font-size:15px;flex-shrink:0;margin-top:1px;"></i>
+              <div>
+                <div style="font-size:11.5px;font-weight:700;color:#92400e;margin-bottom:3px;">No Learning Module Uploaded</div>
+                <div style="font-size:11px;color:#78350f;line-height:1.45;">
+                  Your teacher has not uploaded a learning module for <strong><?php echo htmlspecialchars($rec['class_name'] ?? $rec['subject'] ?? 'this class'); ?></strong> yet.
+                  The study recommendation is based on your quiz and performance data. Ask your teacher to upload a module for this topic.
+                </div>
+              </div>
+            </div>
+            <?php endif; ?>
+            <?php else: ?>
+            <!-- ── High-Performer Continuous Excellence & Growth Pathway ── -->
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-left:3px solid #10b981;border-radius:9px;padding:10px 14px;margin-bottom:10px;">
+              <div style="font-size:11px;font-weight:800;color:#065f46;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px;">
+                <i class="fa fa-trophy" style="color:#10b981;"></i> Continuous Growth &amp; Mastery Strategy
+              </div>
+              <div style="font-size:12px;color:#166534;margin-top:4px;line-height:1.45;font-style:italic;">
+                &ldquo;Success isn't about being the best. It's about always getting better than you were yesterday.&rdquo;
               </div>
             </div>
 
-            <!-- Weak Module Document Links -->
-            <?php if(!empty($rec['modules'])): ?>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center;">
-              <span style="font-size:10px;font-weight:700;color:#991b1b;text-transform:uppercase;">Tagged Material:</span>
-              <?php foreach(array_slice($rec['modules'],0,3) as $m): ?>
-              <a href="../shared/module_view.php?id=<?php echo $m['id']; ?>" target="_blank"
-                 style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;"
-                 onmouseover="this.style.background='#fecaca'" onmouseout="this.style.background='#fee2e2'">
-                <i class="fa fa-file-text-o" style="font-size:10px;"></i> <?php echo htmlspecialchars($m['title']); ?>
-              </a>
-              <?php endforeach; ?>
+            <!-- 3-Pillar Excellence Actions for Quiz, Assignment & Performance -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));gap:8px;margin-top:6px;margin-bottom:10px;">
+
+              <!-- Pillar 1: Quiz Speed & Precision -->
+              <div style="background:#fff;border:1px solid #bbf7d0;border-top:3px solid #10b981;border-radius:9px;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                  <div style="font-size:10px;font-weight:800;color:#065f46;text-transform:uppercase;letter-spacing:.4px;">
+                    <i class="fa fa-bolt"></i> Quiz Precision
+                  </div>
+                  <div style="font-size:11px;color:#475569;margin-top:4px;line-height:1.35;">
+                    Challenge yourself with timed problem-solving and master edge-case question scenarios to lock in 90%+ scores.
+                  </div>
+                </div>
+                <div style="margin-top:8px;">
+                  <a href="quizzes.php" style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;">
+                    <i class="fa fa-play-circle"></i> Practice Quizzes
+                  </a>
+                </div>
+              </div>
+
+              <!-- Pillar 2: Assignment Synthesis -->
+              <div style="background:#fff;border:1px solid #bfdbfe;border-top:3px solid #3b82f6;border-radius:9px;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                  <div style="font-size:10px;font-weight:800;color:#1e40af;text-transform:uppercase;letter-spacing:.4px;">
+                    <i class="fa fa-file-text-o"></i> Assignment Quality
+                  </div>
+                  <div style="font-size:11px;color:#475569;margin-top:4px;line-height:1.35;">
+                    Elevate your submissions with empirical case studies, structured citations, and capstone-ready deliverables.
+                  </div>
+                </div>
+                <div style="margin-top:8px;">
+                  <a href="classwork.php" style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;">
+                    <i class="fa fa-tasks"></i> View Assignments
+                  </a>
+                </div>
+              </div>
+
+              <!-- Pillar 3: Leadership & Advanced Synthesis -->
+              <div style="background:#fff;border:1px solid #e9d5ff;border-top:3px solid #a855f7;border-radius:9px;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                  <div style="font-size:10px;font-weight:800;color:#7e22ce;text-transform:uppercase;letter-spacing:.4px;">
+                    <i class="fa fa-users"></i> Peer Mentorship
+                  </div>
+                  <div style="font-size:11px;color:#475569;margin-top:4px;line-height:1.35;">
+                    Share insights in study groups and read ahead in course modules to prepare early for capstone defense.
+                  </div>
+                </div>
+                <div style="margin-top:8px;">
+                  <span style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;background:#faf5ff;color:#7e22ce;border:1px solid #e9d5ff;border-radius:6px;font-size:11px;font-weight:700;">
+                    <i class="fa fa-star"></i> Honors Benchmark
+                  </span>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Enrichment & Advanced Study Modules -->
+            <?php if(!empty($allRecMods)): ?>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:10px 12px;margin-top:8px;">
+              <div style="font-size:10.5px;font-weight:800;color:#334155;margin-bottom:7px;">
+                <i class="fa fa-book" style="color:#10b981;"></i>
+                Enrichment &amp; Advanced Reading Modules:
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                <?php foreach(array_slice($allRecMods,0,4) as $m):
+                  $mTopic = !empty($m['topic']) ? $m['topic'] : null;
+                ?>
+                <a href="../shared/module_view.php?id=<?php echo $m['id']; ?>" target="_blank"
+                   style="display:inline-flex;align-items:center;gap:5px;padding:5px 11px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:7px;font-size:11.5px;font-weight:700;text-decoration:none;">
+                  <i class="fa fa-file-text-o" style="font-size:11px;"></i>
+                  <?php echo htmlspecialchars($m['title']); ?>
+                  <?php if($mTopic): ?><em style="font-size:10px;color:#059669;font-weight:500;"> [<?php echo htmlspecialchars($mTopic); ?>]</em><?php endif; ?>
+                </a>
+                <?php endforeach; ?>
+              </div>
             </div>
             <?php endif; ?>
+            <?php endif; // isSuccess ?>
           </div>
         </div>
         <?php endforeach; ?>
       </div>
-      <?php endif; ?>
-
-      <?php if(!empty($reviewRecs)): ?>
-      <div>
-        <div style="font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></span>
-          🟡 Needs Practice (Bloom L2-L3 Application Gap)
-        </div>
-        <?php foreach($reviewRecs as $ri => $rec): 
-          $rStd = $rec['standard_ref'] ?? null;
-        ?>
-        <div style="display:flex;align-items:flex-start;gap:12px;padding:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;margin-bottom:10px;">
-          <div style="width:30px;height:30px;background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 6px rgba(245,158,11,.3);">
-            <span style="color:#fff;font-size:12px;font-weight:800;"><?php echo $ri+1; ?></span>
-          </div>
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
-              <span style="font-size:13.5px;font-weight:700;color:#0f172a;"><?php echo $rec['topic'] ? htmlspecialchars($rec['topic']) : $rec['title']; ?></span>
-              <span style="font-size:11px;font-weight:800;color:#d97706;background:#fef3c7;padding:1px 8px;border-radius:99px;"><?php echo $rec['score_pct']; ?>% Mastery</span>
-              <?php if($rStd): ?>
-              <span style="font-size:10px;font-weight:700;color:#6d28d9;background:#ede9fe;padding:1px 6px;border-radius:4px;"><?php echo htmlspecialchars($rStd['standard_code']); ?></span>
-              <?php endif; ?>
-            </div>
-
-            <!-- 3-Phase Roadmap -->
-            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:8px;margin-top:8px;margin-bottom:8px;">
-              <div style="background:#fff;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;">
-                <div style="font-size:10px;font-weight:800;color:#92400e;text-transform:uppercase;"><i class="fa fa-book"></i> Phase 1: Example Tracing</div>
-                <div style="font-size:11px;color:#475569;margin-top:2px;">Work through step-by-step module examples.</div>
-              </div>
-              <div style="background:#fff;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;">
-                <div style="font-size:10px;font-weight:800;color:#b45309;text-transform:uppercase;"><i class="fa fa-pencil"></i> Phase 2: Problem Solving</div>
-                <div style="font-size:11px;color:#475569;margin-top:2px;">Practice applied problem sets &amp; retake quizzes.</div>
-              </div>
-              <div style="background:#fff;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;">
-                <div style="font-size:10px;font-weight:800;color:#15803d;text-transform:uppercase;"><i class="fa fa-bullseye"></i> Phase 3: Benchmark Target</div>
-                <div style="font-size:11px;color:#475569;margin-top:2px;">Achieve &ge; 75% on upcoming tests.</div>
-              </div>
-            </div>
-
-            <!-- Weak Module Document Links -->
-            <?php if(!empty($rec['modules'])): ?>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center;">
-              <span style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;">Tagged Material:</span>
-              <?php foreach(array_slice($rec['modules'],0,3) as $m): ?>
-              <a href="../shared/module_view.php?id=<?php echo $m['id']; ?>" target="_blank"
-                 style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;"
-                 onmouseover="this.style.background='#fde68a'" onmouseout="this.style.background='#fef3c7'">
-                <i class="fa fa-file-text-o" style="font-size:10px;"></i> <?php echo htmlspecialchars($m['title']); ?>
-              </a>
-              <?php endforeach; ?>
-            </div>
-            <?php endif; ?>
-          </div>
-        </div>
-        <?php endforeach; ?>
-      </div>
-      <?php endif; ?>
     </div>
     <?php endif; ?>
-    <?php endif; ?>
+
+
 
 
 

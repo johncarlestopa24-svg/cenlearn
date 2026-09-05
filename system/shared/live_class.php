@@ -8,10 +8,10 @@ $role     = strtoupper($user['user_group']);
 
 if(!$class_id){ header('location: '.($role==='TEACHER'?'../teacher/dashboard.php':'../student/dashboard.php')); exit; }
 
-$cq = $conn->query("SELECT c.*, u.first_name AS tf, u.last_name AS tl FROM classes c LEFT JOIN users u ON c.teacher_code=u.user_code WHERE c.id=$class_id AND EXISTS (SELECT 1 FROM class_members WHERE class_id=$class_id AND user_code='$uc')");
+$cq = $conn->query("SELECT c.*, u.first_name AS tf, u.last_name AS tl FROM classes c LEFT JOIN users u ON c.teacher_code=u.user_code WHERE c.id=$class_id AND (c.teacher_code='$uc' OR EXISTS (SELECT 1 FROM class_members WHERE class_id=$class_id AND user_code='$uc'))");
 if($cq->num_rows === 0){ die('Access denied.'); }
 $class     = $cq->fetch_assoc();
-$isTeacher = ($role === 'TEACHER' && $class['teacher_code'] === $user['user_code']);
+$isTeacher = (in_array($role, ['TEACHER', 'ADMIN', 'SUPERADMIN']) || strcasecmp($class['teacher_code'] ?? '', $user['user_code'] ?? '') === 0);
 
 $userName = htmlspecialchars($user['first_name'].' '.$user['last_name']);
 
@@ -184,7 +184,11 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
       flex-direction: column;
       position: relative;
       min-width: 260px;
-      transition: flex-basis 0.05s ease-out;
+      transition: flex-basis 0.15s ease-out;
+    }
+    body.resizing-split .screen-stage-wrap,
+    body.resizing-split .screen-students-wrap {
+      transition: none !important;
     }
     
     /* Screen tile styling inside stage wrapper */
@@ -285,6 +289,147 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
       }
     }
 
+    /* ── PPT / PDF Slide Viewer ── */
+    #tile_ppt {
+      background: #080d18 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: stretch !important;
+      justify-content: stretch !important;
+      overflow: hidden !important;
+    }
+    .ppt-canvas-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      padding: 10px 10px 0;
+    }
+    #pptCanvas {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 4px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.7);
+      transition: opacity 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+      object-fit: contain;
+    }
+    .ppt-slide-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(8,13,24,.72);
+      border-radius: 4px;
+      transition: opacity 0.2s ease;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .ppt-spinner {
+      width: 38px; height: 38px;
+      border: 3px solid rgba(248,250,252,.15);
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: pptSpin 0.7s linear infinite;
+    }
+    @keyframes pptSpin { to { transform: rotate(360deg); } }
+    /* Slide progress bar */
+    .ppt-progress-rail {
+      height: 3px;
+      background: rgba(255,255,255,.1);
+      width: 100%;
+      flex-shrink: 0;
+    }
+    .ppt-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #38bdf8, #6366f1);
+      transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 0 99px 99px 0;
+    }
+    /* Control bar */
+    .ppt-ctrl-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 10px;
+      background: rgba(15,23,42,.9);
+      border-top: 1px solid rgba(255,255,255,.08);
+      backdrop-filter: blur(12px);
+      flex-shrink: 0;
+    }
+    .ppt-nav-group {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .ppt-nav-btn {
+      background: rgba(248,250,252,.07);
+      border: 1px solid rgba(255,255,255,.1);
+      color: #f8fafc;
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, transform 0.12s;
+      line-height: 1;
+    }
+    .ppt-nav-btn:hover:not(:disabled) {
+      background: rgba(56,189,248,.18);
+      border-color: #38bdf8;
+      transform: scale(1.08);
+    }
+    .ppt-nav-btn:active:not(:disabled) { transform: scale(0.95); }
+    .ppt-nav-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+    .ppt-slide-lbl {
+      font-size: 12px;
+      font-weight: 700;
+      color: #38bdf8;
+      min-width: 80px;
+      text-align: center;
+      letter-spacing: .02em;
+    }
+    .ppt-title-lbl {
+      font-size: 10.5px;
+      color: #94a3b8;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 160px;
+    }
+    .ppt-stop-btn {
+      background: rgba(239,68,68,.15);
+      border: 1px solid rgba(239,68,68,.4);
+      color: #fca5a5;
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.12s;
+    }
+    .ppt-stop-btn:hover {
+      background: rgba(239,68,68,.3);
+      transform: scale(1.05);
+    }
+    .ppt-fs-btn {
+      background: rgba(248,250,252,.07);
+      border: 1px solid rgba(255,255,255,.1);
+      color: #94a3b8;
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .ppt-fs-btn:hover { background: rgba(248,250,252,.12); color: #f8fafc; }
+
     /* ── Video tile ── */
     .video-tile {
       position: relative;
@@ -362,33 +507,72 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
     }
     .tile-label .role-dot { width: 6px; height: 6px; border-radius: 50%; background: <?php echo $accent; ?>; }
     .tile-mic-off {
-      position: absolute; bottom: 9px; right: 10px; z-index: 3;
-      background: rgba(239,68,68,.9); color: #fff; padding: 3px 9px;
-      border-radius: 99px; font-size: 10px; font-weight: 700;
-      display: none; align-items: center; gap: 4px; backdrop-filter: blur(4px);
+      position: absolute; bottom: 6px; right: 6px; z-index: 3;
+      background: rgba(239,68,68,.9); color: #fff; padding: 2px 6px;
+      border-radius: 99px; font-size: 8.5px; font-weight: 700;
+      display: none; align-items: center; gap: 3px; backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,.2); box-shadow: 0 2px 6px rgba(0,0,0,.35);
+      line-height: 1; pointer-events: none;
+      transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .tile-mic-off.show { display: flex; }
+    .tile-mic-off i { font-size: 8.5px; }
     .tile-away {
-      position: absolute; top: 8px; left: 10px; z-index: 3;
-      padding: 3px 9px; border-radius: 99px; font-size: 10px; font-weight: 700;
-      color: #fff; display: none; align-items: center; gap: 4px;
-      backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,.15);
+      position: absolute; top: 6px; left: 6px; z-index: 3;
+      padding: 2px 6px; border-radius: 99px; font-size: 8.5px; font-weight: 700;
+      color: #fff; display: none; align-items: center; gap: 3px;
+      backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.2);
+      box-shadow: 0 2px 6px rgba(0,0,0,.35); line-height: 1; pointer-events: none;
+      transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .tile-away.show { display: flex; }
-    .tile-away.focused { background: rgba(16,185,129,.85); }
-    .tile-away.away    { background: rgba(239,68,68,.85); animation: blink 1.4s infinite; }
-    .tile-away.partial { background: rgba(245,158,11,.85); }
+    .tile-away.focused { background: rgba(16,185,129,.9); }
+    .tile-away.away    { background: rgba(239,68,68,.9); animation: blink 1.4s infinite; }
+    .tile-away.partial { background: rgba(245,158,11,.9); }
+    .tile-away .away-icon { font-size: 9px; line-height: 1; }
+    .tile-away .away-pct  { opacity: .85; font-size: 8px; font-weight: 800; }
     .tile-conn-badge {
-      position: absolute; top: 8px; right: 10px; z-index: 3;
-      display: none; align-items: center; gap: 4px; padding: 3px 8px;
-      border-radius: 99px; font-size: 10px; font-weight: 700; color: #fff;
-      backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.15);
+      position: absolute; top: 6px; right: 6px; z-index: 3;
+      display: none; align-items: center; gap: 3px; padding: 2px 6px;
+      border-radius: 99px; font-size: 8.5px; font-weight: 700; color: #fff;
+      backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.2);
+      box-shadow: 0 2px 6px rgba(0,0,0,.35); line-height: 1; pointer-events: none;
+      transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .tile-conn-badge.show { display: flex; }
-    .tile-conn-badge.good    { background: rgba(16,185,129,.85); }
-    .tile-conn-badge.fair    { background: rgba(245,158,11,.85); }
-    .tile-conn-badge.poor    { background: rgba(239,68,68,.85); }
-    .tile-conn-badge.offline { background: rgba(71,85,105,.9); }
+    .tile-conn-badge.good    { background: rgba(16,185,129,.9); }
+    .tile-conn-badge.fair    { background: rgba(245,158,11,.9); }
+    .tile-conn-badge.poor    { background: rgba(239,68,68,.9); }
+    .tile-conn-badge.offline { background: rgba(71,85,105,.95); }
+    .tile-conn-badge .conn-mini-bars { display: flex; align-items: flex-end; gap: 1.5px; height: 9px; }
+    .tile-conn-badge .conn-mini-bar  { width: 2px; border-radius: 0.5px; background: #fff; opacity: .35; }
+    .tile-conn-badge .conn-mini-bar.lit { opacity: 1; }
+    @media (max-width: 600px), (max-height: 500px) {
+      .tile-conn-badge { font-size: 8px; padding: 1.5px 5px; top: 4px; right: 4px; gap: 2px; }
+      .tile-conn-badge .conn-lbl-text { display: none; }
+      .tile-away { font-size: 8px; padding: 1.5px 5px; top: 4px; left: 4px; gap: 2px; }
+      .tile-away .away-lbl-text { display: none; }
+      .tile-mic-off { font-size: 8px; padding: 2px 5px; bottom: 4px; right: 4px; gap: 2px; }
+      .tile-mic-off .mic-lbl-text { display: none; }
+    }
+    .video-tile.tile-sm .tile-conn-badge {
+      font-size: 8px; padding: 1.5px 5px; top: 4px; right: 4px; gap: 2px;
+    }
+    .video-tile.tile-sm .tile-conn-badge .conn-lbl-text {
+      display: none;
+    }
+    .video-tile.tile-sm .tile-away {
+      font-size: 8px; padding: 1.5px 5px; top: 4px; left: 4px; gap: 2px;
+    }
+    .video-tile.tile-sm .tile-away .away-lbl-text {
+      display: none;
+    }
+    .video-tile.tile-sm .tile-mic-off {
+      font-size: 8px; padding: 2px 5px; bottom: 4px; right: 4px; gap: 2px;
+    }
+    .video-tile.tile-sm .tile-mic-off .mic-lbl-text {
+      display: none;
+    }
     .screen-badge {
       position: absolute; top: 10px; left: 12px; z-index: 3;
       background: rgba(<?php echo $accentRgb; ?>,.9); color: #fff;
@@ -538,6 +722,28 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
       box-shadow: 0 0 14px rgba(245,158,11,.4) !important;
     }
 
+    /* PowerPoint In-Use / Locked Style */
+    .ctrl-btn.ppt-locked {
+      opacity: 0.65;
+      cursor: not-allowed;
+      border-color: rgba(249,115,22,.4) !important;
+      position: relative;
+    }
+    .ctrl-btn.ppt-locked::after {
+      content: '\f023';
+      font-family: FontAwesome;
+      position: absolute;
+      top: -3px;
+      right: -3px;
+      font-size: 9px;
+      color: #f97316;
+      background: #0f172a;
+      border-radius: 50%;
+      padding: 1px 3px;
+      line-height: 1;
+      border: 1px solid #f97316;
+    }
+
     /* Responsive button styles */
     @media (max-width: 600px) {
       #lcControls { height: 50px; }
@@ -552,22 +758,22 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
 
     /* ── Connectivity indicator (student topbar) ── */
     #connIndicator {
-      display: none; align-items: center; gap: 6px; padding: 4px 10px;
-      border-radius: 8px; font-size: 11px; font-weight: 700;
+      display: none; align-items: center; gap: 4px; padding: 2.5px 8px;
+      border-radius: 99px; font-size: 10px; font-weight: 700; height: 24px;
     }
-    #connIndicator.good    { background: rgba(16,185,129,.12); color: #10b981; }
-    #connIndicator.fair    { background: rgba(245,158,11,.12); color: #f59e0b; }
-    #connIndicator.poor    { background: rgba(239,68,68,.12); color: #ef4444; }
-    #connIndicator.offline { background: rgba(239,68,68,.2); color: #ef4444; animation: blink 1s infinite; }
-    .conn-bars { display: flex; align-items: flex-end; gap: 2px; height: 14px; }
-    .conn-bar  { width: 3px; border-radius: 1px; background: currentColor; opacity: .25; }
+    #connIndicator.good    { background: rgba(16,185,129,.14); color: #10b981; }
+    #connIndicator.fair    { background: rgba(245,158,11,.14); color: #f59e0b; }
+    #connIndicator.poor    { background: rgba(239,68,68,.14); color: #ef4444; }
+    #connIndicator.offline { background: rgba(239,68,68,.22); color: #ef4444; animation: blink 1s infinite; }
+    .conn-bars { display: flex; align-items: flex-end; gap: 1.5px; height: 11px; }
+    .conn-bar  { width: 2.5px; border-radius: 0.5px; background: currentColor; opacity: .28; }
     .conn-bar.lit { opacity: 1; }
 
     /* ── Teacher connectivity panel ── */
     #connPanel {
       display: none; align-items: center; gap: 6px;
       background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
-      border-radius: 9px; padding: 4px 10px; cursor: pointer; transition: background .15s;
+      border-radius: 99px; padding: 4px 10px; cursor: pointer; transition: background .15s;
     }
     #connPanel:hover { background: rgba(255,255,255,.1); }
     #connPanel .cp-label { font-size: 11px; font-weight: 700; color: rgba(255,255,255,.65); }
@@ -576,14 +782,6 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
     .cp-dot.fair    { background: #f59e0b; }
     .cp-dot.poor    { background: #ef4444; }
     .cp-dot.offline { background: #475569; }
-
-    /* ── Hand Raise Active Button Style ── */
-    .ctrl-btn.hand-on {
-      background: rgba(245,158,11,.18) !important;
-      border-color: #f59e0b !important;
-      color: #f59e0b !important;
-      box-shadow: 0 0 12px rgba(245,158,11,.3);
-    }
 
     /* ── Smooth Floating Reactions Stage & Animations ── */
     #reactionsStage {
@@ -991,7 +1189,7 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
           <div class="sess-actions">
             <?php if($isTeacher): ?>
               <?php if($s['status']==='scheduled'): ?>
-              <button class="btn-lc accent sm" onclick="startSession(<?php echo $s['id']; ?>)"><i class="fa fa-play"></i> Start</button>
+              <button class="btn-lc accent sm" onclick="startSession(<?php echo $s['id']; ?>,'<?php echo htmlspecialchars($s['room_id'] ?? ''); ?>')"><i class="fa fa-play"></i> Start</button>
               <button class="btn-lc ghost sm" onclick="deleteSession(<?php echo $s['id']; ?>)"><i class="fa fa-trash"></i></button>
               <?php elseif($s['status']==='live'): ?>
               <button class="btn-lc accent sm" onclick="joinCall(<?php echo $s['id']; ?>,'<?php echo $s['room_id']; ?>')"><i class="fa fa-video-camera"></i> Join</button>
@@ -1188,7 +1386,8 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
 
 <script src="../bower_components/jquery/dist/jquery.min.js"></script>
 <script src="../bower_components/peerjs/peerjs.min.js"></script>
-<script src="../plugins/face-api.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 <script src="../plugins/pdf.min.js"></script>
 <script>
 /* ── Config ── */
@@ -1197,13 +1396,12 @@ var CLASS_ID   = <?php echo $class_id; ?>;
 var CLASS_NAME = '<?php echo addslashes(htmlspecialchars($class['class_name'])); ?>';
 var MY_NAME    = '<?php echo addslashes($userName); ?>';
 var MY_CODE    = '<?php echo addslashes($user['user_code']); ?>';
+var MY_PEER_ID = '';
 
-// ── ICE config — fast servers first, reliable TURN as fallback ─────────────
+// ── ICE config — fast multi-region STUN + pre-warmed candidate pool ─────────
 var ICE_SERVERS = [
-    // Google STUN — fast, no relay needed for same-network peers
-    {urls:'stun:stun.l.google.com:19302'},
-    {urls:'stun:stun1.l.google.com:19302'},
-    // Metered free TURN — only used if STUN fails (different networks/strict NAT)
+    {urls:['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302']},
+    {urls:['stun:stun.cloudflare.com:3478', 'stun:stun.services.mozilla.com:3478']},
     {urls:'turn:openrelay.metered.ca:80',
      username:'openrelayproject', credential:'openrelayproject'},
     {urls:'turn:openrelay.metered.ca:443',
@@ -1216,8 +1414,8 @@ var PEER_CONFIG = {
     config: {
         iceServers: ICE_SERVERS,
         iceTransportPolicy: 'all',
-        iceCandidatePoolSize: 2,    // reduced: pre-gather only 2 to shorten startup delay
-        bundlePolicy: 'max-bundle', // reduces handshake round-trips
+        iceCandidatePoolSize: 4, // Pre-warm ICE candidate ports in parallel
+        bundlePolicy: 'max-bundle',
         rtcpMuxPolicy: 'require',
     }
 };
@@ -1229,44 +1427,42 @@ function _getInitialVideoConstraints(){
   var effectiveType = conn ? (conn.effectiveType || '4g') : '4g';
   var isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
-  // Tier 1: Slow connection (2G / slow-2G) or mobile — start at lowest quality
   if(effectiveType === 'slow-2g' || effectiveType === '2g'){
-    return {width:{ideal:320},height:{ideal:240},frameRate:{ideal:10,max:15}};
+    return {width:{ideal:320,max:320},height:{ideal:240,max:240},frameRate:{ideal:12,max:15}};
   }
-  // Tier 2: 3G or mobile on 4G — start at medium quality
   if(effectiveType === '3g' || isMobile){
-    return {width:{ideal:480},height:{ideal:360},frameRate:{ideal:15,max:20}};
+    return {width:{ideal:480,max:480},height:{ideal:360,max:360},frameRate:{ideal:15,max:20}};
   }
-  // Tier 3: Good connection (4G / WiFi desktop) — start at standard quality
-  return {width:{ideal:640},height:{ideal:480},frameRate:{ideal:20,max:24}};
+  return {width:{ideal:480,max:640},height:{ideal:360,max:480},frameRate:{ideal:20,max:24}};
 }
 
 // Current quality tier: 0=low, 1=medium, 2=high
 var _qualityTier = 1;
 var _adaptiveInterval = null;
 
-// Bitrate table per tier and peer count
+// Bitrate table per tier and peer count (engineered for up to 30+ students)
 var BITRATE_TABLE = {
   // [tier][peerCount bucket] => {video, audio}
-  0: { few: 120000, some: 80000,  many: 60000  }, // low
-  1: { few: 280000, some: 180000, many: 120000 }, // medium
-  2: { few: 500000, some: 320000, many: 200000 }, // high
+  0: { few: 120000, some: 75000,  many: 55000,  classroom: 40000 }, // low tier
+  1: { few: 280000, some: 150000, many: 90000,  classroom: 60000 }, // medium tier
+  2: { few: 450000, some: 250000, many: 140000, classroom: 85000 }, // high tier
 };
 
 function _getPeerBucket(){
   var n = Object.keys(peers).length;
-  if(n <= 2) return 'few';
-  if(n <= 5) return 'some';
-  return 'many';
+  if(n <= 2)  return 'few';
+  if(n <= 6)  return 'some';
+  if(n <= 14) return 'many';
+  return 'classroom'; // 15 to 30+ participants
 }
 
 // Apply bitrate + resolution scaling to ALL active peer connections
 async function _applyQualityToPeers(tier){
   var bucket  = _getPeerBucket();
   var vbr = BITRATE_TABLE[tier][bucket];
-  var abr = 48000; // 48kbps audio — clear voice, not choppy
-  var scaleDown = tier === 0 ? 2 : 1; // halve resolution on low tier
-  var maxFps    = tier === 0 ? 15 : (tier === 1 ? 20 : 24);
+  var abr = (bucket === 'classroom') ? 32000 : 48000; // 32kbps Opus voice in large classes
+  var scaleDown = (tier === 0 || bucket === 'classroom') ? 2 : 1; // scale down video in 30-person rooms
+  var maxFps    = (bucket === 'classroom') ? 12 : (tier === 0 ? 15 : (tier === 1 ? 20 : 24));
 
   var pcList = Object.values(peers).map(function(c){ return c.peerConnection; }).filter(Boolean);
 
@@ -1333,12 +1529,17 @@ function _stopAdaptiveQuality(){
 }
 
 /* ── State ── */
-var peer, myStream, screenStream;
+var peer, myStream, screenStream, pptCanvasStream = null;
 var peers = {}, dataChannels = {};
+var _prevStats = {};
 var micOn = true, camOn = true, screenOn = false;
 var currentSessionId = null, currentRoomId = null, inCall = false;
+var teacherPeerId = null;
+var currentPresenter = null; // { peerId, name, isTeacher, title }
 var statusPollInterval = null, sessRefreshInterval = null;
 var _peerCleanupInterval = null; // stored at module level so stopCall can clear it
+var faceInterval = null;
+var _isDiscoveringPeers = false;
 
 /* ── Modals ── */
 function openModal(id)  { document.getElementById(id).classList.add('open'); }
@@ -1413,12 +1614,31 @@ function showSchedAlert(msg){
 }
 
 /* ── Session management ── */
-function startSession(sessionId){
-  if(!confirm('Start this live session now?')) return;
+function startSession(sessionId, roomId){
+  var btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('button') : null;
+  if(btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Starting...';
+  }
   $.post('live_handler.php', {action:'start', session_id:sessionId}, function(r){
-    if(r.success) location.reload();
-    else showToast(r.msg || 'Failed to start.', 'red');
-  }, 'json');
+    if(r.success){
+      var targetRoom = r.room_id || roomId || ('cenlearn_' + sessionId);
+      // Automatically launch and join the live call immediately
+      joinCall(sessionId, targetRoom);
+    } else {
+      if(btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa fa-play"></i> Start';
+      }
+      showToast(r.msg || 'Failed to start.', 'red');
+    }
+  }, 'json').fail(function(){
+    if(btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa fa-play"></i> Start';
+    }
+    showToast('Network error starting session.', 'red');
+  });
 }
 function endSession(sessionId){
   if(!confirm('End this live session? Students will be disconnected.')) return;
@@ -1591,7 +1811,8 @@ function cleanupDuplicateTiles(peerId, studentCode, name){
 /* ── Add video tile ── */
 function addTile(stream, name, isLocal, tileId, studentCode){
   // Self-tile guard: never add remote tile for local user
-  if(!isLocal && (tileId === MY_PEER_ID || tileId === 'local')) return;
+  var currentLocalId = (typeof MY_PEER_ID !== 'undefined' && MY_PEER_ID) ? MY_PEER_ID : (peer ? peer.id : '');
+  if(!isLocal && (tileId === currentLocalId || tileId === 'local')) return;
 
   var existing = document.getElementById('tile_' + tileId);
   if(existing) existing.remove();
@@ -1631,21 +1852,21 @@ function addTile(stream, name, isLocal, tileId, studentCode){
   avatar.className = 'tile-avatar';
   avatar.id = 'avatar_' + tileId;
   avatar.style.display = 'none';
-  var init = name.split(' ').map(function(w){ return w[0] || ''; }).join('').substring(0, 2).toUpperCase();
-  avatar.innerHTML = '<div class="av-ring">' + init + '</div><div class="av-name">' + name + '</div>';
+  var init = (name || 'Student').split(' ').map(function(w){ return w[0] || ''; }).join('').substring(0, 2).toUpperCase();
+  avatar.innerHTML = '<div class="av-ring">' + init + '</div><div class="av-name">' + escHtml(name || 'Student') + '</div>';
   tile.appendChild(avatar);
 
   /* Name label */
   var label = document.createElement('div');
   label.className = 'tile-label';
-  label.innerHTML = '<span class="role-dot"></span>' + name;
+  label.innerHTML = '<span class="role-dot"></span>' + escHtml(name || 'Student');
   tile.appendChild(label);
 
   /* Mic-off badge */
   var micBadge = document.createElement('div');
   micBadge.className = 'tile-mic-off';
   micBadge.id = 'micoff_' + tileId;
-  micBadge.innerHTML = '<i class="fa fa-microphone-slash"></i> Muted';
+  micBadge.innerHTML = '<i class="fa fa-microphone-slash"></i> <span class="mic-lbl-text">Muted</span>';
   tile.appendChild(micBadge);
 
   /* Away badge */
@@ -1673,10 +1894,24 @@ function addTile(stream, name, isLocal, tileId, studentCode){
   grid.appendChild(tile);
 
   /* Set srcObject and play AFTER DOM append */
-  video.srcObject = stream;
-  video.play().catch(function(e){ console.warn('[video.play]', e); });
+  if(stream){
+    video.srcObject = stream;
+    var playPromise = video.play();
+    if(playPromise !== undefined){
+      playPromise.catch(function(e){
+        console.warn('[video.play autoplay notice]', e);
+        if(!isLocal){
+          // Autoplay policy fallback: mute initially to allow video rendering, unblock audio on gesture
+          video.muted = true;
+          video.play().then(function(){
+            _unblockAudioOnGesture();
+          }).catch(function(e2){ console.warn('[video.play fallback error]', e2); });
+        }
+      });
+    }
+  }
 
-  if(isLocal){
+  if(isLocal && stream){
     var hasVideo = stream.getVideoTracks().length > 0 && stream.getVideoTracks()[0].enabled;
     if(!hasVideo){
       video.style.display = 'none';
@@ -1702,16 +1937,38 @@ function removeTile(peerId, studentCode, name){
   
   cleanupDuplicateTiles(peerId, studentCode, name);
 
+  // If the leaving participant was presenting, release the lock for everyone
+  if(currentPresenter && currentPresenter.peerId === peerId){
+    currentPresenter = null;
+    _updatePresenterLockUI();
+    var pptTile = document.getElementById('tile_ppt');
+    if(pptTile) pptTile.remove();
+    var scrTile = document.getElementById('tile_screen');
+    if(scrTile) scrTile.remove();
+    var grid = document.getElementById('videoGrid');
+    if(grid && grid.querySelectorAll('.screen-tile').length === 0){
+      grid.classList.remove('screen-mode');
+    }
+    showToast('Presentation ended (Presenter left the class)', 'blue');
+  }
+
   var t = document.getElementById('tile_' + peerId);
   if(t) {
     t.classList.add('tile-leaving');
-    t.remove();
+    setTimeout(function(){ if(t && t.parentNode) t.remove(); updateGrid(); }, 180);
+  } else {
+    updateGrid();
   }
-  updateGrid();
 }
 
-/* ── Grid layout ── */
+/* ── Grid layout with auto-fit, auto-resizing & smooth response ── */
+var _gridRafTimer = null;
 function updateGrid(){
+  if(_gridRafTimer) cancelAnimationFrame(_gridRafTimer);
+  _gridRafTimer = requestAnimationFrame(_doUpdateGrid);
+}
+
+function _doUpdateGrid(){
   var grid  = document.getElementById('videoGrid');
   if(!grid) return;
   
@@ -1723,7 +1980,8 @@ function updateGrid(){
   
   // Include screensharing tiles in participant count
   var screens = grid.querySelectorAll('.screen-tile:not(.tile-leaving)').length;
-  document.getElementById('partCount').textContent = total + screens;
+  var partCountEl = document.getElementById('partCount');
+  if(partCountEl) partCountEl.textContent = total + screens;
 
   if (isScreenMode) {
     grid.style.gridTemplateColumns = '';
@@ -1745,7 +2003,7 @@ function updateGrid(){
       divider = document.createElement('div');
       divider.className = 'lc-resize-divider';
       divider.id = 'lcResizeDivider';
-      divider.title = 'Drag to resize PowerPoint presentation / Double-click to reset';
+      divider.title = 'Drag to resize presentation / Double-click to reset';
       grid.appendChild(divider);
       initResizeDivider();
     }
@@ -1774,27 +2032,27 @@ function updateGrid(){
     return;
   } else {
     // If exiting screen mode, unpack tiles back to main grid
-    var stageWrap = document.getElementById('screenStageWrap');
-    var divider = document.getElementById('lcResizeDivider');
-    var studentsWrap = document.getElementById('screenStudentsWrap');
+    var sWrap = document.getElementById('screenStageWrap');
+    var sDivider = document.getElementById('lcResizeDivider');
+    var stWrap = document.getElementById('screenStudentsWrap');
 
-    if(studentsWrap) {
-      Array.from(studentsWrap.children).forEach(function(tile) {
+    if(stWrap) {
+      Array.from(stWrap.children).forEach(function(tile) {
         grid.appendChild(tile);
       });
-      studentsWrap.remove();
+      stWrap.remove();
     }
-    if(stageWrap) {
-      Array.from(stageWrap.children).forEach(function(tile) {
+    if(sWrap) {
+      Array.from(sWrap.children).forEach(function(tile) {
         grid.appendChild(tile);
       });
-      stageWrap.remove();
+      sWrap.remove();
     }
-    if(divider) divider.remove();
+    if(sDivider) sDivider.remove();
   }
   
-  var containerWidth = grid.clientWidth - 32; // padding offset
-  var containerHeight = grid.clientHeight - 32;
+  var containerWidth = (grid.clientWidth || window.innerWidth) - (window.innerWidth <= 600 ? 16 : 32);
+  var containerHeight = (grid.clientHeight || (window.innerHeight - 130)) - (window.innerWidth <= 600 ? 16 : 32);
   
   if (total === 0 || containerWidth <= 0 || containerHeight <= 0) return;
   
@@ -1804,12 +2062,13 @@ function updateGrid(){
   var bestHeight = 0;
   var maxArea = 0;
   var aspectRatio = 16 / 9;
+  var gap = (window.innerWidth <= 600) ? 8 : 12;
   
   // Test layouts to find the best matching dimensions for the grid viewport
   for (var cols = 1; cols <= total; cols++) {
     var rows = Math.ceil(total / cols);
-    var gapX = (cols - 1) * 12;
-    var gapY = (rows - 1) * 12;
+    var gapX = (cols - 1) * gap;
+    var gapY = (rows - 1) * gap;
     var maxW = (containerWidth - gapX) / cols;
     var maxH = (containerHeight - gapY) / rows;
     
@@ -1834,14 +2093,14 @@ function updateGrid(){
   }
 
   // Minimum tile dimension floor to avoid microscopic unreadable tiles in large rooms
-  var minTileW = (window.innerWidth <= 600) ? 110 : 140;
+  var minTileW = (window.innerWidth <= 600) ? 100 : 140;
   var minTileH = Math.floor(minTileW / aspectRatio);
 
   if (bestWidth < minTileW || bestHeight < minTileH) {
     // When participants exceed single-screen capacity, switch to scrollable grid layout
-    var maxColsFit = Math.max(1, Math.floor((containerWidth + 12) / (minTileW + 12)));
+    var maxColsFit = Math.max(1, Math.floor((containerWidth + gap) / (minTileW + gap)));
     bestCols = maxColsFit;
-    bestWidth = Math.floor((containerWidth - (maxColsFit - 1) * 12) / maxColsFit);
+    bestWidth = Math.floor((containerWidth - (maxColsFit - 1) * gap) / maxColsFit);
     bestHeight = Math.floor(bestWidth / aspectRatio);
     grid.style.overflowY = 'auto';
     grid.style.alignContent = 'start';
@@ -1879,6 +2138,7 @@ function initResizeDivider() {
   function onPointerDown(e) {
     _isDraggingDivider = true;
     divider.classList.add('dragging');
+    document.body.classList.add('resizing-split');
     document.body.style.userSelect = 'none';
     if(e.cancelable) e.preventDefault();
   }
@@ -1905,13 +2165,16 @@ function initResizeDivider() {
     }
 
     grid.style.setProperty('--ppt-split-percent', pct.toFixed(1) + '%');
+    if (typeof calculateSlideFit === 'function') calculateSlideFit();
   }
 
   function onPointerUp() {
     if(_isDraggingDivider) {
       _isDraggingDivider = false;
       divider.classList.remove('dragging');
+      document.body.classList.remove('resizing-split');
       document.body.style.userSelect = '';
+      if (typeof calculateSlideFit === 'function') calculateSlideFit();
     }
   }
 
@@ -1945,98 +2208,113 @@ function joinCall(sessionId, roomId){
     showCallUI();
     showConnecting(true);
 
-    peer = new Peer(roomId, PEER_CONFIG);
+    function initTeacherPeer(targetId){
+      if(peer){ try{ peer.destroy(); }catch(e){} }
+      peer = new Peer(targetId, PEER_CONFIG);
 
-    peer.on('open', function(myPeerId){
-      showConnecting(false);
-      // Register in peer table so students can discover teacher
-      $.post('live_handler.php',{action:'register_peer',session_id:sessionId,peer_id:myPeerId,name:MY_NAME});
-      _startPeerHeartbeat(sessionId);
-      _startAdaptiveQuality();
-    });
+      peer.on('open', function(myPeerId){
+        MY_PEER_ID = myPeerId;
+        teacherPeerId = myPeerId;
+        currentRoomId = myPeerId;
+        showConnecting(false);
+        // Register in peer table so students can discover teacher
+        $.post('live_handler.php', {action:'register_peer', session_id:sessionId, peer_id:myPeerId, name:MY_NAME, role:'TEACHER'});
+        _startPeerHeartbeat(sessionId);
+        _startAdaptiveQuality();
+      });
 
-    peer.on('call', function(call){
-      var name = (call.metadata && call.metadata.name) ? call.metadata.name : 'Student';
-      var studentCode = (call.metadata && call.metadata.code) ? call.metadata.code : null;
-      call.answer(myStream);
+      peer.on('call', function(call){
+        var name = (call.metadata && call.metadata.name) ? call.metadata.name : 'Student';
+        var studentCode = (call.metadata && call.metadata.code) ? call.metadata.code : null;
+        call.answer(myStream);
 
-      // Track if this specific call's tile has been superseded
-      var callSuperseded = false;
+        var callSuperseded = false;
 
-      call.on('stream', function(rs){
-        // Guard: only process the first stream event per call
-        if(callSuperseded) return;
-
-        // Remove any existing tile for this exact peer ID
-        var existingById = document.getElementById('tile_' + call.peer);
-        if(existingById){
-          existingById.remove();
-          delete dataChannels[call.peer];
-        }
-        // Remove stale tile from same student (rejoined with new peer ID)
-        document.querySelectorAll('.video-tile').forEach(function(t){
-          if(t.id === 'tile_local' || t.id === 'tile_screen' || t.id === 'tile_' + call.peer) return;
-          var match = false;
-          if(studentCode && t.dataset.code === studentCode) match = true;
-          if(!match){
-            var lbl = t.querySelector('.tile-label');
-            if(lbl && lbl.textContent.trim().indexOf(name) !== -1) match = true;
-          }
-          if(match){
-            var oldPeerId = t.id.replace('tile_', '');
-            // Mark old call as superseded so its close event won't remove the new tile
-            if(peers[oldPeerId]){
-              try{ peers[oldPeerId]._superseded = true; peers[oldPeerId].close(); }catch(e){}
-              delete peers[oldPeerId];
-            }
-            delete dataChannels[oldPeerId];
-            t.remove();
-          }
-        });
-        peers[call.peer] = call;
-        addTile(rs, name, false, call.peer, studentCode);
-        setupDataChannel(call, call.peer);
-        capBitrate(call.peerConnection);
-        // BUG 11 FIX: if screen share is active when a student joins, push the
-        // screen track to their connection immediately
-        _applyScreenTrackToPeer(call);
-
-        // Monitor ICE connection state
-        call.peerConnection.oniceconnectionstatechange = function(){
+        call.on('stream', function(rs){
           if(callSuperseded) return;
-          var state = call.peerConnection.iceConnectionState;
-          if(state === 'disconnected' || state === 'failed' || state === 'closed'){
-            setTimeout(function(){
-              if(callSuperseded) return;
-              var s = call.peerConnection.iceConnectionState;
-              if(s === 'disconnected' || s === 'failed' || s === 'closed'){
-                removeTile(call.peer);
-                delete dataChannels[call.peer];
-              }
-            }, 3000);
+
+          var existingById = document.getElementById('tile_' + call.peer);
+          if(existingById){
+            existingById.remove();
+            delete dataChannels[call.peer];
           }
-        };
+          cleanupDuplicateTiles(call.peer, studentCode, name);
+          peers[call.peer] = call;
+          addTile(rs, name, false, call.peer, studentCode);
+          setupDataChannel(call, call.peer);
+          capBitrate(call.peerConnection);
+          _applyScreenTrackToPeer(call);
+
+          // Fast Mesh Signaling: Teacher broadcasts the new student to all other students
+          // so all students see each other immediately without waiting for database polling
+          var activeStudents = [];
+          Object.keys(peers).forEach(function(pid){
+            var pCall = peers[pid];
+            var pName = (pCall.metadata && pCall.metadata.name) ? pCall.metadata.name : '';
+            var pCode = (pCall.metadata && pCall.metadata.code) ? pCall.metadata.code : '';
+            activeStudents.push({peerId: pid, name: pName, code: pCode});
+          });
+
+          Object.keys(dataChannels).forEach(function(pid){
+            var dc = dataChannels[pid];
+            if(dc && dc.readyState === 'open'){
+              try {
+                if(pid !== call.peer){
+                  dc.send(JSON.stringify({type:'peer_joined', peerId:call.peer, name:name, code:studentCode}));
+                } else {
+                  dc.send(JSON.stringify({type:'peers_list', peers:activeStudents.filter(function(s){ return s.peerId !== call.peer; })}));
+                }
+              } catch(e){}
+            }
+          });
+
+          // Monitor ICE connection state
+          call.peerConnection.oniceconnectionstatechange = function(){
+            if(callSuperseded) return;
+            var state = call.peerConnection.iceConnectionState;
+            if(state === 'disconnected' || state === 'failed' || state === 'closed'){
+              setTimeout(function(){
+                if(callSuperseded) return;
+                var s = call.peerConnection.iceConnectionState;
+                if(s === 'disconnected' || s === 'failed' || s === 'closed'){
+                  removeTile(call.peer);
+                  delete dataChannels[call.peer];
+                  delete peers[call.peer];
+                }
+              }, 4000);
+            }
+          };
+        });
+
+        call.on('close', function(){
+          if(call._superseded) return;
+          callSuperseded = true;
+          removeTile(call.peer);
+          delete dataChannels[call.peer];
+          delete peers[call.peer];
+        });
+        call.on('error', function(){
+          if(call._superseded) return;
+          callSuperseded = true;
+          removeTile(call.peer);
+          delete dataChannels[call.peer];
+          delete peers[call.peer];
+        });
       });
 
-      call.on('close', function(){
-        // Don't remove tile if this call was superseded by a reconnect
-        if(call._superseded) return;
-        callSuperseded = true;
-        removeTile(call.peer);
-        delete dataChannels[call.peer];
+      peer.on('error', function(e){
+        console.warn('[teacher peer error]', e);
+        showConnecting(false);
+        if(e.type === 'unavailable-id'){
+          var fallbackId = roomId + '_' + Math.random().toString(36).substring(2, 7);
+          console.log('[teacher] Room ID taken, retrying with ID:', fallbackId);
+          initTeacherPeer(fallbackId);
+        }
       });
-      call.on('error', function(){
-        if(call._superseded) return;
-        callSuperseded = true;
-        removeTile(call.peer);
-        delete dataChannels[call.peer];
-      });
-    });
+    }
 
-    peer.on('error', function(e){ console.warn('[peer error]', e); showConnecting(false); });
+    initTeacherPeer(roomId);
 
-    // BUG 5 FIX: moved _peerCleanupInterval INSIDE .then() so it only starts
-    // when getUserMedia succeeds and the call is actually established
     clearInterval(_peerCleanupInterval);
     _peerCleanupInterval = setInterval(function(){
       if(!inCall || !IS_TEACHER) return;
@@ -2081,64 +2359,75 @@ function joinAsStudent(sessionId, roomId){
     peer = new Peer(PEER_CONFIG);
 
     peer.on('open', function(myPeerId){
+      MY_PEER_ID = myPeerId;
       // Register peer ID so others can call us
-      $.post('live_handler.php',{action:'register_peer',session_id:sessionId,peer_id:myPeerId,name:MY_NAME});
+      $.post('live_handler.php', {action:'register_peer', session_id:sessionId, peer_id:myPeerId, name:MY_NAME, role:'STUDENT'});
       _startPeerHeartbeat(sessionId);
       _startAdaptiveQuality();
 
-      // ── Call the teacher ──────────────────────────────────────────────
-      var teacherCall = peer.call(currentRoomId, myStream, {metadata:{name:MY_NAME, code:MY_CODE, role:'STUDENT'}});
-      if(!teacherCall){
-        showConnecting(false);
-        showToast('Could not connect to session.', 'red');
-        return;
+      // ── Helper to Call the teacher ──────────────────────────────────────
+      function connectToTeacher(teacherPeerId){
+        var teacherCall = peer.call(teacherPeerId, myStream, {metadata:{name:MY_NAME, code:MY_CODE, role:'STUDENT'}});
+        if(!teacherCall){
+          showConnecting(false);
+          showToast('Could not connect to session. Retrying...', 'blue');
+          return;
+        }
+        teacherCall.on('stream', function(rs){
+          showConnecting(false);
+          var existingVid = document.querySelector('#tile_' + teacherCall.peer + ' video');
+          if(existingVid){ existingVid.srcObject = rs; existingVid.play().catch(function(){}); return; }
+          peers[teacherCall.peer] = teacherCall;
+          addTile(rs, 'Teacher', false, teacherCall.peer);
+          setupDataChannel(teacherCall, teacherCall.peer);
+          capBitrate(teacherCall.peerConnection);
+          setTimeout(function(){ _broadcastEngagement(); }, 800);
+          setTimeout(function(){
+            var localVid = document.querySelector('#tile_local video');
+            if(localVid) startFaceDetection(localVid);
+          }, 1500);
+        });
+        teacherCall.on('close', function(){
+          showToast('The teacher has ended the class.', 'red');
+          var av = document.getElementById('avatar_' + teacherCall.peer);
+          var vid = document.querySelector('#tile_' + teacherCall.peer + ' video');
+          if(av && vid){ vid.style.display = 'none'; av.style.display = 'flex'; }
+          setTimeout(function(){ stopCall(); location.reload(); }, 3000);
+        });
+        teacherCall.on('error', function(e){ showConnecting(false); console.warn('[teacher call error]', e); });
       }
-      teacherCall.on('stream', function(rs){
-        showConnecting(false);
-        var existingVid = document.querySelector('#tile_' + teacherCall.peer + ' video');
-        if(existingVid){ existingVid.srcObject = rs; existingVid.play().catch(function(){}); return; }
-        peers[teacherCall.peer] = teacherCall;
-        addTile(rs, 'Teacher', false, teacherCall.peer);
-        setupDataChannel(teacherCall, teacherCall.peer);
-        capBitrate(teacherCall.peerConnection);
-        // Send initial engagement state to teacher immediately (don't wait 15s)
-        setTimeout(function(){ _broadcastEngagement(); }, 800);
-        setTimeout(function(){
-          var localVid = document.querySelector('#tile_local video');
-          if(localVid) startFaceDetection(localVid);
-        }, 1500);
+
+      // Discover active teacher peer ID from database, fallback to roomId
+      $.get('live_handler.php', {action:'get_peers', session_id:sessionId}, function(r){
+        var teacherPeer = (r && r.peers) ? r.peers.find(function(p){ return p.role === 'TEACHER'; }) : null;
+        var targetTeacherId = (teacherPeer && teacherPeer.peer_id) ? teacherPeer.peer_id : currentRoomId;
+        teacherPeerId = targetTeacherId;
+        connectToTeacher(targetTeacherId);
+      }, 'json').fail(function(){
+        teacherPeerId = currentRoomId;
+        connectToTeacher(currentRoomId);
       });
-      teacherCall.on('close', function(){
-        showToast('The teacher has ended the class.', 'red');
-        var av = document.getElementById('avatar_' + teacherCall.peer);
-        var vid = document.querySelector('#tile_' + teacherCall.peer + ' video');
-        if(av && vid){ vid.style.display = 'none'; av.style.display = 'flex'; }
-        setTimeout(function(){ stopCall(); location.reload(); }, 3000);
-      });
-      teacherCall.on('error', function(e){ showConnecting(false); console.warn('[teacher call error]', e); });
 
       // ── Discover and call existing students (mesh) ────────────────────
-      // Wait 1s for our registration to propagate, then fetch peers
       setTimeout(function(){
         _discoverAndCallPeers(sessionId);
       }, 1000);
     });
 
-    // ── Accept incoming calls from other students ─────────────────────
-    // BUG FIX: renamed parameter from 'inCall' to 'incomingCall' to avoid
-    // shadowing the outer global 'inCall' boolean state variable
+    // ── Accept incoming calls from other students / teacher ───────────
     peer.on('call', function(incomingCall){
-      var name = (incomingCall.metadata && incomingCall.metadata.name) ? incomingCall.metadata.name : 'Student';
+      var name = (incomingCall.metadata && incomingCall.metadata.name) ? incomingCall.metadata.name : 'Participant';
       var code = (incomingCall.metadata && incomingCall.metadata.code) ? incomingCall.metadata.code : null;
-      // Don't re-answer calls from teacher (teacher uses fixed roomId, we already called them)
-      if(incomingCall.peer === currentRoomId){ return; }
+      var isTeacherCall = (incomingCall.metadata && incomingCall.metadata.role === 'TEACHER') || (incomingCall.peer === currentRoomId);
+      
       incomingCall.answer(myStream);
       _applyScreenTrackToPeer(incomingCall);
       incomingCall.on('stream', function(rs){
+        showConnecting(false);
         var existingVid = document.querySelector('#tile_' + incomingCall.peer + ' video');
         if(existingVid){ existingVid.srcObject = rs; existingVid.play().catch(function(){}); return; }
         peers[incomingCall.peer] = incomingCall;
-        addTile(rs, name, false, incomingCall.peer, code);
+        addTile(rs, isTeacherCall ? 'Teacher' : name, false, incomingCall.peer, code);
         setupDataChannel(incomingCall, incomingCall.peer);
         capBitrate(incomingCall.peerConnection);
       });
@@ -2148,36 +2437,35 @@ function joinAsStudent(sessionId, roomId){
 
     peer.on('error', function(e){
       showConnecting(false);
-      console.warn('[peer error]', e);
+      console.warn('[student peer error]', e);
       if(e.type === 'peer-unavailable'){
-        // Teacher not ready yet — retry after 3 seconds
         showToast('Waiting for teacher... retrying in 3s', 'blue');
         setTimeout(function(){
           if(!inCall) return;
           showConnecting(true);
-          var call = peer.call(currentRoomId, myStream, {metadata:{name:MY_NAME, code:MY_CODE}});
-          if(!call){ showConnecting(false); showToast('Could not connect. Please try again.', 'red'); return; }
-          call.on('stream', function(rs){
-            showConnecting(false);
-            // Remove existing teacher tile if any
-            var existingVid = document.querySelector('#tile_' + call.peer + ' video');
-            if(existingVid){ existingVid.srcObject = rs; existingVid.play().catch(function(){}); return; }
-            peers[call.peer] = call;
-            addTile(rs, 'Teacher', false, call.peer);
-            setupDataChannel(call, call.peer);
-            capBitrate(call.peerConnection);
-          });
-          call.on('close', function(){
-            showToast('The teacher has ended the class.', 'red');
-            setTimeout(function(){ stopCall(); location.reload(); }, 3000);
+          $.get('live_handler.php', {action:'get_peers', session_id:sessionId}, function(r){
+            var teacherPeer = (r && r.peers) ? r.peers.find(function(p){ return p.role === 'TEACHER'; }) : null;
+            var targetTeacherId = (teacherPeer && teacherPeer.peer_id) ? teacherPeer.peer_id : currentRoomId;
+            var call = peer.call(targetTeacherId, myStream, {metadata:{name:MY_NAME, code:MY_CODE, role:'STUDENT'}});
+            if(!call){ showConnecting(false); return; }
+            call.on('stream', function(rs){
+              showConnecting(false);
+              peers[call.peer] = call;
+              addTile(rs, 'Teacher', false, call.peer);
+              setupDataChannel(call, call.peer);
+              capBitrate(call.peerConnection);
+            });
+            call.on('close', function(){
+              showToast('The teacher has ended the class.', 'red');
+              setTimeout(function(){ stopCall(); location.reload(); }, 3000);
+            });
           });
         }, 3000);
       }
     });
 
-    /* Poll for session end — staggered with random jitter to avoid thundering herd */
-    var pollDelay = 10000 + Math.floor(Math.random() * 5000); // 10-15s random
-    // BUG 4 FIX: guard flag prevents double stopCall/reload on race condition
+    /* Poll for session end */
+    var pollDelay = 10000 + Math.floor(Math.random() * 5000);
     var _sessionEndHandled = false;
     statusPollInterval = setInterval(function(){
       $.get('live_handler.php', {action:'session_status', class_id:CLASS_ID}, function(r){
@@ -2224,6 +2512,12 @@ function setupDataChannel(call, peerId){
           if(screenOn){
             dc.send(JSON.stringify({type:'screen', sharing:true, name:MY_NAME}));
           }
+          if(pptState.active && pptState.isPresenter){
+            dc.send(JSON.stringify({type:'ppt_slide', sharing:true, slide:pptState.currentSlide, total:pptState.totalSlides, title:pptState.title, name:MY_NAME}));
+          }
+          if(currentPresenter && currentPresenter.peerId === MY_PEER_ID){
+            dc.send(JSON.stringify({type:'presenter_lock', active:true, peerId:MY_PEER_ID, name:MY_NAME, isTeacher:IS_TEACHER, title:currentPresenter.title}));
+          }
         }
       };
       dc.onmessage = function(msg){ handleDataMsg(msg.data, peerId); };
@@ -2239,6 +2533,12 @@ function setupDataChannel(call, peerId){
           if(screenOn){
             ch.send(JSON.stringify({type:'screen', sharing:true, name:MY_NAME}));
           }
+          if(pptState.active && pptState.isPresenter){
+            ch.send(JSON.stringify({type:'ppt_slide', sharing:true, slide:pptState.currentSlide, total:pptState.totalSlides, title:pptState.title, name:MY_NAME}));
+          }
+          if(currentPresenter && currentPresenter.peerId === MY_PEER_ID){
+            ch.send(JSON.stringify({type:'presenter_lock', active:true, peerId:MY_PEER_ID, name:MY_NAME, isTeacher:IS_TEACHER, title:currentPresenter.title}));
+          }
         }
       };
       ch.onmessage = function(msg){ handleDataMsg(msg.data, peerId); };
@@ -2249,6 +2549,25 @@ function setupDataChannel(call, peerId){
 function handleDataMsg(raw, peerId){
   try {
     var data = JSON.parse(raw);
+
+    if(data.type === 'presenter_lock'){
+      if(data.active){
+        currentPresenter = {
+          peerId: data.peerId,
+          name: data.name || 'Presenter',
+          isTeacher: !!data.isTeacher,
+          title: data.title || 'Presentation'
+        };
+        if(currentPresenter.peerId !== MY_PEER_ID){
+          closeModal('pptModal');
+        }
+      } else {
+        if(!data.peerId || (currentPresenter && currentPresenter.peerId === data.peerId) || (currentPresenter && currentPresenter.peerId === peerId)){
+          currentPresenter = null;
+        }
+      }
+      _updatePresenterLockUI();
+    }
 
     if(data.type === 'reaction'){
       _spawnFloatingReaction(data.emoji, data.name || 'Participant');
@@ -2323,19 +2642,17 @@ function handleDataMsg(raw, peerId){
         ab.classList.remove('show', 'focused', 'away', 'partial');
 
         if(lvl === 'focused'){
-          ab.innerHTML = score !== null
-            ? '&#128065; Focused <span style="opacity:.75;font-size:9px;margin-left:3px;">' + score + '%</span>'
-            : '&#128065; Focused';
+          ab.innerHTML = '<span class="away-icon">&#128065;</span> <span class="away-lbl-text">Focused</span>'
+            + (score !== null ? ' <span class="away-pct">' + score + '%</span>' : '');
           ab.classList.add('show', 'focused');
         } else if(lvl === 'partial'){
           var pReason = data.faceReason || 'Partial';
-          ab.innerHTML = score !== null
-            ? '&#9888; ' + pReason + ' <span style="opacity:.75;font-size:9px;margin-left:3px;">' + score + '%</span>'
-            : '&#9888; ' + pReason;
+          ab.innerHTML = '<span class="away-icon">&#9888;</span> <span class="away-lbl-text">' + escHtml(pReason) + '</span>'
+            + (score !== null ? ' <span class="away-pct">' + score + '%</span>' : '');
           ab.style.background = '';
           ab.classList.add('show', 'partial');
         } else {
-          ab.innerHTML = '&#9888; ' + reason;
+          ab.innerHTML = '<span class="away-icon">&#9888;</span> <span class="away-lbl-text">' + escHtml(reason) + '</span>';
           ab.style.background = '';
           ab.classList.add('show', 'away');
         }
@@ -2353,6 +2670,22 @@ function handleDataMsg(raw, peerId){
       }
     }
 
+    if(data.type === 'peer_joined' && !IS_TEACHER){
+      if(data.peerId && data.peerId !== MY_PEER_ID && !document.getElementById('tile_' + data.peerId) && !peers[data.peerId]){
+        _connectToSinglePeer(data.peerId, data.name || 'Student', data.code || null);
+      }
+    }
+
+    if(data.type === 'peers_list' && !IS_TEACHER){
+      if(Array.isArray(data.peers)){
+        data.peers.forEach(function(p){
+          if(p.peerId && p.peerId !== MY_PEER_ID && !document.getElementById('tile_' + p.peerId) && !peers[p.peerId]){
+            _connectToSinglePeer(p.peerId, p.name || 'Student', p.code || null);
+          }
+        });
+      }
+    }
+
     if(data.type === 'conn'){
       var cb = document.getElementById('conn_' + peerId);
       if(cb){
@@ -2360,13 +2693,14 @@ function handleDataMsg(raw, peerId){
         var lvl = data.level;
         var barCounts = {good:4, fair:3, poor:2, offline:1};
         var labels    = {good:'Good', fair:'Fair', poor:'Poor', offline:'Offline'};
-        var heights   = ['4px','7px','10px','13px'];
+        var heights   = ['3px','5px','7px','9px'];
         var bars = '';
         for(var b = 0; b < 4; b++){
-          bars += '<div style="width:2.5px;height:' + heights[b] + ';border-radius:1px;background:' + (b < (barCounts[lvl]||1) ? '#fff' : 'rgba(255,255,255,.3)') + '"></div>';
+          var isLit = b < (barCounts[lvl]||1);
+          bars += '<div class="conn-mini-bar' + (isLit ? ' lit' : '') + '" style="height:' + heights[b] + ';"></div>';
         }
-        cb.innerHTML = '<div style="display:flex;align-items:flex-end;gap:1.5px;height:13px;">' + bars + '</div><span>' + (labels[lvl]||lvl) + '</span>';
-        if(data.ping) cb.innerHTML += '<span style="opacity:.7;font-size:9px;margin-left:4px;">' + data.ping + 'ms</span>';
+        var pingText = data.ping ? '<span style="opacity:.85;font-size:7.5px;margin-left:2px;">' + data.ping + 'ms</span>' : '';
+        cb.innerHTML = '<div class="conn-mini-bars">' + bars + '</div><span class="conn-lbl-text">' + (labels[lvl]||lvl) + '</span>' + pingText;
         cb.classList.add('show', lvl);
       }
       updateConnPanel(peerId, data.name || peerId, data.level, data.ping);
@@ -2570,23 +2904,6 @@ function promptClassQuestion(){
   showToast('Question sent to all students.', 'green');
 }
 
-/* ── Controls ── */
-function muteAllStudents(){
-  if(!IS_TEACHER) return;
-  if(!confirm('Mute all students microphones?')) return;
-  var count = 0;
-  Object.keys(dataChannels).forEach(function(peerId){
-    var dc = dataChannels[peerId];
-    if(dc && dc.readyState === 'open'){
-      try {
-        dc.send(JSON.stringify({type:'force_mute'}));
-        count++;
-      } catch(e){}
-    }
-  });
-  showToast('Mute signal sent to all connected students.', 'green');
-}
-
 /* ── Browser Autoplay Audio Unblocker ── */
 function _unblockAudioOnGesture(){
   document.querySelectorAll('#videoGrid video').forEach(function(v){
@@ -2621,9 +2938,9 @@ function toggleCam(){
   document.getElementById('btnCam').className  = camOn ? 'ctrl-btn on' : 'ctrl-btn';
 
   if (camOn) {
-    _startFaceDetectionLoop();
+    startFaceDetection();
   } else {
-    _stopFaceDetectionLoop();
+    stopFaceDetection();
     _lastFaceDetected = false;
     _faceReason = 'Cam Off';
   }
@@ -2782,6 +3099,8 @@ function stopScreen(){
   }
 
   /* Broadcast screen sharing stop state */
+  _broadcastPresenterLock(false);
+
   Object.keys(dataChannels).forEach(function(peerId){
     var dc = dataChannels[peerId];
     if(dc && dc.readyState === 'open'){
@@ -2797,14 +3116,65 @@ function stopScreen(){
 /* ── BUG 11 FIX: when a new peer joins while screen share is active,
    send them the screen track immediately instead of the camera track ── */
 function _applyScreenTrackToPeer(call){
-  if(!screenOn || !screenStream) return;
-  var screenTrack = screenStream.getVideoTracks()[0];
-  if(!screenTrack) return;
+  var trackToSend = null;
+  if(screenOn && screenStream && screenStream.getVideoTracks().length > 0){
+    trackToSend = screenStream.getVideoTracks()[0];
+  } else if(pptState.active && pptState.isPresenter && pptCanvasStream && pptCanvasStream.getVideoTracks().length > 0){
+    trackToSend = pptCanvasStream.getVideoTracks()[0];
+  }
+  if(!trackToSend) return;
   var sender = call.peerConnection.getSenders().find(function(s){
     return s.track && s.track.kind === 'video';
   });
-  if(sender && sender.track !== screenTrack){
-    sender.replaceTrack(screenTrack).catch(function(e){ console.warn('[_applyScreenTrackToPeer]', e); });
+  if(sender && sender.track !== trackToSend){
+    sender.replaceTrack(trackToSend).catch(function(e){ console.warn('[_applyScreenTrackToPeer]', e); });
+  }
+}
+
+/* ── PowerPoint / Presentation Lock & Broadcast Helpers ── */
+function _broadcastPresenterLock(active, title){
+  if(active){
+    currentPresenter = {
+      peerId: MY_PEER_ID,
+      name: MY_NAME,
+      isTeacher: IS_TEACHER,
+      title: title || 'Presentation'
+    };
+  } else {
+    if(currentPresenter && currentPresenter.peerId === MY_PEER_ID){
+      currentPresenter = null;
+    }
+  }
+
+  var payload = {
+    type: 'presenter_lock',
+    active: !!active,
+    peerId: active ? MY_PEER_ID : null,
+    name: active ? MY_NAME : null,
+    isTeacher: active ? IS_TEACHER : false,
+    title: title || 'Presentation'
+  };
+
+  Object.keys(dataChannels).forEach(function(peerId){
+    var dc = dataChannels[peerId];
+    if(dc && dc.readyState === 'open'){
+      try { dc.send(JSON.stringify(payload)); } catch(e){}
+    }
+  });
+
+  _updatePresenterLockUI();
+}
+
+function _updatePresenterLockUI(){
+  var btnPpt = document.getElementById('btnPpt');
+  if(!btnPpt) return;
+
+  if(currentPresenter && currentPresenter.peerId !== MY_PEER_ID){
+    btnPpt.classList.add('ppt-locked');
+    btnPpt.title = 'Presentation in use by ' + currentPresenter.name + ' (Locked)';
+  } else {
+    btnPpt.classList.remove('ppt-locked');
+    btnPpt.title = 'PowerPoint & Presentation';
   }
 }
 
@@ -2813,6 +3183,30 @@ var CLASS_MODULES = <?php echo json_encode($pptModules); ?>;
 var pptState = { active: false, title: '', currentSlide: 1, totalSlides: 1, pdfDoc: null, isPresenter: false };
 
 function openPptModal() {
+  // Lock Check: If someone else is presenting, prevent other students from presenting
+  if (currentPresenter && currentPresenter.peerId !== MY_PEER_ID) {
+    if (!IS_TEACHER) {
+      showToast('🔒 ' + currentPresenter.name + ' is currently presenting. Please wait until they finish.', 'blue');
+      return;
+    }
+  }
+
+  var bannerEl = document.getElementById('pptLockBanner');
+  if (!bannerEl) {
+    bannerEl = document.createElement('div');
+    bannerEl.id = 'pptLockBanner';
+    var modalBody = document.querySelector('#pptModal .lc-modal-body');
+    if (modalBody) modalBody.insertBefore(bannerEl, modalBody.firstChild);
+  }
+
+  if (currentPresenter && currentPresenter.peerId !== MY_PEER_ID && IS_TEACHER) {
+    bannerEl.style.display = 'flex';
+    bannerEl.style.cssText = 'background:rgba(249,115,22,.15);border:1px solid #f97316;color:#fdba74;padding:10px 14px;border-radius:10px;font-size:12px;margin-bottom:14px;display:flex;align-items:center;gap:8px;';
+    bannerEl.innerHTML = '<i class="fa fa-info-circle" style="font-size:16px;color:#f97316;flex-shrink:0;"></i> <div><strong>' + escHtml(currentPresenter.name) + '</strong> is currently presenting. As Teacher, starting a presentation will take over the presentation screen.</div>';
+  } else {
+    bannerEl.style.display = 'none';
+  }
+
   var listEl = document.getElementById('pptMaterialsList');
   if(listEl) {
     if(!CLASS_MODULES || CLASS_MODULES.length === 0) {
@@ -2840,6 +3234,11 @@ function openPptModal() {
 }
 
 function launchPowerPointScreenShare() {
+  if (currentPresenter && currentPresenter.peerId !== MY_PEER_ID && !IS_TEACHER) {
+    showToast('🔒 ' + currentPresenter.name + ' is currently presenting. Please wait until they finish.', 'blue');
+    return;
+  }
+
   if(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
     navigator.mediaDevices.getDisplayMedia({
       video: {
@@ -2854,6 +3253,7 @@ function launchPowerPointScreenShare() {
       var bScr = document.getElementById('btnScreen'); if(bScr) bScr.className = 'ctrl-btn on';
       var bPpt = document.getElementById('btnPpt'); if(bPpt) bPpt.className = 'ctrl-btn on';
 
+      _broadcastPresenterLock(true, 'PowerPoint Window');
       showSharingBadge('Sharing PowerPoint Window');
 
       var grid = document.getElementById('videoGrid');
@@ -2911,9 +3311,13 @@ function launchPowerPointScreenShare() {
 
 function handleLocalPptSelect(input) {
   if(!input.files || !input.files.length) return;
+  if(currentPresenter && currentPresenter.peerId !== MY_PEER_ID && !IS_TEACHER){
+    showToast('🔒 ' + currentPresenter.name + ' is currently presenting. Please wait until they finish.', 'blue');
+    return;
+  }
   var file = input.files[0];
   closeModal('pptModal');
-  if(file.name.endsWith('.pdf')) {
+  if(file.name.toLowerCase().endsWith('.pdf')) {
     var url = URL.createObjectURL(file);
     startPptFromUrl(url, file.name);
   } else {
@@ -2922,15 +3326,25 @@ function handleLocalPptSelect(input) {
 }
 
 function startPptFromUrl(url, title) {
+  if (currentPresenter && currentPresenter.peerId !== MY_PEER_ID && !IS_TEACHER) {
+    showToast('🔒 ' + currentPresenter.name + ' is currently presenting. Please wait until they finish.', 'blue');
+    return;
+  }
+
   pptState.active = true;
   pptState.title = title || 'Presentation';
   pptState.currentSlide = 1;
   pptState.isPresenter = true;
 
+  _broadcastPresenterLock(true, pptState.title);
   showSharingBadge('Presenting: ' + pptState.title);
 
   if (typeof pdfjsLib !== 'undefined') {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    try {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '../plugins/pdf.worker.min.js';
+    } catch(e) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
     pdfjsLib.getDocument(url).promise.then(function(pdfDoc) {
       pptState.pdfDoc = pdfDoc;
       pptState.totalSlides = pdfDoc.numPages;
@@ -2952,54 +3366,187 @@ function renderPptTile() {
   var tile = document.createElement('div');
   tile.className = 'video-tile screen-tile';
   tile.id = 'tile_ppt';
-  tile.style.cssText = 'position:relative;background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;';
+
+  // Progress rail
+  var progressRail = document.createElement('div');
+  progressRail.className = 'ppt-progress-rail';
+  var progressBar = document.createElement('div');
+  progressBar.className = 'ppt-progress-bar';
+  progressBar.id = 'pptProgressBar';
+  progressBar.style.width = '0%';
+  progressRail.appendChild(progressBar);
+  tile.appendChild(progressRail);
+
+  // Canvas wrap (holds canvas + loading overlay)
+  var canvasWrap = document.createElement('div');
+  canvasWrap.className = 'ppt-canvas-wrap';
 
   var canvas = document.createElement('canvas');
   canvas.id = 'pptCanvas';
-  canvas.style.cssText = 'max-width:100%;max-height:calc(100% - 50px);object-fit:contain;box-shadow:0 10px 30px rgba(0,0,0,.5);';
-  tile.appendChild(canvas);
+  canvas.style.opacity = '0';
+  canvasWrap.appendChild(canvas);
 
+  // Loading overlay
+  var overlay = document.createElement('div');
+  overlay.className = 'ppt-slide-overlay';
+  overlay.id = 'pptSlideOverlay';
+  var spinner = document.createElement('div');
+  spinner.className = 'ppt-spinner';
+  overlay.appendChild(spinner);
+  canvasWrap.appendChild(overlay);
+
+  tile.appendChild(canvasWrap);
+
+  // Control bar
   var bar = document.createElement('div');
-  bar.style.cssText = 'position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,.92);border:1px solid #334155;border-radius:30px;padding:6px 16px;display:flex;align-items:center;gap:12px;z-index:20;backdrop-filter:blur(10px);box-shadow:0 8px 24px rgba(0,0,0,.4);';
-  bar.innerHTML = '<button onclick="prevPptSlide()" style="background:none;border:none;color:#f8fafc;font-size:14px;cursor:pointer;padding:4px 8px;"><i class="fa fa-chevron-left"></i></button>'
-                + '<span id="pptSlideBadge" style="font-size:12px;font-weight:700;color:#38bdf8;">Slide 1 / ' + pptState.totalSlides + '</span>'
-                + '<button onclick="nextPptSlide()" style="background:none;border:none;color:#f8fafc;font-size:14px;cursor:pointer;padding:4px 8px;"><i class="fa fa-chevron-right"></i></button>'
-                + '<div style="width:1px;height:16px;background:#334155;"></div>'
-                + '<span style="font-size:11px;color:#cbd5e1;font-weight:600;"><i class="fa fa-file-powerpoint-o" style="color:#f97316;"></i> ' + escHtml(pptState.title) + '</span>'
-                + '<button onclick="stopPptPresentation()" style="background:#ef4444;color:#fff;border:none;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:6px;"><i class="fa fa-stop"></i> Stop</button>';
+  bar.className = 'ppt-ctrl-bar';
+  bar.innerHTML =
+    '<div class="ppt-nav-group">'
+    + '<button class="ppt-nav-btn" id="pptBtnPrev" onclick="prevPptSlide()" title="Previous Slide (← Arrow)"><i class="fa fa-chevron-left"></i></button>'
+    + '<span class="ppt-slide-lbl" id="pptSlideBadge">Slide 1 / ' + pptState.totalSlides + '</span>'
+    + '<button class="ppt-nav-btn" id="pptBtnNext" onclick="nextPptSlide()" title="Next Slide (→ Arrow)"><i class="fa fa-chevron-right"></i></button>'
+    + '</div>'
+    + '<span class="ppt-title-lbl"><i class="fa fa-file-powerpoint-o" style="color:#f97316;margin-right:4px;"></i>' + escHtml(pptState.title) + '</span>'
+    + '<div style="display:flex;align-items:center;gap:5px;">'
+    + '<button class="ppt-fs-btn" onclick="enterScreenFullscreen(document.getElementById(\"tile_ppt\"))" title="Fullscreen"><i class="fa fa-expand"></i></button>'
+    + '<button class="ppt-stop-btn" onclick="stopPptPresentation()"><i class="fa fa-stop"></i> Stop</button>'
+    + '</div>';
   tile.appendChild(bar);
 
   grid.insertBefore(tile, grid.firstChild);
   grid.classList.add('screen-mode');
   updateGrid();
+
+  // Keyboard navigation
+  if(!window._pptKeyHandler) {
+    window._pptKeyHandler = function(e) {
+      if(!pptState.active || !pptState.isPresenter) return;
+      if(e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); nextPptSlide(); }
+      if(e.key === 'ArrowLeft'  || e.key === 'PageUp')   { e.preventDefault(); prevPptSlide(); }
+    };
+    document.addEventListener('keydown', window._pptKeyHandler);
+  }
+
+  initializePresentationObserver();
+}
+
+function initializePresentationObserver() {
+  if (window.ResizeObserver && !window._pptResizeObs) {
+    window._pptResizeObs = new ResizeObserver(function() {
+      if (pptState.active && pptState.pdfDoc) {
+        if (_isDraggingDivider) {
+          calculateSlideFit();
+        } else {
+          clearTimeout(window._pptResizeTimer);
+          window._pptResizeTimer = setTimeout(function() {
+            renderPptSlide(pptState.currentSlide);
+          }, 60);
+        }
+      }
+    });
+
+    var tile = document.getElementById('tile_ppt');
+    var canvasWrap = document.querySelector('.ppt-canvas-wrap');
+    if (tile) window._pptResizeObs.observe(tile);
+    if (canvasWrap) window._pptResizeObs.observe(canvasWrap);
+  }
+}
+
+function calculateSlideFit() {
+  var canvas = document.getElementById('pptCanvas');
+  var canvasWrap = document.querySelector('.ppt-canvas-wrap');
+  if (!canvas || !canvasWrap || !pptState._currentRenderPage) return;
+
+  var rect = canvasWrap.getBoundingClientRect();
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var availW = Math.max(rect.width - 20, 160);
+  var availH = Math.max(rect.height - 20, 120);
+
+  var viewport1 = pptState._currentRenderPage.getViewport({ scale: 1.0 });
+  var scaleW = availW / viewport1.width;
+  var scaleH = availH / viewport1.height;
+  var fitScale = Math.min(scaleW, scaleH);
+  fitScale = Math.max(0.4, Math.min(fitScale, 4.0));
+
+  var cssW = Math.floor(viewport1.width * fitScale);
+  var cssH = Math.floor(viewport1.height * fitScale);
+
+  canvas.style.width  = cssW + 'px';
+  canvas.style.height = cssH + 'px';
 }
 
 function renderPptSlide(num) {
   if(!pptState.pdfDoc) return;
   pptState.currentSlide = num;
+
+  // Update badge
   var badge = document.getElementById('pptSlideBadge');
   if(badge) badge.textContent = 'Slide ' + num + ' / ' + pptState.totalSlides;
 
-  pptState.pdfDoc.getPage(num).then(function(page) {
-    var canvas = document.getElementById('pptCanvas');
-    if(!canvas) return;
-    var ctx = canvas.getContext('2d');
-    var viewport = page.getViewport({ scale: 1.5 });
-    canvas.height = viewport.height;
-    canvas.width  = viewport.width;
+  // Update progress bar
+  var progressBar = document.getElementById('pptProgressBar');
+  if(progressBar) progressBar.style.width = ((num / pptState.totalSlides) * 100).toFixed(1) + '%';
 
-    page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function() {
+  // Update prev/next button disabled states
+  var btnPrev = document.getElementById('pptBtnPrev');
+  var btnNext = document.getElementById('pptBtnNext');
+  if(btnPrev) btnPrev.disabled = (num <= 1);
+  if(btnNext) btnNext.disabled = (num >= pptState.totalSlides);
+
+  var canvas = document.getElementById('pptCanvas');
+  if(!canvas) return;
+  var overlay = document.getElementById('pptSlideOverlay');
+
+  if(overlay) overlay.style.opacity = '1';
+
+  pptState.pdfDoc.getPage(num).then(function(page) {
+    pptState._currentRenderPage = page;
+    var canvasWrap = document.querySelector('.ppt-canvas-wrap');
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    var rect = canvasWrap ? canvasWrap.getBoundingClientRect() : null;
+    var tileEl = document.getElementById('tile_ppt');
+    var containerW = rect ? rect.width : (tileEl ? tileEl.clientWidth : 800);
+    var containerH = rect ? rect.height : (tileEl ? tileEl.clientHeight : 500);
+
+    var availW = Math.max(containerW - 24, 200);
+    var availH = Math.max(containerH - 24, 150);
+
+    var viewport1 = page.getViewport({ scale: 1.0 });
+    var scaleW = availW / viewport1.width;
+    var scaleH = availH / viewport1.height;
+    var fitScale = Math.min(scaleW, scaleH);
+    fitScale = Math.max(0.4, Math.min(fitScale, 4.0));
+
+    // High-DPI canvas resolution
+    var renderViewport = page.getViewport({ scale: fitScale * dpr });
+    canvas.width  = Math.floor(renderViewport.width);
+    canvas.height = Math.floor(renderViewport.height);
+
+    // Display CSS size (device pixels / dpr)
+    canvas.style.width  = Math.floor(renderViewport.width / dpr) + 'px';
+    canvas.style.height = Math.floor(renderViewport.height / dpr) + 'px';
+
+    var ctx = canvas.getContext('2d');
+    page.render({ canvasContext: ctx, viewport: renderViewport }).promise.then(function() {
+      canvas.style.opacity = '1';
+      if(overlay) overlay.style.opacity = '0';
+
+      // Stream canvas to WebRTC peers
       if(pptState.isPresenter && canvas.captureStream) {
-        var canvasStream = canvas.captureStream(10);
-        var pptTrack = canvasStream.getVideoTracks()[0];
-        if(pptTrack) {
-          Object.values(peers).forEach(function(call) {
-            var sender = call.peerConnection.getSenders().find(function(s){ return s.track && s.track.kind === 'video'; });
-            if(sender) sender.replaceTrack(pptTrack);
-          });
+        if(!pptCanvasStream || !pptCanvasStream.active){
+          pptCanvasStream = canvas.captureStream(24);
+          var pptTrack = pptCanvasStream.getVideoTracks()[0];
+          if(pptTrack) {
+            Object.values(peers).forEach(function(call) {
+              var sender = call.peerConnection.getSenders().find(function(s){ return s.track && s.track.kind === 'video'; });
+              if(sender) sender.replaceTrack(pptTrack);
+            });
+          }
         }
       }
 
+      // Broadcast slide info to all participants via DataChannel
       Object.keys(dataChannels).forEach(function(peerId){
         var dc = dataChannels[peerId];
         if(dc && dc.readyState === 'open'){
@@ -3007,6 +3554,9 @@ function renderPptSlide(num) {
         }
       });
     });
+  }).catch(function(e) {
+    console.warn('[PDF.js render error]', e);
+    if(overlay) overlay.style.opacity = '0';
   });
 }
 
@@ -3023,14 +3573,39 @@ function nextPptSlide() {
 }
 
 function stopPptPresentation() {
+  removeSharingBadge();
   pptState.active = false;
   pptState.pdfDoc = null;
-  var tile = document.getElementById('tile_ppt');
-  if(tile) tile.remove();
-  var grid = document.getElementById('videoGrid');
-  if(grid && grid.querySelectorAll('.screen-tile').length === 0) {
-    grid.classList.remove('screen-mode');
+
+  if(pptCanvasStream){
+    pptCanvasStream.getTracks().forEach(function(t){ t.stop(); });
+    pptCanvasStream = null;
   }
+
+  // Remove keyboard handler
+  if(window._pptKeyHandler) {
+    document.removeEventListener('keydown', window._pptKeyHandler);
+    window._pptKeyHandler = null;
+  }
+  // Disconnect ResizeObserver
+  if(window._pptResizeObs) {
+    window._pptResizeObs.disconnect();
+    window._pptResizeObs = null;
+  }
+
+  var tile = document.getElementById('tile_ppt');
+  if(tile) {
+    tile.style.transition = 'opacity 0.25s ease';
+    tile.style.opacity = '0';
+    setTimeout(function() { if(tile.parentNode) tile.remove(); }, 250);
+  }
+  var grid = document.getElementById('videoGrid');
+  setTimeout(function() {
+    if(grid && grid.querySelectorAll('.screen-tile').length === 0) {
+      grid.classList.remove('screen-mode');
+    }
+    updateGrid();
+  }, 260);
 
   if(myStream) {
     var camTrack = myStream.getVideoTracks()[0];
@@ -3042,13 +3617,14 @@ function stopPptPresentation() {
     }
   }
 
+  _broadcastPresenterLock(false);
+
   Object.keys(dataChannels).forEach(function(peerId){
     var dc = dataChannels[peerId];
     if(dc && dc.readyState === 'open'){
       try { dc.send(JSON.stringify({type:'ppt_slide', sharing:false})); } catch(e){}
     }
   });
-  updateGrid();
 }
 
 /* ── Screen share fullscreen ─────────────────────────────────────────────── */
@@ -3228,117 +3804,6 @@ function _stopAudioMonitor(){
 */
 var _lastFaceDetected = true;
 var _faceReason = '';
-var _faceCheckTimer = null;
-var _faceCanvas = null;
-var _faceCtx = null;
-var _consecutiveAwayFrames = 0;
-
-/* ── Real-time Webcam Face & Focus Detection Loop ── */
-function _startFaceDetectionLoop() {
-  _stopFaceDetectionLoop();
-
-  if (!_faceCanvas) {
-    _faceCanvas = document.createElement('canvas');
-    _faceCanvas.width = 160;
-    _faceCanvas.height = 120;
-    _faceCtx = _faceCanvas.getContext('2d', { willReadFrequently: true });
-  }
-
-  _faceCheckTimer = setInterval(function() {
-    if (!inCall || !camOn || IS_TEACHER) return;
-    var vid = document.querySelector('#tile_local video');
-    if (!vid || vid.paused || vid.ended || vid.readyState < 2) return;
-
-    try {
-      _faceCtx.drawImage(vid, 0, 0, 160, 120);
-      var imgData = _faceCtx.getImageData(0, 0, 160, 120);
-      var data = imgData.data;
-      var totalPixels = 160 * 120;
-
-      var skinPixels = 0;
-      var leftFacePixels = 0;
-      var rightFacePixels = 0;
-
-      // Skin-tone & face feature analysis in YCbCr / RGB space
-      for (var i = 0; i < data.length; i += 4) {
-        var r = data[i];
-        var g = data[i+1];
-        var b = data[i+2];
-
-        var isSkin = (r > 60 && g > 35 && b > 20 && 
-                      (Math.max(r,g,b) - Math.min(r,g,b) > 12) && 
-                      Math.abs(r - g) > 12 && r > g && r > b);
-
-        if (isSkin) {
-          skinPixels++;
-          var pxIndex = i / 4;
-          var x = pxIndex % 160;
-          if (x < 80) leftFacePixels++;
-          else rightFacePixels++;
-        }
-      }
-
-      var skinRatio = skinPixels / totalPixels;
-
-      if (skinRatio < 0.035) {
-        _consecutiveAwayFrames++;
-        if (_consecutiveAwayFrames >= 2) {
-          _lastFaceDetected = false;
-          _faceReason = 'No Face Detected';
-        }
-      } else {
-        var lrRatio = (leftFacePixels > 0 && rightFacePixels > 0) 
-          ? Math.min(leftFacePixels, rightFacePixels) / Math.max(leftFacePixels, rightFacePixels)
-          : 0;
-
-        if (lrRatio < 0.35) {
-          _consecutiveAwayFrames++;
-          if (_consecutiveAwayFrames >= 2) {
-            _lastFaceDetected = false;
-            _faceReason = 'Looking Away';
-          }
-        } else {
-          _consecutiveAwayFrames = 0;
-          _lastFaceDetected = true;
-          _faceReason = '';
-        }
-      }
-
-      // Query Python ML API /detect_face endpoint for high-accuracy OpenCV AI analysis
-      var base64Img = _faceCanvas.toDataURL('image/jpeg', 0.5);
-      var apiEndpoint = 'http://127.0.0.1:5001/detect_face';
-
-      fetch(apiEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image: base64Img,
-          tab_visible: _tabVisible,
-          window_focused: _windowFocused,
-          mic_active: (micOn && _audioActive)
-        })
-      }).then(function(r){ return r.json(); }).then(function(res){
-        if (res && res.success) {
-          _lastFaceDetected = res.face_detected;
-          _faceReason = res.face_reason;
-        }
-        _broadcastEngagement();
-      }).catch(function(){
-        // Fallback to client-side detection if Python API is offline
-        _broadcastEngagement();
-      });
-    } catch (e) {
-      console.warn('[FaceDetect]', e);
-    }
-  }, 2000);
-}
-
-function _stopFaceDetectionLoop() {
-  if (_faceCheckTimer) {
-    clearInterval(_faceCheckTimer);
-    _faceCheckTimer = null;
-  }
-}
 
 function _computeEngagement(){
   var score = 0;
@@ -3351,7 +3816,7 @@ function _computeEngagement(){
     
     if(_lastFaceDetected) {
       score += 40;
-    } else if(_faceReason === 'Looking Away') {
+    } else if(_faceReason === 'Looking Sideways' || _faceReason === 'Looking Up' || _faceReason === 'Looking Down' || _faceReason === 'Looking Away') {
       score += 15;
     } else {
       score += 0;
@@ -3390,7 +3855,16 @@ function _broadcastEngagement(){
   else if(score >= 40)                level = 'partial';
   else                                level = 'away';
 
-  var dc = dataChannels[currentRoomId];
+  var targetTeacher = teacherPeerId || currentRoomId;
+  var dc = dataChannels[targetTeacher];
+  if(!dc || dc.readyState !== 'open'){
+    for(var k in dataChannels){
+      if(dataChannels[k] && dataChannels[k].readyState === 'open'){
+        dc = dataChannels[k];
+        break;
+      }
+    }
+  }
   if(dc && dc.readyState === 'open'){
     try {
       dc.send(JSON.stringify({
@@ -3467,7 +3941,7 @@ function startActivityDetection(){
   /* Start audio monitor & real-time face detection on student webcam */
   if(myStream) {
     _startAudioMonitor(myStream);
-    _startFaceDetectionLoop();
+    startFaceDetection();
   }
 
   /* Periodic broadcast every 15 s */
@@ -3482,7 +3956,7 @@ function stopActivityDetection(){
   if(_idleInterval)    { clearInterval(_idleInterval);    _idleInterval    = null; }
   if(_engagementTimer) { clearInterval(_engagementTimer); _engagementTimer = null; }
   _stopAudioMonitor();
-  _stopFaceDetectionLoop();
+  stopFaceDetection();
   if(_visibilityHandler){ document.removeEventListener('visibilitychange', _visibilityHandler); _visibilityHandler = null; }
   if(_blurHandler)      { window.removeEventListener('blur',  _blurHandler);  _blurHandler  = null; }
   if(_focusHandler)     { window.removeEventListener('focus', _focusHandler); _focusHandler = null; }
@@ -3684,8 +4158,16 @@ function updateConnUI(level, pingMs){
 }
 
 function broadcastConn(level, pingMs){
-  // Only send to the teacher peer (currentRoomId) to save student-to-student bandwidth
-  var dc = dataChannels[currentRoomId];
+  var targetTeacher = teacherPeerId || currentRoomId;
+  var dc = dataChannels[targetTeacher];
+  if(!dc || dc.readyState !== 'open'){
+    for(var k in dataChannels){
+      if(dataChannels[k] && dataChannels[k].readyState === 'open'){
+        dc = dataChannels[k];
+        break;
+      }
+    }
+  }
   if(dc && dc.readyState === 'open'){
     try { dc.send(JSON.stringify({type:'conn', level:level, name:MY_NAME, ping:pingMs||null})); } catch(e){}
   }
@@ -3774,7 +4256,6 @@ var _peerHeartbeatInterval = null;
 var _discoveryInterval     = null;
 
 function _startPeerHeartbeat(sessionId){
-  if(IS_TEACHER) return; // teacher has a fixed room ID — no heartbeat needed
   clearInterval(_peerHeartbeatInterval);
   _peerHeartbeatInterval = setInterval(function(){
     if(!inCall) return;
@@ -3782,65 +4263,90 @@ function _startPeerHeartbeat(sessionId){
   }, 10000); // every 10s
 }
 
+var _peerCallAttempts = {};
+
+function _connectToSinglePeer(targetPeerId, targetName, targetCode){
+  if(!inCall || !peer || IS_TEACHER || targetPeerId === currentRoomId || targetPeerId === teacherPeerId || targetPeerId === MY_PEER_ID) return;
+  if(document.getElementById('tile_' + targetPeerId) || peers[targetPeerId]) return;
+
+  var now = Date.now();
+  if(_peerCallAttempts[targetPeerId] && (now - _peerCallAttempts[targetPeerId] < 4000)) return;
+  _peerCallAttempts[targetPeerId] = now;
+
+  var outCall = peer.call(targetPeerId, myStream, {
+    metadata: { name: MY_NAME, code: MY_CODE, role: 'STUDENT' }
+  });
+  if(!outCall) return;
+
+  peers[targetPeerId] = outCall;
+  _applyScreenTrackToPeer(outCall);
+
+  outCall.on('stream', function(rs){
+    var existingVid = document.querySelector('#tile_' + outCall.peer + ' video');
+    if(existingVid){ existingVid.srcObject = rs; existingVid.play().catch(function(){}); return; }
+    addTile(rs, targetName || 'Student', false, outCall.peer, targetCode || null);
+    setupDataChannel(outCall, outCall.peer);
+    capBitrate(outCall.peerConnection);
+
+    // ICE state cleanup for student-to-student calls
+    outCall.peerConnection.oniceconnectionstatechange = function(){
+      var state = outCall.peerConnection ? outCall.peerConnection.iceConnectionState : 'closed';
+      if(state === 'disconnected' || state === 'failed' || state === 'closed'){
+        setTimeout(function(){
+          var s2 = outCall.peerConnection ? outCall.peerConnection.iceConnectionState : 'closed';
+          if(s2 === 'disconnected' || s2 === 'failed' || s2 === 'closed'){
+            removeTile(outCall.peer);
+            delete dataChannels[outCall.peer];
+            delete peers[outCall.peer];
+          }
+        }, 4000);
+      }
+    };
+  });
+
+  outCall.on('close', function(){
+    removeTile(outCall.peer);
+    delete dataChannels[outCall.peer];
+    delete peers[outCall.peer];
+  });
+  outCall.on('error', function(err){
+    console.warn('[peer call error]', targetPeerId, err);
+    removeTile(outCall.peer);
+    delete dataChannels[outCall.peer];
+    delete peers[outCall.peer];
+  });
+}
+
 function _discoverAndCallPeers(sessionId){
-  if(!inCall || IS_TEACHER) return;
+  if(!inCall || IS_TEACHER || _isDiscoveringPeers) return;
+  _isDiscoveringPeers = true;
   $.get('live_handler.php', {action:'get_peers', session_id:sessionId}, function(r){
+    _isDiscoveringPeers = false;
     if(!r.success || !r.peers) return;
     r.peers.forEach(function(p){
-      // Skip teacher (already connected via fixed roomId)
-      if(p.peer_id === currentRoomId) return;
+      // Skip teacher (already connected via teacherCall)
+      if(p.peer_id === currentRoomId || p.peer_id === teacherPeerId || p.role === 'TEACHER' || p.peer_id === MY_PEER_ID) return;
       // Skip if we already have a tile or an active call for this peer
       if(document.getElementById('tile_' + p.peer_id)) return;
       if(peers[p.peer_id]) return;
 
-      // ── Anti-duplicate race fix ────────────────────────────────────────
-      // When two students both discover each other at the same time, both
-      // would try to call each other → two connections form → duplicate tiles.
-      // Fix: only the peer with the HIGHER peer ID initiates. The other side
-      // will receive the incoming call via peer.on('call') and answer it.
       var myPeerId = peer ? peer.id : '';
-      if(myPeerId < p.peer_id) return; // let the other side call us
+      var timeSinceAttempt = Date.now() - (_peerCallAttempts[p.peer_id] || 0);
+      // Higher peer ID initiates first; if not connected within 6s, either side can initiate
+      if(myPeerId < p.peer_id && timeSinceAttempt < 6000) return;
 
-      var outCall = peer.call(p.peer_id, myStream, {
-        metadata:{name:MY_NAME, code:MY_CODE, role:'STUDENT'}
-      });
-      if(!outCall) return;
-      _applyScreenTrackToPeer(outCall);
-
-      outCall.on('stream', function(rs){
-        var existingVid = document.querySelector('#tile_' + outCall.peer + ' video');
-        if(existingVid){ existingVid.srcObject = rs; existingVid.play().catch(function(){}); return; }
-        peers[outCall.peer] = outCall;
-        addTile(rs, p.name, false, outCall.peer, p.user_code);
-        setupDataChannel(outCall, outCall.peer);
-        capBitrate(outCall.peerConnection);
-
-        // ICE state cleanup for student-to-student calls
-        outCall.peerConnection.oniceconnectionstatechange = function(){
-          var state = outCall.peerConnection.iceConnectionState;
-          if(state === 'disconnected' || state === 'failed' || state === 'closed'){
-            setTimeout(function(){
-              var s2 = outCall.peerConnection.iceConnectionState;
-              if(s2 === 'disconnected' || s2 === 'failed' || s2 === 'closed'){
-                removeTile(outCall.peer);
-                delete dataChannels[outCall.peer];
-                delete peers[outCall.peer];
-              }
-            }, 3000);
-          }
-        };
-      });
-      outCall.on('close', function(){ removeTile(outCall.peer); delete dataChannels[outCall.peer]; delete peers[outCall.peer]; });
-      outCall.on('error',  function(){ removeTile(outCall.peer); delete dataChannels[outCall.peer]; delete peers[outCall.peer]; });
+      _connectToSinglePeer(p.peer_id, p.name, p.user_code);
     });
-  }, 'json');
+  }, 'json').always(function(){
+    _isDiscoveringPeers = false;
+  });
 
-  // Poll for new peers every 8s while in call (only set interval once)
+  // Poll for new peers every 4s while in call (fast peer discovery)
   if(!_discoveryInterval){
     _discoveryInterval = setInterval(function(){
       if(!inCall){ clearInterval(_discoveryInterval); _discoveryInterval = null; return; }
       _discoverAndCallPeers(sessionId);
-    }, 8000);
+    }, 4000);
   }
 }
 
@@ -3898,116 +4404,190 @@ async function capBitrate(pc){
   } catch(e){ console.warn('[capBitrate]', e); }
 }
 
-/* ── Face-api.js attention detection — Optimized (Throttled to 4s to fix CPU delay/lag) ── */
-var faceModelsReady = false;
-var faceLoading = false;
-var _faceDetectionHistory = [];
+/* ══════════════════════════════════════════════════════════════════════════
+   MediaPipe Face Mesh Attention Engine
+   Real-time GPU WebGL facial landmark detection with 3-frame sliding window
+   temporal smoothing and configurable pose thresholds.
+   ══════════════════════════════════════════════════════════════════════════ */
+var FACE_SETTINGS = {
+  processingInterval: 200, // Process camera frame every 200ms (~5 FPS)
+  smoothingFrames: 3,      // 3-frame sliding window to prevent UI flicker
+  yawThreshold: 0.16,      // Horizontal head turn threshold
+  pitchUpThreshold: 0.18,  // Upward head tilt threshold
+  pitchDownThreshold: 0.18 // Downward head tilt threshold
+};
 
-async function startFaceDetection(videoEl){
-  if(IS_TEACHER) return;
-  if(faceInterval) clearInterval(faceInterval);
-  _faceDetectionHistory = [];
-  
-  if(!faceModelsReady && !faceLoading){
-    faceLoading = true;
+var faceMeshInstance = null;
+var faceMeshReady = false;
+var faceMeshLoading = false;
+var _faceHistory = [];
+var _currentAttentionState = 'ATTENTIVE'; // ATTENTIVE, LOOKING_SIDEWAYS, LOOKING_UP, LOOKING_DOWN, NO_FACE
+
+function initializeFaceMesh() {
+  if (faceMeshReady || faceMeshLoading) return Promise.resolve(faceMeshReady);
+  faceMeshLoading = true;
+
+  return new Promise(function(resolve) {
     try {
-      // Load SSD MobileNet and Face Landmark models from relative path
-      await faceapi.nets.ssdMobilenetv1.loadFromUri('../dist/models');
-      await faceapi.nets.faceLandmark68Net.loadFromUri('../dist/models');
-      faceModelsReady = true;
-      faceLoading = false;
-    } catch(e) {
-      console.warn('[face-api] Model load failed:', e);
-      faceLoading = false;
-      return;
-    }
-  }
-  
-  // Throttle face detection: run every 4 seconds instead of on every frame!
-  // This reduces CPU load by 95% and completely fixes the video/audio delays.
-  faceInterval = setInterval(async function(){
-    if(!inCall || !camOn || !faceModelsReady || !videoEl) return;
-    
-    // CPU Optimization: skip face-api detection if the tab is hidden or window is blurred,
-    // since visibility state change event will handle setting the student to 'Away' anyway.
-    if(!_tabVisible || !_windowFocused) return;
-    
-    try {
-      var detection = await faceapi.detectSingleFace(videoEl, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
-                                    .withFaceLandmarks();
-      
-      var isLooking = false;
-      var reason = 'Away';
-      
-      if(detection){
-        var landmarks = detection.landmarks;
-        var nose = landmarks.getNose();
-        var jaw = landmarks.getJawOutline();
-        
-        // Simple gaze approximation: check if nose position is centered relative to jaw outline
-        var jawLeft = jaw[0];
-        var jawRight = jaw[16];
-        var noseTip = nose[3];
-        
-        var jawWidth = jawRight.x - jawLeft.x;
-        if(jawWidth > 0){
-          var noseOffset = (noseTip.x - jawLeft.x) / jawWidth;
-          if(noseOffset > 0.35 && noseOffset < 0.65){
-            isLooking = true;
-          } else {
-            reason = 'Looking Sideways';
-          }
-        } else {
-          isLooking = true; // fallback
+      if (typeof FaceMesh === 'undefined') {
+        console.warn('[FaceMesh] Library unavailable; continuing without Face AI.');
+        faceMeshLoading = false;
+        resolve(false);
+        return;
+      }
+
+      faceMeshInstance = new FaceMesh({
+        locateFile: function(file) {
+          return 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/' + file;
         }
-      } else {
-        reason = 'No Face Detected';
-      }
-      
-      // Sliding window smoothing: store latest status and keep history length <= 3
-      _faceDetectionHistory.push({ success: isLooking, reason: reason });
-      if(_faceDetectionHistory.length > 3){
-        _faceDetectionHistory.shift();
-      }
-      
-      // Determine smoothed attention status via majority vote (at least 2 of last 3 checks are positive)
-      var successCount = _faceDetectionHistory.filter(function(h){ return h.success; }).length;
-      var smoothedIsLooking = successCount >= 2;
-      
-      var smoothedReason = '';
-      if(!smoothedIsLooking){
-        // Compute the most common reason for being away in history
-        var counts = {};
-        _faceDetectionHistory.forEach(function(h){
-          if(!h.success) counts[h.reason] = (counts[h.reason] || 0) + 1;
-        });
-        var maxCount = 0;
-        for(var r in counts){
-          if(counts[r] > maxCount){
-            maxCount = counts[r];
-            smoothedReason = r;
-          }
-        }
-        if(!smoothedReason) smoothedReason = 'Away';
-      }
-      
-      _lastFaceDetected = smoothedIsLooking;
-      _faceReason = smoothedIsLooking ? '' : smoothedReason;
-      
-      _broadcastEngagement();
-    } catch(e){
-      console.warn('[face-api] detection error:', e);
+      });
+
+      faceMeshInstance.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      faceMeshInstance.onResults(processFaceResults);
+      faceMeshReady = true;
+      faceMeshLoading = false;
+      console.log('[FaceMesh] Hardware-accelerated GPU detector initialized.');
+      resolve(true);
+    } catch (e) {
+      console.warn('[FaceMesh] Initialization failed:', e);
+      faceMeshLoading = false;
+      resolve(false);
     }
-  }, 4000);
+  });
 }
 
-function stopFaceDetection(){
-  if(faceInterval){ clearInterval(faceInterval); faceInterval = null; }
-  _faceDetectionHistory = [];
+function calculateHeadPose(landmarks) {
+  if (!landmarks || landmarks.length === 0) return 'NO_FACE';
+
+  var nose       = landmarks[1];
+  var leftCheek  = landmarks[234];
+  var rightCheek = landmarks[454];
+  var forehead   = landmarks[10];
+  var chin       = landmarks[152];
+
+  if (!nose || !leftCheek || !rightCheek || !forehead || !chin) return 'NO_FACE';
+
+  // Horizontal yaw (head turn)
+  var faceWidth = Math.abs(rightCheek.x - leftCheek.x);
+  if (faceWidth > 0.001) {
+    var noseXRatio = (nose.x - leftCheek.x) / faceWidth;
+    var yawOffset  = Math.abs(noseXRatio - 0.50);
+    if (yawOffset > FACE_SETTINGS.yawThreshold) {
+      return 'LOOKING_SIDEWAYS';
+    }
+  }
+
+  // Vertical pitch (head tilt)
+  var faceHeight = Math.abs(chin.y - forehead.y);
+  if (faceHeight > 0.001) {
+    var noseYRatio = (nose.y - forehead.y) / faceHeight;
+    var pitchOffset = noseYRatio - 0.45;
+    if (pitchOffset < -FACE_SETTINGS.pitchUpThreshold) {
+      return 'LOOKING_UP';
+    }
+    if (pitchOffset > FACE_SETTINGS.pitchDownThreshold) {
+      return 'LOOKING_DOWN';
+    }
+  }
+
+  return 'ATTENTIVE';
+}
+
+function smoothAttentionState(newState) {
+  _faceHistory.push(newState);
+  if (_faceHistory.length > FACE_SETTINGS.smoothingFrames) {
+    _faceHistory.shift();
+  }
+
+  var counts = {};
+  var maxCount = 0;
+  var dominantState = newState;
+
+  _faceHistory.forEach(function(st) {
+    counts[st] = (counts[st] || 0) + 1;
+    if (counts[st] > maxCount) {
+      maxCount = counts[st];
+      dominantState = st;
+    }
+  });
+
+  return dominantState;
+}
+
+function updateAttentionUI(state) {
+  if (state === 'ATTENTIVE') {
+    _lastFaceDetected = true;
+    _faceReason = '';
+  } else if (state === 'LOOKING_SIDEWAYS') {
+    _lastFaceDetected = false;
+    _faceReason = 'Looking Sideways';
+  } else if (state === 'LOOKING_UP') {
+    _lastFaceDetected = false;
+    _faceReason = 'Looking Up';
+  } else if (state === 'LOOKING_DOWN') {
+    _lastFaceDetected = false;
+    _faceReason = 'Looking Down';
+  } else {
+    _lastFaceDetected = false;
+    _faceReason = 'No Face Detected';
+  }
+
+  _broadcastEngagement();
+}
+
+function processFaceResults(results) {
+  var rawState = 'NO_FACE';
+  if (results && results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+    rawState = calculateHeadPose(results.multiFaceLandmarks[0]);
+  }
+
+  var smoothedState = smoothAttentionState(rawState);
+  _currentAttentionState = smoothedState;
+  updateAttentionUI(smoothedState);
+}
+
+async function startFaceDetection(videoEl) {
+  if (IS_TEACHER) return;
+  stopFaceDetection();
+
+  var ready = await initializeFaceMesh();
+  if (!ready || !faceMeshInstance) {
+    console.warn('[FaceMesh] Face AI unavailable; call continuing normally.');
+    return;
+  }
+
+  var activeVid = videoEl || document.querySelector('#tile_local video');
+
+  faceInterval = setInterval(async function() {
+    if (!inCall || !camOn || !faceMeshInstance) return;
+    if (!_tabVisible || !_windowFocused) return;
+
+    if (!activeVid || !activeVid.parentNode) {
+      activeVid = document.querySelector('#tile_local video');
+    }
+    if (!activeVid || activeVid.paused || activeVid.ended || activeVid.readyState < 2) return;
+
+    try {
+      await faceMeshInstance.send({ image: activeVid });
+    } catch (e) {
+      console.warn('[FaceMesh send error]', e);
+    }
+  }, FACE_SETTINGS.processingInterval);
+}
+
+function stopFaceDetection() {
+  if (faceInterval) { clearInterval(faceInterval); faceInterval = null; }
+  _faceHistory = [];
+  _currentAttentionState = 'ATTENTIVE';
   _lastFaceDetected = true;
   _faceReason = '';
 }
-var faceInterval = null;
 </script>
 </body>
 </html>

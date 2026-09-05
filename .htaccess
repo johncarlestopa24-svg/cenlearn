@@ -1,0 +1,6 @@
+# CenLearn Local Apache Root Handler
+<IfModule mod_rewrite.c>
+RewriteEngine On
+# If requesting root directory without filename, let index.php handle redirect
+DirectoryIndex index.php
+</IfModule>

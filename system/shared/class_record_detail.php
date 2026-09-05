@@ -140,18 +140,23 @@ if ($lsList) {
     while ($ls = $lsList->fetch_assoc()) {
         $sid = intval($ls['id']);
         $lsterm = $conn->real_escape_string($ls['term'] ?: 'midterm');
-        $dateStr = date('M d', strtotime($ls['started_at'] ?: $ls['scheduled_at'] ?: 'now'));
+        $rawDate = $ls['started_at'] ?: $ls['scheduled_at'];
+        if(!$rawDate && !empty($ls['title']) && strtotime($ls['title'])){
+            $rawDate = $ls['title'];
+        }
+        $dateStr = date('M d', strtotime($rawDate ?: 'now'));
         $lstitle = $conn->real_escape_string($dateStr);
+        $sessCreated = date('Y-m-d H:i:s', strtotime($rawDate ?: 'now'));
         
         // Ensure column exists
-        $colCheck = $conn->query("SELECT id FROM class_record_columns WHERE class_id=$class_id AND session_id=$sid LIMIT 1");
+        $colCheck = $conn->query("SELECT id FROM class_record_columns WHERE class_id=$class_id AND session_id=$sid AND (is_f2f=0 OR is_f2f IS NULL) LIMIT 1");
         if (!$colCheck || $colCheck->num_rows === 0) {
-            $conn->query("INSERT INTO class_record_columns (class_id, component, title, max_score, sort_order, term, session_id)
-                          VALUES ($class_id, 'written', '$lstitle', 2.00, 0, '$lsterm', $sid)");
+            $conn->query("INSERT INTO class_record_columns (class_id, component, title, max_score, sort_order, term, session_id, is_f2f, created_at)
+                          VALUES ($class_id, 'attendance', '$lstitle', 2.00, 0, '$lsterm', $sid, 0, '$sessCreated')");
             $col_id = $conn->insert_id;
         } else {
             $col_id = intval($colCheck->fetch_assoc()['id']);
-            $conn->query("UPDATE class_record_columns SET title='$lstitle', term='$lsterm', max_score = 2.00 WHERE id=$col_id");
+            $conn->query("UPDATE class_record_columns SET title='$lstitle', term='$lsterm', max_score = 2.00, is_f2f=0 WHERE id=$col_id");
         }
         
         // Sync student attendance
@@ -178,6 +183,47 @@ if ($lsList) {
     }
 }
 
+// 4. Sync Attendance Sessions (Calendar & Matrix Attendance)
+$casList = $conn->query("SELECT id, title, attendance_date, term FROM class_attendance_sessions WHERE class_id=$class_id");
+if ($casList) {
+    while ($cas = $casList->fetch_assoc()) {
+        $cas_id = intval($cas['id']);
+        $cas_term = $conn->real_escape_string($cas['term'] ?: 'midterm');
+        $cas_date = $cas['attendance_date'];
+        $cas_created = $cas_date . ' 00:00:00';
+        $dateStr = date('M d', strtotime($cas_date));
+        $castitle = $conn->real_escape_string($dateStr);
+        
+        // Ensure column exists in class_record_columns
+        $colCheck = $conn->query("SELECT id FROM class_record_columns WHERE class_id=$class_id AND (attendance_session_id=$cas_id OR (is_f2f=1 AND session_id=$cas_id) OR (is_f2f=1 AND created_at LIKE '$cas_date%')) LIMIT 1");
+        if (!$colCheck || $colCheck->num_rows === 0) {
+            $conn->query("INSERT INTO class_record_columns (class_id, component, title, max_score, sort_order, term, session_id, attendance_session_id, is_f2f, created_at)
+                          VALUES ($class_id, 'attendance', '$castitle', 1.00, 0, '$cas_term', $cas_id, $cas_id, 1, '$cas_created')");
+            $col_id = $conn->insert_id;
+        } else {
+            $col_id = intval($colCheck->fetch_assoc()['id']);
+            $conn->query("UPDATE class_record_columns SET title='$castitle', term='$cas_term', session_id=$cas_id, attendance_session_id=$cas_id, is_f2f=1, created_at='$cas_created' WHERE id=$col_id");
+        }
+        
+        // Sync individual records
+        $recsQ = $conn->query("SELECT student_code, status FROM class_attendance_records WHERE session_id=$cas_id");
+        if ($recsQ) {
+            while ($rec = $recsQ->fetch_assoc()) {
+                $rec_uc = $conn->real_escape_string($rec['student_code']);
+                $st = strtolower($rec['status']);
+                $score = 1.00;
+                if ($st === 'late') $score = 0.50;
+                if ($st === 'absent') $score = 0.00;
+                if ($st === 'excused') $score = 1.00;
+                
+                $conn->query("INSERT INTO class_record_scores (column_id, class_id, student_code, score)
+                              VALUES ($col_id, $class_id, '$rec_uc', $score)
+                              ON DUPLICATE KEY UPDATE score = $score");
+            }
+        }
+    }
+}
+
 $term = $_GET['term'] ?? 'midterm';
 if(!in_array($term, ['midterm', 'final'])) $term = 'midterm';
 
@@ -185,11 +231,15 @@ if(!in_array($term, ['midterm', 'final'])) $term = 'midterm';
 $allColsQ = $conn->query("SELECT col.*,
        q.created_at AS quiz_created,
        a.created_at AS assign_created,
-       ls.started_at AS session_started
+       ls.started_at AS session_started,
+       ls.scheduled_at AS session_scheduled,
+       ls.title AS session_title,
+       cas.attendance_date AS attendance_date
 FROM class_record_columns col
 LEFT JOIN quizzes q ON col.quiz_id = q.id
 LEFT JOIN assignments a ON col.assignment_id = a.id
-LEFT JOIN live_sessions ls ON col.session_id = ls.id
+LEFT JOIN live_sessions ls ON (col.session_id = ls.id AND (col.is_f2f = 0 OR col.is_f2f IS NULL))
+LEFT JOIN class_attendance_sessions cas ON (col.attendance_session_id = cas.id OR (col.is_f2f = 1 AND col.session_id = cas.id))
 WHERE col.class_id=$class_id
 ORDER BY col.component, col.sort_order, col.id");
 $allColumns = [];
@@ -226,9 +276,11 @@ if(!isset($weights['written_pct']) && isset($weights['written_works_pct']))   $w
 if(!isset($weights['exam_pct'])    && isset($weights['term_exam_pct']))        $weights['exam_pct']    = $weights['term_exam_pct'];
 
 // Organize columns by component for current term
-$colsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'attendance'=>[]];
+$colsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'deportment'=>[],'attendance'=>[]];
 foreach($columns as $col) {
-    if(!empty($col['is_f2f']) || !empty($col['session_id']) || $col['component'] === 'attendance') {
+    if($col['component'] === 'deportment') {
+        $colsByComp['deportment'][] = $col;
+    } elseif(!empty($col['session_id']) || $col['component'] === 'attendance') {
         $colsByComp['attendance'][] = $col;
     } else {
         $compKey = $col['component'];
@@ -238,9 +290,11 @@ foreach($columns as $col) {
 }
 
 // Organize columns by component for both terms
-$midtermColsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'attendance'=>[]];
+$midtermColsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'deportment'=>[],'attendance'=>[]];
 foreach($midtermCols as $col) {
-    if(!empty($col['is_f2f']) || !empty($col['session_id']) || $col['component'] === 'attendance') {
+    if($col['component'] === 'deportment') {
+        $midtermColsByComp['deportment'][] = $col;
+    } elseif(!empty($col['session_id']) || $col['component'] === 'attendance') {
         $midtermColsByComp['attendance'][] = $col;
     } else {
         $compKey = $col['component'];
@@ -249,9 +303,11 @@ foreach($midtermCols as $col) {
     }
 }
 
-$finalColsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'attendance'=>[]];
+$finalColsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'deportment'=>[],'attendance'=>[]];
 foreach($finalCols as $col) {
-    if(!empty($col['is_f2f']) || !empty($col['session_id']) || $col['component'] === 'attendance') {
+    if($col['component'] === 'deportment') {
+        $finalColsByComp['deportment'][] = $col;
+    } elseif(!empty($col['session_id']) || $col['component'] === 'attendance') {
         $finalColsByComp['attendance'][] = $col;
     } else {
         $compKey = $col['component'];
@@ -267,9 +323,9 @@ function computeGrade($studentCode, $colsByComp, $scores, $weights) {
     if ($base < 0 || $base >= 100) $base = 0;
 
     $compAvg = [];
-    foreach(['written','performance','exam'] as $comp) {
-        $cols = $colsByComp[$comp];
-        $regularCols = array_filter($cols, fn($c) => empty($c['session_id']) && empty($c['is_f2f']));
+    foreach(['written','performance','exam','deportment'] as $comp) {
+        $cols = $colsByComp[$comp] ?? [];
+        $regularCols = array_filter($cols, fn($c) => empty($c['session_id']));
         if(empty($regularCols)){ $compAvg[$comp] = null; }
         else {
             if ($method === 'avg_of_pct') {
@@ -302,43 +358,19 @@ function computeGrade($studentCode, $colsByComp, $scores, $weights) {
         }
     }
 
-    // Deportment component — only columns with is_f2f (excluding attendance sessions with session_id)
-    $attCols = [];
-    foreach($colsByComp as $comp => $cols) {
-        foreach($cols as $col) {
-            if(!empty($col['is_f2f']) || !empty($col['session_id'])) {
-                $attCols[] = $col;
-            }
-        }
-    }
+    // Attendance average from attendance columns
+    $attCols = $colsByComp['attendance'] ?? [];
     if(!empty($attCols)) {
-        if ($method === 'avg_of_pct') {
-            $pcts = [];
-            foreach($attCols as $col) {
-                $sc = $scores[$col['id']][$studentCode] ?? null;
-                if($sc !== null && $col['max_score'] > 0){
-                    $pcts[] = ($sc / $col['max_score']) * 100;
-                }
+        $attTotal = 0; $attMax = 0; $attHas = false;
+        foreach($attCols as $col) {
+            $sc = $scores[$col['id']][$studentCode] ?? null;
+            if($sc !== null){ 
+                $attTotal += $sc; 
+                $attMax += $col['max_score']; 
+                $attHas = true; 
             }
-            $raw = count($pcts) ? (array_sum($pcts) / count($pcts)) : null;
-        } else {
-            $attTotal = 0; $attMax = 0; $attHas = false;
-            foreach($attCols as $col) {
-                $sc = $scores[$col['id']][$studentCode] ?? null;
-                if($sc !== null){ 
-                    $attTotal += $sc; 
-                    $attMax += $col['max_score']; 
-                    $attHas = true; 
-                }
-            }
-            $raw = ($attHas && $attMax > 0) ? ($attTotal / $attMax) * 100 : null;
         }
-
-        if ($raw !== null) {
-            $compAvg['attendance'] = round($raw * (100 - $base) / 100 + $base, 2);
-        } else {
-            $compAvg['attendance'] = null;
-        }
+        $compAvg['attendance'] = ($attHas && $attMax > 0) ? round(($attTotal / $attMax) * 100, 1) : null;
     } else {
         $compAvg['attendance'] = null;
     }
@@ -349,7 +381,7 @@ function computeGrade($studentCode, $colsByComp, $scores, $weights) {
         'written'    => 'written_pct',
         'performance'=> 'performance_pct',
         'exam'       => 'exam_pct',
-        'attendance' => 'attendance_pct',
+        'deportment' => 'attendance_pct', // Maps to deportment weight (10%)
     ];
     foreach($compMap as $comp => $key) {
         if(isset($compAvg[$comp]) && $compAvg[$comp] !== null && isset($weights[$key])) {
@@ -462,11 +494,14 @@ foreach($assignList as $as) {
 
 // Categorize columns for active term
 $termAttendanceCols = [];
+$termDeportmentCols = [];
 $termQuizCols = [];
 $termAssignCols = [];
 $termExamCols = [];
 foreach($columns as $col) {
-    if(!empty($col['is_f2f']) || !empty($col['session_id']) || $col['component'] === 'attendance') {
+    if($col['component'] === 'deportment') {
+        $termDeportmentCols[] = $col;
+    } elseif(!empty($col['session_id']) || $col['component'] === 'attendance') {
         $termAttendanceCols[] = $col;
     } elseif($col['component'] === 'written') {
         $termQuizCols[] = $col;
@@ -478,13 +513,12 @@ foreach($columns as $col) {
 }
 
 // Pre-compute Attendance KPIs based on active term attendance columns
-$termDeportmentCols = [];
 $totalSessions = count($termAttendanceCols);
 $attPcts = [];
 $perfectAtt = 0;
 foreach($studentRows as $s) {
     $uc = $s['user_code'];
-    $attAvg = $studentGrades[$uc]['components']['attendance'];
+    $attAvg = $studentGrades[$uc]['components']['attendance'] ?? null;
     if($attAvg !== null) {
         $attPcts[] = $attAvg;
         if($attAvg >= 100) $perfectAtt++;
@@ -839,15 +873,6 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
       <div class="tab-toolbar" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
         <div class="tab-toolbar-left" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span style="font-size:12px;color:#64748b;font-weight:600;"><i class="fa fa-table" style="color:#10b981;"></i> Consolidated Grade Book</span>
-          <button type="button" class="btn-ghost-sm" style="border: 1px dashed #10b981; color: #10b981; background: transparent; padding: 4px 8px; font-size: 11px;" onclick="openAddCol('written')">
-            <i class="fa fa-plus"></i> Add Written Column
-          </button>
-          <button type="button" class="btn-ghost-sm" style="border: 1px dashed #f59e0b; color: #f59e0b; background: transparent; padding: 4px 8px; font-size: 11px;" onclick="openAddCol('performance')">
-            <i class="fa fa-plus"></i> Add Performance Column
-          </button>
-          <button type="button" class="btn-ghost-sm" style="border: 1px dashed #7c3aed; color: #7c3aed; background: transparent; padding: 4px 8px; font-size: 11px;" onclick="openAddCol('exam')">
-            <i class="fa fa-plus"></i> Add Exam Column
-          </button>
         </div>
         <button class="btn-export" onclick="exportCSV('tableUnifiedRecord','class_record')"><i class="fa fa-download"></i> Export CSV</button>
       </div>
@@ -859,100 +884,185 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
               <tr>
                 <th rowspan="2" class="col-no">#</th>
                 <th rowspan="2" class="col-name" style="text-align:left;">Student Name</th>
-                <th colspan="<?php echo count($termAttendanceCols) + 1; ?>" style="background:#eff6ff;color:#1d4ed8;border-bottom:2px solid #3b82f6;font-weight:700;"><i class="fa fa-calendar-check-o"></i> Attendance Log (<?php echo $weights['attendance_pct'] ?? 10; ?>%)</th>
-                <th colspan="<?php echo count($termQuizCols) + 1; ?>" style="background:#f0fdf4;color:#15803d;border-bottom:2px solid #10b981;font-weight:700;">Quiz (<?php echo $weights['written_pct']; ?>%)</th>
-                <th colspan="<?php echo count($termAssignCols) + 1; ?>" style="background:#fffbeb;color:#b45309;border-bottom:2px solid #f59e0b;font-weight:700;">Performance Task (<?php echo $weights['performance_pct']; ?>%)</th>
-                <th colspan="<?php echo count($termExamCols) + 1; ?>" style="background:#faf5ff;color:#6b21a8;border-bottom:2px solid #7c3aed;font-weight:700;">Exam (<?php echo $weights['exam_pct']; ?>%)</th>
+                <th colspan="<?php echo count($termAttendanceCols) + 1; ?>" style="background:#eff6ff;color:#1d4ed8;border-bottom:2px solid #3b82f6;font-weight:700;"><i class="fa fa-calendar-check-o"></i> Attendance Log</th>
+                <th colspan="<?php echo count($termDeportmentCols) + 1; ?>" style="background:#f0f9ff;color:#0369a1;border-bottom:2px solid #0284c7;font-weight:700;">
+                  <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
+                    <span><i class="fa fa-smile-o"></i> DEPORTMENT (<?php echo $weights['attendance_pct'] ?? 10; ?>%)</span>
+                    <button type="button" class="btn-ghost-sm" style="border: 1.5px dashed #0284c7; color: #0284c7; background: #ffffff; width: 22px; height: 22px; padding: 0; font-size: 11px; border-radius: 50%; cursor: pointer; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all .15s;" title="Add Deportment Column" onclick="quickAddDeportment(this)">
+                      <i class="fa fa-plus"></i>
+                    </button>
+                  </div>
+                </th>
+                <th colspan="<?php echo count($termQuizCols) + 1; ?>" style="background:#f0fdf4;color:#15803d;border-bottom:2px solid #10b981;font-weight:700;">
+                  <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
+                    <span>QUIZ (<?php echo $weights['written_pct']; ?>%)</span>
+                    <button type="button" class="btn-ghost-sm" style="border: 1.5px dashed #10b981; color: #10b981; background: #ffffff; width: 22px; height: 22px; padding: 0; font-size: 11px; border-radius: 50%; cursor: pointer; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all .15s;" title="Add Quiz Column" onclick="quickAddColumn('written', this)">
+                      <i class="fa fa-plus"></i>
+                    </button>
+                  </div>
+                </th>
+                <th colspan="<?php echo count($termAssignCols) + 1; ?>" style="background:#fffbeb;color:#b45309;border-bottom:2px solid #f59e0b;font-weight:700;">
+                  <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
+                    <span>PERFORMANCE TASK (<?php echo $weights['performance_pct']; ?>%)</span>
+                    <button type="button" class="btn-ghost-sm" style="border: 1.5px dashed #f59e0b; color: #f59e0b; background: #ffffff; width: 22px; height: 22px; padding: 0; font-size: 11px; border-radius: 50%; cursor: pointer; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all .15s;" title="Add Performance Task Column" onclick="quickAddColumn('performance', this)">
+                      <i class="fa fa-plus"></i>
+                    </button>
+                  </div>
+                </th>
+                <th colspan="<?php echo count($termExamCols) + 1; ?>" style="background:#faf5ff;color:#6b21a8;border-bottom:2px solid #7c3aed;font-weight:700;">
+                  <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
+                    <span>EXAM (<?php echo $weights['exam_pct']; ?>%)</span>
+                    <button type="button" class="btn-ghost-sm" style="border: 1.5px dashed #7c3aed; color: #7c3aed; background: #ffffff; width: 22px; height: 22px; padding: 0; font-size: 11px; border-radius: 50%; cursor: pointer; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all .15s;" title="Add Exam Column" onclick="quickAddColumn('exam', this)">
+                      <i class="fa fa-plus"></i>
+                    </button>
+                  </div>
+                </th>
                 <th colspan="4" style="background:#fef3c7;color:#92400e;border-bottom:2px solid #fbbf24;font-weight:700;">Final Grades</th>
               </tr>
               <tr>
                 <!-- Attendance Header Columns -->
                 <?php foreach($termAttendanceCols as $col): 
-                   $colDate = '';
-                   if(!empty($col['session_id']) && !empty($col['session_started'])){
-                       $colDate = date('M d', strtotime($col['session_started']));
-                   } elseif(!empty($col['created_at'])){
-                       $colDate = date('M d', strtotime($col['created_at']));
+                   $displayTitle = trim($col['title'] ?? '');
+                   $sessionDateStr = '';
+                   if (!empty($col['session_id'])) {
+                       $rawDate = !empty($col['session_started']) ? $col['session_started'] : (!empty($col['session_scheduled']) ? $col['session_scheduled'] : null);
+                       if ($rawDate) {
+                           $sessionDateStr = date('M d', strtotime($rawDate));
+                       } elseif (!empty($displayTitle) && strtotime($displayTitle)) {
+                           $sessionDateStr = date('M d', strtotime($displayTitle));
+                       }
+                       if (empty($displayTitle) || strtotime($displayTitle)) {
+                           $displayTitle = $sessionDateStr ?: date('M d', strtotime($displayTitle ?: 'now'));
+                           $subDate = '';
+                       } else {
+                           $subDate = $sessionDateStr;
+                       }
+                   } else {
+                       if (!empty($displayTitle) && strtotime($displayTitle)) {
+                           $displayTitle = date('M d', strtotime($displayTitle));
+                       }
+                       $subDate = '';
                    }
-                   $badgeLabel = !empty($col['session_id']) ? 'LIVE' : 'F2F';
-                   $badgeBg    = !empty($col['session_id']) ? '#e2e8f0' : '#dbeafe';
-                   $badgeColor = !empty($col['session_id']) ? '#475569' : '#1e4ed8';
                 ?>
-                <th style="min-width:90px;background:#f8fafc;">
-                  <span style="display:inline-flex;align-items:center;gap:2px;background:<?php echo $badgeBg; ?>;color:<?php echo $badgeColor; ?>;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;"><?php echo $badgeLabel; ?></span><br>
-                  <?php echo htmlspecialchars($col['title']); ?><br>
-                  <?php if($colDate && strcasecmp(trim($col['title']), trim($colDate)) !== 0): ?>
-                    <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo $colDate; ?></span>
+                <th style="min-width:70px;background:#f8fafc;">
+                  <span style="font-weight:700;font-size:12px;color:#1e40af;"><?php echo htmlspecialchars(strtoupper($displayTitle)); ?></span>
+                  <?php if(!empty($subDate) && strcasecmp(trim($displayTitle), trim($subDate)) !== 0): ?>
+                    <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo strtoupper($subDate); ?></span>
                   <?php endif; ?>
                 </th>
                 <?php endforeach; ?>
                 <th style="min-width:65px;background:#eff6ff;color:#1d4ed8;font-weight:700;">Att %</th>
 
+                <!-- Deportment Header Columns -->
+                <?php foreach($termDeportmentCols as $depIdx => $col): 
+                   $colDate = !empty($col['created_at']) ? date('M d', strtotime($col['created_at'])) : '';
+                   $rawTitle = trim($col['title'] ?? '');
+                   $cleanTitle = preg_replace('/^deportment\s*/i', '', $rawTitle);
+                   if ($cleanTitle === '' || strtolower($rawTitle) === 'deportment') {
+                       $cleanTitle = ($depIdx + 1);
+                   }
+                ?>
+                <th style="min-width:65px;background:#f0f9ff;">
+                  <span style="font-weight:700;font-size:12px;color:#0369a1;"><?php echo htmlspecialchars($cleanTitle); ?></span><br>
+                  <div style="display:inline-flex;align-items:center;justify-content:center;margin:2px 0;">
+                    <input type="number" min="1" max="1000" 
+                      value="<?php echo (int)$col['max_score']; ?>" 
+                      style="width:38px;height:18px;font-size:10.5px;font-weight:700;color:#334155;background:#fff;border:1px solid #cbd5e1;border-radius:4px;text-align:center;padding:0;outline:none;" 
+                      title="Adjust max score"
+                      onchange="updateColMaxScore(<?php echo $col['id']; ?>, this.value)"
+                      onclick="this.select()">
+                  </div>
+                  <?php if($colDate): ?>
+                    <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo $colDate; ?></span>
+                  <?php endif; ?>
+                  <button class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
+                </th>
+                <?php endforeach; ?>
+                <th style="min-width:65px;background:#f0f9ff;color:#0369a1;font-weight:700;">Dep %</th>
+
                 <!-- Quizzes Header Columns -->
-                <?php foreach($termQuizCols as $col): 
+                <?php foreach($termQuizCols as $qIdx => $col): 
                    $colDate = '';
                    if(!empty($col['quiz_id']) && !empty($col['quiz_created'])){
                        $colDate = date('M d', strtotime($col['quiz_created']));
                    } elseif(!empty($col['created_at'])){
                        $colDate = date('M d', strtotime($col['created_at']));
                    }
+                   $rawTitle = trim($col['title'] ?? '');
+                   $cleanTitle = preg_replace('/^quiz\s*/i', '', $rawTitle);
+                   if ($cleanTitle === '' || strtolower($rawTitle) === 'quiz') {
+                       $cleanTitle = ($qIdx + 1);
+                   }
                 ?>
-                <th style="min-width:80px;background:#f9fbf9;">
-                  <?php if(!empty($col['quiz_id'])): ?>
-                    <span style="display:inline-flex;align-items:center;gap:2px;background:#ede9fe;color:#5b21b6;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;">QUIZ</span>
-                  <?php else: ?>
-                    <span style="display:inline-flex;align-items:center;gap:2px;background:#f3f4f6;color:#374151;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;">MANUAL</span>
-                  <?php endif; ?><br>
-                  <?php echo htmlspecialchars($col['title']); ?><br>
-                  <span style="font-weight:400;color:#94a3b8;">/<?php echo (int)$col['max_score']; ?></span>
+                <th style="min-width:65px;background:#f9fbf9;">
+                  <span style="font-weight:700;font-size:12px;color:#15803d;"><?php echo htmlspecialchars($cleanTitle); ?></span><br>
+                  <div style="display:inline-flex;align-items:center;justify-content:center;margin:2px 0;">
+                    <input type="number" min="1" max="1000" 
+                      value="<?php echo (int)$col['max_score']; ?>" 
+                      style="width:38px;height:18px;font-size:10.5px;font-weight:700;color:#334155;background:#fff;border:1px solid #cbd5e1;border-radius:4px;text-align:center;padding:0;outline:none;" 
+                      title="Adjust max score"
+                      onchange="updateColMaxScore(<?php echo $col['id']; ?>, this.value)"
+                      onclick="this.select()">
+                  </div>
                   <?php if($colDate): ?>
                     <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo $colDate; ?></span>
                   <?php endif; ?>
-                  <?php if(empty($col['quiz_id'])): ?>
-                    <button class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
-                  <?php endif; ?>
+                  <button class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
                 </th>
                 <?php endforeach; ?>
                 <th style="min-width:65px;background:#f0fdf4;color:#15803d;font-weight:700;">Avg %</th>
 
-                <!-- Assignments Header Columns -->
-                <?php foreach($termAssignCols as $col): 
+                <!-- Performance Task Header Columns -->
+                <?php foreach($termAssignCols as $aIdx => $col): 
                    $colDate = '';
                    if(!empty($col['assignment_id']) && !empty($col['assign_created'])){
                        $colDate = date('M d', strtotime($col['assign_created']));
                    } elseif(!empty($col['created_at'])){
                        $colDate = date('M d', strtotime($col['created_at']));
                    }
+                   $rawTitle = trim($col['title'] ?? '');
+                   $cleanTitle = preg_replace('/^(performance\s*task|assignment|pt)\s*/i', '', $rawTitle);
+                   if ($cleanTitle === '' || strtolower($rawTitle) === 'performance task' || strtolower($rawTitle) === 'assignment') {
+                       $cleanTitle = ($aIdx + 1);
+                   }
                 ?>
-                <th style="min-width:80px;background:#fffdfa;">
-                  <?php if(!empty($col['assignment_id'])): ?>
-                    <span style="display:inline-flex;align-items:center;gap:2px;background:#fef3c7;color:#d97706;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;">ASSIGN</span>
-                  <?php else: ?>
-                    <span style="display:inline-flex;align-items:center;gap:2px;background:#f3f4f6;color:#374151;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;">MANUAL</span>
-                  <?php endif; ?><br>
-                  <?php echo htmlspecialchars($col['title']); ?><br>
-                  <span style="font-weight:400;color:#94a3b8;">/<?php echo (int)$col['max_score']; ?></span>
+                <th style="min-width:65px;background:#fffdfa;">
+                  <span style="font-weight:700;font-size:12px;color:#b45309;"><?php echo htmlspecialchars($cleanTitle); ?></span><br>
+                  <div style="display:inline-flex;align-items:center;justify-content:center;margin:2px 0;">
+                    <input type="number" min="1" max="1000" 
+                      value="<?php echo (int)$col['max_score']; ?>" 
+                      style="width:38px;height:18px;font-size:10.5px;font-weight:700;color:#334155;background:#fff;border:1px solid #cbd5e1;border-radius:4px;text-align:center;padding:0;outline:none;" 
+                      title="Adjust max score"
+                      onchange="updateColMaxScore(<?php echo $col['id']; ?>, this.value)"
+                      onclick="this.select()">
+                  </div>
                   <?php if($colDate): ?>
                     <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo $colDate; ?></span>
                   <?php endif; ?>
-                  <?php if(empty($col['assignment_id'])): ?>
-                    <button class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
-                  <?php endif; ?>
+                  <button class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
                 </th>
                 <?php endforeach; ?>
                 <th style="min-width:65px;background:#fffdfa;color:#b45309;font-weight:700;">Avg %</th>
 
                 <!-- Quarterly Exams Header Columns -->
-                <?php foreach($termExamCols as $col): 
-                   $colDate = '';
-                   if(!empty($col['created_at'])){
-                       $colDate = date('M d', strtotime($col['created_at']));
+                <?php foreach($termExamCols as $eIdx => $col): 
+                   $colDate = !empty($col['created_at']) ? date('M d', strtotime($col['created_at'])) : '';
+                   $rawTitle = trim($col['title'] ?? '');
+                   $cleanTitle = preg_replace('/^exam\s*/i', '', $rawTitle);
+                   if ($cleanTitle === '' || strtolower($rawTitle) === 'exam') {
+                       $cleanTitle = ($eIdx + 1);
                    }
                 ?>
-                <th style="min-width:80px;background:#fdfbfe;">
-                  <span style="display:inline-flex;align-items:center;gap:2px;background:#f3f4f6;color:#374151;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;">EXAM</span><br>
-                  <?php echo htmlspecialchars($col['title']); ?><br>
-                  <span style="font-weight:400;color:#94a3b8;">/<?php echo (int)$col['max_score']; ?></span>
+                <th style="min-width:65px;background:#fdfbfe;">
+                  <span style="font-weight:700;font-size:12px;color:#6b21a8;"><?php echo htmlspecialchars($cleanTitle); ?></span><br>
+                  <div style="display:inline-flex;align-items:center;justify-content:center;margin:2px 0;">
+                    <input type="number" min="1" max="1000" 
+                      value="<?php echo (int)$col['max_score']; ?>" 
+                      style="width:38px;height:18px;font-size:10.5px;font-weight:700;color:#334155;background:#fff;border:1px solid #cbd5e1;border-radius:4px;text-align:center;padding:0;outline:none;" 
+                      title="Adjust max score"
+                      onchange="updateColMaxScore(<?php echo $col['id']; ?>, this.value)"
+                      onclick="this.select()">
+                  </div>
                   <?php if($colDate): ?>
                     <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo $colDate; ?></span>
                   <?php endif; ?>
@@ -1018,6 +1128,21 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                 <?php endforeach; ?>
                 <td class="grade-cell <?php echo ($attTotalMax > 0 && ($attTotalEarned/$attTotalMax)>=0.75) ? 'grade-pass' : 'grade-fail'; ?>" style="background:#eff6ff;color:#1d4ed8;font-weight:800;">
                   <?php echo $attTotalMax > 0 ? round(($attTotalEarned / $attTotalMax) * 100, 1) . '%' : '—'; ?>
+                </td>
+
+                <!-- Deportment Values (Graded Score Input) -->
+                <?php foreach($termDeportmentCols as $col):
+                  $sc = $scores[$col['id']][$uc] ?? '';
+                ?>
+                <td>
+                  <input type="number" class="score-input" min="0" max="<?php echo $col['max_score']; ?>"
+                    value="<?php echo $sc !== '' ? htmlspecialchars($sc) : ''; ?>"
+                    placeholder="—"
+                    onchange="saveScore(<?php echo $col['id']; ?>,'<?php echo addslashes($uc); ?>',this.value)">
+                </td>
+                <?php endforeach; ?>
+                <td class="grade-cell <?php echo $g['components']['deportment']!==null&&$g['components']['deportment']>=75?'grade-pass':'grade-fail'; ?>" style="background:#f0f9ff;color:#0369a1;font-weight:800;">
+                  <?php echo $g['components']['deportment'] !== null ? $g['components']['deportment'] . '%' : '—'; ?>
                 </td>
 
                 <!-- Quiz Values -->
@@ -1125,13 +1250,22 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                 <th class="col-no">#</th>
                 <th class="col-name" style="text-align:left;">Student Name</th>
                 <?php foreach($termDeportmentCols as $col): 
-                   $colDate = !empty($col['created_at']) ? date('M d', strtotime($col['created_at'])) : '';
+                   $rawDate = !empty($col['attendance_date']) ? $col['attendance_date'] : (!empty($col['created_at']) ? $col['created_at'] : null);
+                   $displayTitle = trim($col['title'] ?? '');
+                   $colDate = '';
+                   if ($rawDate) {
+                       $colDate = date('M d', strtotime($rawDate));
+                   }
+                   if (empty($displayTitle) || strtotime($displayTitle)) {
+                       $displayTitle = $colDate ?: date('M d', strtotime($displayTitle ?: 'now'));
+                       $colDate = '';
+                   }
                 ?>
                 <th style="min-width:90px;">
-                  <span style="display:inline-flex;align-items:center;gap:2px;background:#dbeafe;color:#1e4ed8;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;">F2F</span><br>
-                  <?php echo htmlspecialchars($col['title']); ?><br>
-                  <?php if($colDate): ?>
-                    <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo $colDate; ?></span>
+                  <span style="display:inline-flex;align-items:center;gap:2px;background:#dbeafe;color:#1e4ed8;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;">BEHAVIOR</span><br>
+                  <span style="font-weight:700;"><?php echo htmlspecialchars(strtoupper($displayTitle)); ?></span>
+                  <?php if($colDate && strcasecmp(trim($displayTitle), trim($colDate)) !== 0): ?>
+                    <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo strtoupper($colDate); ?></span>
                   <?php endif; ?>
                 </th>
                 <?php endforeach; ?>
@@ -1430,70 +1564,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
   <footer class="cl-footer">CenLearn &mdash; Powered by TechnoPal</footer>
 </div>
 
-<!-- Add Column Modal -->
-<div class="cr-modal-overlay" id="addColModal">
-  <div class="cr-modal">
-    <div class="cr-modal-head">
-      <h4 id="addColModalTitle"><i class="fa fa-plus-circle"></i> Add Column</h4>
-      <button class="cr-modal-x" onclick="closeModal('addColModal')">&times;</button>
-    </div>
-    <div class="cr-modal-body">
-      <input type="hidden" id="addColComp">
-      <div class="cr-field">
-        <label>Column Title <span style="color:#ef4444;">*</span></label>
-        <input type="text" id="addColTitle" class="cr-fc" placeholder="e.g. Quiz 1, Assignment 2, Midterm Exam">
-      </div>
-      <div class="cr-field">
-        <label>Term</label>
-        <select id="addColTerm" class="cr-fc">
-          <option value="midterm" <?php echo $term === 'midterm' ? 'selected' : ''; ?>>Midterm</option>
-          <option value="final" <?php echo $term === 'final' ? 'selected' : ''; ?>>Final</option>
-        </select>
-      </div>
-      <div class="cr-field">
-        <label>Max Score</label>
-        <input type="number" id="addColMax" class="cr-fc" value="100" min="1">
-      </div>
-      <div id="addColAlert" style="display:none;padding:8px 11px;border-radius:8px;font-size:12px;margin-top:8px;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;"></div>
-    </div>
-    <div class="cr-modal-foot">
-      <button class="btn-ghost-sm" onclick="closeModal('addColModal')">Cancel</button>
-      <button class="btn-green" id="btnAddCol" onclick="submitAddCol()"><i class="fa fa-save"></i> Add Column</button>
-    </div>
-  </div>
-</div>
 
-<!-- Add F2F Deportment Modal -->
-<div class="cr-modal-overlay" id="addF2FModal">
-  <div class="cr-modal">
-    <div class="cr-modal-head" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">
-      <h4><i class="fa fa-smile-o"></i> Add F2F Deportment</h4>
-      <button class="cr-modal-x" onclick="closeModal('addF2FModal')">&times;</button>
-    </div>
-    <div class="cr-modal-body">
-      <div class="cr-field">
-        <label>Deportment Title <span style="color:#ef4444;">*</span></label>
-        <input type="text" id="addF2FTitle" class="cr-fc" placeholder="e.g. Participation Week 1">
-      </div>
-      <div class="cr-field">
-        <label>Term</label>
-        <select id="addF2FTerm" class="cr-fc">
-          <option value="midterm" <?php echo $term === 'midterm' ? 'selected' : ''; ?>>Midterm</option>
-          <option value="final" <?php echo $term === 'final' ? 'selected' : ''; ?>>Final</option>
-        </select>
-      </div>
-      <div class="cr-field">
-        <label>Deportment Date</label>
-        <input type="date" id="addF2FDate" class="cr-fc" value="<?php echo date('Y-m-d'); ?>">
-      </div>
-      <div id="addF2FAlert" style="display:none;padding:8px 11px;border-radius:8px;font-size:12px;margin-top:8px;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;"></div>
-    </div>
-    <div class="cr-modal-foot">
-      <button class="btn-ghost-sm" onclick="closeModal('addF2FModal')">Cancel</button>
-      <button class="btn-green" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);" id="btnSubmitF2F" onclick="submitAddF2F()"><i class="fa fa-save"></i> Add Deportment</button>
-    </div>
-  </div>
-</div>
 
 <!-- Grading Formula Modal -->
 <div class="cr-modal-overlay" id="gradingFormulaModal">
@@ -1577,7 +1648,91 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
 <script src="../bower_components/jquery/dist/jquery.min.js"></script>
 <script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
 <script>
-var CLASS_ID = <?php echo $class_id; ?>;
+var CLASS_ID     = <?php echo $class_id; ?>;
+var CURRENT_TERM = '<?php echo $term; ?>';
+var QUIZ_COUNT   = <?php echo count($termQuizCols); ?>;
+var PERF_COUNT   = <?php echo count($termAssignCols); ?>;
+var EXAM_COUNT   = <?php echo count($termExamCols); ?>;
+var DEP_COUNT    = <?php echo count($termDeportmentCols); ?>;
+
+// Automatic One-Click Column Inserter (No modal required)
+function quickAddColumn(comp, btn){
+  if(btn) btn.disabled = true;
+  var titles = {
+    written: '' + (QUIZ_COUNT + 1),
+    performance: '' + (PERF_COUNT + 1),
+    exam: '' + (EXAM_COUNT + 1)
+  };
+  var title = titles[comp] || 'Assessment';
+  $.post('class_record_handler.php', {
+    action: 'add_column',
+    class_id: CLASS_ID,
+    component: comp,
+    title: title,
+    max_score: 100,
+    term: CURRENT_TERM
+  }, function(r){
+    if(r && r.success){
+      location.reload();
+    } else {
+      if(btn) btn.disabled = false;
+      alert(r && r.msg ? r.msg : 'Failed to add column');
+    }
+  }, 'json').fail(function(){
+    if(btn) btn.disabled = false;
+    alert('Network error adding column');
+  });
+}
+
+// Inline Adjustable Max Score Inserter
+function updateColMaxScore(colId, newMax){
+  var val = parseFloat(newMax);
+  if(isNaN(val) || val <= 0){
+    alert('Please enter a valid max score greater than 0.');
+    location.reload();
+    return;
+  }
+  $.post('class_record_handler.php', {
+    action: 'update_max_score',
+    class_id: CLASS_ID,
+    col_id: colId,
+    max_score: val
+  }, function(r){
+    if(r && r.success){
+      location.reload();
+    } else {
+      alert(r && r.msg ? r.msg : 'Failed to update max score');
+      location.reload();
+    }
+  }, 'json').fail(function(){
+    alert('Network error updating max score');
+    location.reload();
+  });
+}
+
+// Automatic One-Click Deportment Inserter (Graded Column, No modal required)
+function quickAddDeportment(btn){
+  if(btn) btn.disabled = true;
+  var title = '' + (DEP_COUNT + 1);
+  $.post('class_record_handler.php', {
+    action: 'add_column',
+    class_id: CLASS_ID,
+    component: 'deportment',
+    title: title,
+    max_score: 100,
+    term: CURRENT_TERM
+  }, function(r){
+    if(r && r.success){
+      location.reload();
+    } else {
+      if(btn) btn.disabled = false;
+      alert(r && r.msg ? r.msg : 'Failed to add deportment column');
+    }
+  }, 'json').fail(function(){
+    if(btn) btn.disabled = false;
+    alert('Network error adding deportment column');
+  });
+}
 
 // Toggle F2F Attendance
 function toggleF2F(colId, studentCode, newScore) {

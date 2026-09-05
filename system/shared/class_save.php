@@ -642,7 +642,7 @@ if($action === 'join'){
     $check = $conn->query("SELECT id FROM class_members WHERE class_id=$cid AND user_code='$uc'");
     if($check->num_rows > 0){ echo json_encode(['success'=>false,'msg'=>'You have already joined this class.']); exit; }
 
-    // ── Enrollment restriction: match program_code, year_level, section ──
+    // ── Enrollment restriction: match program_code ──
     $role = strtoupper($user['user_group']);
     if($role === 'STUDENT'){
         $errors = [];
@@ -651,26 +651,8 @@ if($action === 'join'){
         if(!empty($class['program_code'])){
             $student_program = strtoupper(trim($user['program_code'] ?? ''));
             $class_program   = strtoupper(trim($class['program_code']));
-            if($student_program !== $class_program){
+            if($student_program && $student_program !== $class_program){
                 $errors[] = 'Course/Program (<b>'.$class_program.'</b>)';
-            }
-        }
-
-        // Check year_level
-        if(!empty($class['year_level'])){
-            $student_year = intval($user['year_level'] ?? 0);
-            $class_year   = intval($class['year_level']);
-            if($student_year !== $class_year){
-                $errors[] = 'Year Level (<b>Year '.$class_year.'</b>)';
-            }
-        }
-
-        // Check section
-        if(!empty($class['section'])){
-            $student_section = strtoupper(trim($user['section'] ?? ''));
-            $class_section   = strtoupper(trim($class['section']));
-            if($student_section !== $class_section){
-                $errors[] = 'Section (<b>'.$class_section.'</b>)';
             }
         }
 
@@ -726,22 +708,16 @@ if($action === 'join_by_id'){
     $chk = $conn->query("SELECT id FROM class_members WHERE class_id=$class_id AND user_code='$uc'");
     if($chk->num_rows > 0){ echo json_encode(['success'=>false,'msg'=>'Already enrolled']); exit; }
 
-    // Re-verify the student still matches restrictions
+    // Re-verify the student matches program if set
     $errors = [];
     if(!empty($class['program_code'])){
-        if(strtoupper(trim($user['program_code'] ?? '')) !== strtoupper(trim($class['program_code'])))
+        $student_program = strtoupper(trim($user['program_code'] ?? ''));
+        $class_program   = strtoupper(trim($class['program_code']));
+        if($student_program && $student_program !== $class_program)
             $errors[] = 'program';
     }
-    if(!empty($class['year_level'])){
-        if(intval($user['year_level'] ?? 0) !== intval($class['year_level']))
-            $errors[] = 'year level';
-    }
-    if(!empty($class['section'])){
-        if(strtoupper(trim($user['section'] ?? '')) !== strtoupper(trim($class['section'])))
-            $errors[] = 'section';
-    }
     if(!empty($errors)){
-        echo json_encode(['success'=>false,'msg'=>'Your profile no longer matches this class.']); exit;
+        echo json_encode(['success'=>false,'msg'=>'Your profile program does not match this class.']); exit;
     }
 
     $conn->query("INSERT IGNORE INTO class_members (class_id,user_code) VALUES ($class_id,'$uc')");
@@ -788,11 +764,54 @@ if($action === 'leave_class'){
         exit;
     }
 
-    // If teacher: unassign teacher from class
-    if(in_array($role, ['TEACHER', 'FACULTY', 'INSTRUCTOR'])){
-        $conn->query("DELETE FROM class_members WHERE class_id=$class_id AND user_code='$uc'");
-        echo json_encode(['success'=>true, 'msg'=>'You have left the class.']);
-        exit;
+    // If teacher: unassign teacher and clean up class & student enrollments
+    if(in_array($role, ['TEACHER', 'FACULTY', 'INSTRUCTOR', 'ADMIN', 'SUPERADMIN'])){
+        if($class['teacher_code'] === $uc || in_array($role, ['ADMIN', 'SUPERADMIN'])){
+            // Delete uploaded module files from disk
+            $files = $conn->query("SELECT filename FROM class_modules WHERE class_id=$class_id");
+            if($files) while($f = $files->fetch_assoc()){
+                $path = __DIR__.'/../uploads/modules/'.$f['filename'];
+                if(file_exists($path)) @unlink($path);
+            }
+
+            // Delete assignment submission files from disk
+            $subs = $conn->query("SELECT s.file_name FROM assignment_submissions s JOIN assignments a ON s.assignment_id=a.id WHERE a.class_id=$class_id AND s.file_name IS NOT NULL");
+            if($subs) while($s = $subs->fetch_assoc()){
+                $path = __DIR__.'/../uploads/submissions/'.$s['file_name'];
+                if(file_exists($path)) @unlink($path);
+            }
+
+            // Delete all related records and memberships
+            $conn->query("DELETE qs FROM quiz_submissions qs JOIN quiz_questions qq ON qs.quiz_id=qq.quiz_id JOIN quizzes q ON qq.quiz_id=q.id WHERE q.class_id=$class_id");
+            $conn->query("DELETE qq FROM quiz_questions qq JOIN quizzes q ON qq.quiz_id=q.id WHERE q.class_id=$class_id");
+            $conn->query("DELETE FROM quizzes WHERE class_id=$class_id");
+            $conn->query("DELETE s FROM assignment_submissions s JOIN assignments a ON s.assignment_id=a.id WHERE a.class_id=$class_id");
+            $conn->query("DELETE FROM assignments WHERE class_id=$class_id");
+            $conn->query("DELETE FROM class_modules WHERE class_id=$class_id");
+            $conn->query("DELETE FROM class_material_folders WHERE class_id=$class_id");
+            $conn->query("DELETE FROM class_material_analysis WHERE class_id=$class_id");
+            $conn->query("DELETE FROM class_module_links WHERE class_id=$class_id");
+            $conn->query("DELETE FROM class_attendance_records WHERE class_id=$class_id");
+            $conn->query("DELETE FROM class_attendance_sessions WHERE class_id=$class_id");
+            $conn->query("DELETE FROM class_record_scores WHERE class_id=$class_id");
+            $conn->query("DELETE FROM class_record_columns WHERE class_id=$class_id");
+            $conn->query("DELETE FROM class_record_weights WHERE class_id=$class_id");
+            $conn->query("DELETE FROM published_grades WHERE class_id=$class_id");
+            $conn->query("DELETE FROM live_attendance WHERE session_id IN (SELECT id FROM live_sessions WHERE class_id=$class_id)");
+            $conn->query("DELETE FROM live_admission WHERE session_id IN (SELECT id FROM live_sessions WHERE class_id=$class_id)");
+            $conn->query("DELETE FROM live_sessions WHERE class_id=$class_id");
+            $conn->query("DELETE FROM class_confirmations WHERE class_id=$class_id");
+            $conn->query("DELETE FROM class_members WHERE class_id=$class_id");
+            $conn->query("DELETE FROM classes WHERE id=$class_id");
+
+            echo json_encode(['success'=>true, 'msg'=>'You have left the class and class records were cleaned up successfully.']);
+            exit;
+        } else {
+            // Teacher was added only as a co-teacher / member
+            $conn->query("DELETE FROM class_members WHERE class_id=$class_id AND user_code='$uc'");
+            echo json_encode(['success'=>true, 'msg'=>'You have left the class.']);
+            exit;
+        }
     }
 
     echo json_encode(['success'=>false, 'msg'=>'Unauthorized']);

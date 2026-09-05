@@ -373,7 +373,7 @@ function viewDetail(classId, className){
       + '<span style="background:#fee2e2;color:#991b1b;padding:5px 14px;border-radius:99px;font-size:12px;font-weight:700;"><i class="fa fa-times"></i> '+r.declined+' Declined</span>'
       + '<span style="background:#fef3c7;color:#92400e;padding:5px 14px;border-radius:99px;font-size:12px;font-weight:700;"><i class="fa fa-clock-o"></i> '+r.pending+' Pending</span>'
       + '</div>';
-    html += '<table class="detail-table"><thead><tr><th>Student</th><th>ID</th><th>Section</th><th>Status</th><th>Responded</th></tr></thead><tbody>';
+    html += '<div class="table-responsive"><table class="detail-table"><thead><tr><th>Student</th><th>ID</th><th>Section</th><th>Status</th><th>Responded</th></tr></thead><tbody>';
     r.students.forEach(function(s){
       var statusHtml = s.status === 'accepted'
         ? '<span style="background:#dcfce7;color:#166534;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:700;">Accepted</span>'
@@ -388,7 +388,7 @@ function viewDetail(classId, className){
         + '<td style="font-size:11px;color:#64748b;">'+(s.responded_at ? new Date(s.responded_at).toLocaleDateString() : '—')+'</td>'
         + '</tr>';
     });
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
     document.getElementById('detailBody').innerHTML = html;
   }, 'json');
 }

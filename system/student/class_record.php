@@ -57,9 +57,11 @@ $scores = [];
 while($r = $scoresQ->fetch_assoc()) $scores[$r['column_id']] = $r['score'];
 
 // Organize columns by component for current term
-$colsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'attendance'=>[]];
+$colsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'deportment'=>[],'attendance'=>[]];
 foreach($columns as $col) {
-    if(!empty($col['is_f2f']) || !empty($col['session_id']) || $col['component'] === 'attendance') {
+    if($col['component'] === 'deportment') {
+        $colsByComp['deportment'][] = $col;
+    } elseif(!empty($col['session_id']) || $col['component'] === 'attendance') {
         $colsByComp['attendance'][] = $col;
     } else {
         $compKey = $col['component'];
@@ -69,9 +71,11 @@ foreach($columns as $col) {
 }
 
 // Organize columns by component for both terms
-$midtermColsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'attendance'=>[]];
+$midtermColsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'deportment'=>[],'attendance'=>[]];
 foreach($midtermCols as $col) {
-    if(!empty($col['is_f2f']) || !empty($col['session_id']) || $col['component'] === 'attendance') {
+    if($col['component'] === 'deportment') {
+        $midtermColsByComp['deportment'][] = $col;
+    } elseif(!empty($col['session_id']) || $col['component'] === 'attendance') {
         $midtermColsByComp['attendance'][] = $col;
     } else {
         $compKey = $col['component'];
@@ -81,9 +85,11 @@ foreach($midtermCols as $col) {
 }
 
 // Organize columns by component for both terms
-$finalColsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'attendance'=>[]];
+$finalColsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'deportment'=>[],'attendance'=>[]];
 foreach($finalCols as $col) {
-    if(!empty($col['is_f2f']) || !empty($col['session_id']) || $col['component'] === 'attendance') {
+    if($col['component'] === 'deportment') {
+        $finalColsByComp['deportment'][] = $col;
+    } elseif(!empty($col['session_id']) || $col['component'] === 'attendance') {
         $finalColsByComp['attendance'][] = $col;
     } else {
         $compKey = $col['component'];
@@ -99,9 +105,9 @@ function computeStudentGrade($studentCode, $colsByComp, $scores, $weights) {
     if ($base < 0 || $base >= 100) $base = 0;
 
     $compAvg = [];
-    foreach(['written','performance','exam'] as $comp) {
-        $cols = $colsByComp[$comp];
-        $regularCols = array_filter($cols, fn($c) => empty($c['session_id']) && empty($c['is_f2f']));
+    foreach(['written','performance','exam','deportment'] as $comp) {
+        $cols = $colsByComp[$comp] ?? [];
+        $regularCols = array_filter($cols, fn($c) => empty($c['session_id']));
         if(empty($regularCols)){ $compAvg[$comp] = null; }
         else {
             if ($method === 'avg_of_pct') {
@@ -134,52 +140,12 @@ function computeStudentGrade($studentCode, $colsByComp, $scores, $weights) {
         }
     }
 
-    $attCols = [];
-    foreach($colsByComp as $comp => $cols) {
-        foreach($cols as $col) {
-            if(!empty($col['is_f2f']) || !empty($col['session_id']) || $comp === 'attendance' || ($col['component'] ?? '') === 'attendance') {
-                $attCols[] = $col;
-            }
-        }
-    }
-    if(!empty($attCols)) {
-        if ($method === 'avg_of_pct') {
-            $pcts = [];
-            foreach($attCols as $col) {
-                $sc = $scores[$col['id']] ?? null;
-                if($sc !== null && $col['max_score'] > 0){
-                    $pcts[] = ($sc / $col['max_score']) * 100;
-                }
-            }
-            $raw = count($pcts) ? (array_sum($pcts) / count($pcts)) : null;
-        } else {
-            $attTotal = 0; $attMax = 0; $attHas = false;
-            foreach($attCols as $col) {
-                $sc = $scores[$col['id']] ?? null;
-                if($sc !== null){ 
-                    $attTotal += $sc; 
-                    $attMax += $col['max_score']; 
-                    $attHas = true; 
-                }
-            }
-            $raw = ($attHas && $attMax > 0) ? ($attTotal / $attMax) * 100 : null;
-        }
-
-        if ($raw !== null) {
-            $compAvg['attendance'] = round($raw * (100 - $base) / 100 + $base, 2);
-        } else {
-            $compAvg['attendance'] = null;
-        }
-    } else {
-        $compAvg['attendance'] = null;
-    }
-
     $wTotal = 0; $wWeight = 0;
     $compMap = [
         'written'    => 'written_pct',
         'performance'=> 'performance_pct',
         'exam'       => 'exam_pct',
-        'attendance' => 'attendance_pct',
+        'deportment' => 'attendance_pct',
     ];
     foreach($compMap as $comp => $key) {
         if(isset($compAvg[$comp]) && $compAvg[$comp] !== null && isset($weights[$key])) {

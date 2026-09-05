@@ -65,15 +65,38 @@ if($action === 'add_f2f_column'){
     if(!$title){ echo json_encode(['success'=>false,'msg'=>'Title required']); exit; }
     
     $created_at = $date . ' ' . date('H:i:s');
+    $displayTitle = date('M d', strtotime($date));
     
-    $conn->query("INSERT INTO class_record_columns (class_id,component,title,max_score,term,is_f2f,created_at) VALUES ($class_id,'written','$title',1.00,'$term',1,'$created_at')");
+    // Also create in class_attendance_sessions to maintain exact date connection
+    $conn->query("INSERT INTO class_attendance_sessions (class_id, teacher_code, title, attendance_date, term)
+                  VALUES ($class_id, '$tc', '$title', '$date', '$term')");
+    $att_sess_id = $conn->insert_id;
+    
+    $conn->query("INSERT INTO class_record_columns (class_id, component, title, max_score, term, session_id, attendance_session_id, is_f2f, created_at)
+                  VALUES ($class_id, 'attendance', '$displayTitle', 1.00, '$term', $att_sess_id, $att_sess_id, 1, '$created_at')");
     echo json_encode(['success'=>true,'id'=>$conn->insert_id]);
+    exit;
+}
+
+// ── Update Column Max Score ───────────────────────────────────────────────
+if($action === 'update_max_score'){
+    $col_id = intval($_POST['col_id'] ?? 0);
+    $max_score = floatval($_POST['max_score'] ?? 100);
+    if($max_score <= 0) $max_score = 100;
+    $conn->query("UPDATE class_record_columns SET max_score=$max_score WHERE id=$col_id AND class_id=$class_id");
+    echo json_encode(['success'=>true, 'max_score'=>$max_score]);
     exit;
 }
 
 // ── Delete column ─────────────────────────────────────────────────────────
 if($action === 'delete_column'){
     $col_id = intval($_POST['col_id'] ?? 0);
+    $colRow = $conn->query("SELECT attendance_session_id, session_id, is_f2f FROM class_record_columns WHERE id=$col_id AND class_id=$class_id LIMIT 1")->fetch_assoc();
+    $asid = intval($colRow['attendance_session_id'] ?? ($colRow['is_f2f'] ? $colRow['session_id'] : 0));
+    if($asid > 0){
+        $conn->query("DELETE FROM class_attendance_records WHERE session_id=$asid");
+        $conn->query("DELETE FROM class_attendance_sessions WHERE id=$asid AND class_id=$class_id");
+    }
     $conn->query("DELETE FROM class_record_scores WHERE column_id=$col_id");
     $conn->query("DELETE FROM class_record_columns WHERE id=$col_id AND class_id=$class_id");
     echo json_encode(['success'=>true]);
@@ -88,6 +111,17 @@ if($action === 'save_score'){
     // Bug 2 fix: class_id was missing — caused silent INSERT failure since column is NOT NULL
     $conn->query("INSERT INTO class_record_scores (column_id,class_id,student_code,score) VALUES ($col_id,$class_id,'$stu',$score)
                   ON DUPLICATE KEY UPDATE score=$score");
+
+    // If this column is linked to attendance session, sync status to class_attendance_records
+    $colRow = $conn->query("SELECT attendance_session_id, session_id, is_f2f FROM class_record_columns WHERE id=$col_id LIMIT 1")->fetch_assoc();
+    $asid = intval($colRow['attendance_session_id'] ?? ($colRow['is_f2f'] ? $colRow['session_id'] : 0));
+    if($asid > 0 && $score !== 'NULL'){
+        $status = ($score >= 1.00) ? 'present' : (($score >= 0.50) ? 'late' : 'absent');
+        $conn->query("INSERT INTO class_attendance_records (session_id, class_id, student_code, status)
+                      VALUES ($asid, $class_id, '$stu', '$status')
+                      ON DUPLICATE KEY UPDATE status='$status'");
+    }
+
     echo json_encode(['success'=>true]);
     exit;
 }

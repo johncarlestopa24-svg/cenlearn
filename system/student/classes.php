@@ -25,11 +25,11 @@ $my_classes = $conn->query("
     LEFT JOIN class_confirmations cc ON cc.class_id=c.id AND cc.student_code='$uc'
     WHERE cm.user_code='$uc' AND c.teacher_code!='$uc'
       AND (c.is_archived=0 OR c.is_archived IS NULL)
-      AND (cc.status IS NULL OR cc.status = 'accepted')
+      AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)
     GROUP BY c.id
     ORDER BY cm.joined_at DESC
 ");
-$classCount = $my_classes->num_rows;
+$classCount = $my_classes ? $my_classes->num_rows : 0;
 
 // Count pending confirmations for the inbox badge
 $pendingConfirmCount = 0;
@@ -41,30 +41,36 @@ $archived_classes = $conn->query("
     LEFT JOIN users u ON c.teacher_code=u.user_code
     WHERE cm.user_code='$uc' AND c.teacher_code!='$uc'
       AND c.is_archived=1
-    GROUP BY UPPER(TRIM(c.class_name))
+      AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)
+    GROUP BY c.id
     ORDER BY c.archived_at DESC
 ");
-$archivedCount = $archived_classes->num_rows;
+$archivedCount = $archived_classes ? $archived_classes->num_rows : 0;
 
 $available_classes = null;
 if(!$isGraduated){
-    $pc  = $conn->real_escape_string(strtoupper($user['program_code']));
-    $yl  = intval($user['year_level']);
-    $sec = $conn->real_escape_string(strtoupper($user['section']));
+    $pc  = $conn->real_escape_string(strtoupper(trim($user['program_code'] ?? '')));
+    $sec = $conn->real_escape_string(strtoupper(trim($user['section'] ?? '')));
+    
+    $whereConds = [];
+    if($pc !== '') {
+        $whereConds[] = "(c.program_code='' OR c.program_code IS NULL OR UPPER(c.program_code)='$pc')";
+    }
+    $extraProg = !empty($whereConds) ? (" AND " . implode(" AND ", $whereConds)) : "";
+
     $available_classes = $conn->query("
         SELECT c.*, u.first_name AS teacher_first, u.last_name AS teacher_last
         FROM classes c LEFT JOIN users u ON c.teacher_code=u.user_code
         WHERE c.teacher_code!='$uc'
           AND (c.is_archived=0 OR c.is_archived IS NULL)
+          AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)
           AND NOT EXISTS (SELECT 1 FROM class_members cm WHERE cm.class_id=c.id AND cm.user_code='$uc')
-          AND (c.program_code='' OR c.program_code IS NULL OR UPPER(c.program_code)='$pc')
-          AND (c.year_level=0 OR c.year_level IS NULL OR c.year_level=$yl)
-          AND (c.section='' OR c.section IS NULL OR UPPER(c.section)='$sec')
+          $extraProg
         ORDER BY c.created_at DESC
     ");
 }
 
-$initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name'],0,1));
+$initials = strtoupper(substr($user['first_name'] ?? 'S',0,1).substr($user['last_name'] ?? 'T',0,1));
 $availCount = $available_classes ? $available_classes->num_rows : 0;
 
 $palette = ['#1792bb','#10b981','#8b5cf6','#f59e0b','#ef4444','#06b6d4','#ec4899','#0ea5e9'];
@@ -490,6 +496,9 @@ $icons   = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
+      <button type="button" class="btn btn-sm" onclick="$('#joinClassModal').modal('show')" style="border-radius:8px;font-weight:700;font-size:12px;padding:7px 14px;background:#10b981;color:#fff;border:none;box-shadow:0 2px 8px rgba(16,185,129,0.3);display:inline-flex;align-items:center;gap:6px;">
+        <i class="fa fa-plus-circle"></i> Join Class
+      </button>
       <a href="program.php" class="btn-primary-sm" style="background:#fff;color:#1792bb;border:1.5px solid #1792bb;position:relative;width:34px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;" title="My Program">
         <i class="fa fa-university" style="font-size:14px;color:#1792bb;"></i>
       </a>
@@ -504,6 +513,14 @@ $icons   = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil
         <div class="stat-info">
           <span>Enrolled Classes</span>
           <strong style="color:#10b981;"><?php echo $classCount; ?></strong>
+        </div>
+      </div>
+
+      <div class="stat-item">
+        <div class="stat-circle" style="background:#e0f2fe; color:#0284c7;"><i class="fa fa-compass"></i></div>
+        <div class="stat-info">
+          <span>Available to Join</span>
+          <strong style="color:#0284c7;"><?php echo $availCount; ?></strong>
         </div>
       </div>
 
@@ -536,6 +553,10 @@ $icons   = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil
         <button class="tab-btn-modern active" onclick="switchTab('tab-active',this)">
           My Classes
           <span class="badge-num"><?php echo $classCount; ?></span>
+        </button>
+        <button class="tab-btn-modern" onclick="switchTab('tab-available',this)">
+          Available to Join
+          <span class="badge-num"><?php echo $availCount; ?></span>
         </button>
         <button class="tab-btn-modern" onclick="switchTab('tab-history',this)">
           History
@@ -639,6 +660,55 @@ $icons   = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil
 
       <?php endif; ?>
     </div><!-- /tab-active -->
+
+    <!-- ── AVAILABLE TO JOIN TAB ── -->
+    <div class="tab-panel" id="tab-available">
+      <?php if($availCount > 0): ?>
+      <div class="sec-hdr" style="margin-bottom:16px;">
+        <h4 style="font-size:15px; font-weight:700; color:#0f172a; margin:0; display:flex; align-items:center; gap:8px;">
+          <i class="fa fa-compass" style="color:#0284c7;"></i> Available Classes
+        </h4>
+        <span style="font-size:13px; color:#64748b; font-weight:500;"><?php echo $availCount; ?> class<?php echo $availCount!==1?'es':''; ?> you can join</span>
+      </div>
+
+      <div id="availableGrid">
+        <?php
+        while($c = $available_classes->fetch_assoc()):
+          $teacherName2 = trim(($c['teacher_first']??'').' '.($c['teacher_last']??''));
+        ?>
+        <div class="class-row-card" data-name="<?php echo strtolower(htmlspecialchars($c['class_name'].' '.$c['subject'].' '.$teacherName2)); ?>">
+          <div class="crc-left">
+            <div class="crc-info">
+              <h5 class="crc-title"><?php echo htmlspecialchars($c['class_name']); ?></h5>
+              <div class="crc-meta">
+                <span class="code-badge-green"><i class="fa fa-book" style="margin-right:3px;font-size:9px;"></i> Code: <?php echo htmlspecialchars($c['class_code']); ?></span>
+                <span class="dot">&bull;</span>
+                <span><i class="fa fa-user" style="color:#3b82f6; margin-right:4px;"></i><?php echo htmlspecialchars($teacherName2 ?: 'Instructor'); ?></span>
+                <span class="dot">&bull;</span>
+                <span><?php echo htmlspecialchars($c['program_code'] ?: 'All Programs'); ?></span>
+                <?php if(!empty($c['year_level'])): ?><span class="dot">&bull;</span><span>Year <?php echo $c['year_level']; ?></span><?php endif; ?>
+                <?php if(!empty($c['section'])): ?><span class="dot">&bull;</span><span>Sec <?php echo htmlspecialchars($c['section']); ?></span><?php endif; ?>
+              </div>
+            </div>
+          </div>
+
+          <div class="crc-actions">
+            <button type="button" class="crc-btn" onclick="quickJoin(<?php echo $c['id']; ?>, this)" style="border:1.5px solid #10b981; background:#f0fdf4; color:#059669; font-weight:700;">
+              <i class="fa fa-sign-in"></i> Join Class
+            </button>
+          </div>
+        </div>
+        <?php endwhile; ?>
+      </div>
+      <?php else: ?>
+      <div class="empty-state">
+        <div class="empty-icon" style="background:#f0fdf4;border-color:rgba(16,185,129,0.3);"><i class="fa fa-check-circle" style="color:#10b981;"></i></div>
+        <h5>All caught up!</h5>
+        <p>You have joined all available classes for your program. Click "+ Join Class" above to enter a class code.</p>
+      </div>
+      <?php endif; ?>
+    </div><!-- /tab-available -->
+
     <div class="tab-panel" id="tab-history">
 
       <?php if($archivedCount > 0): ?>
@@ -699,6 +769,35 @@ $icons   = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil
   <footer class="mc-footer">CenLearn &mdash; Powered by TechnoPal</footer>
 </div>
 
+<!-- ── Join Class Modal ── -->
+<div class="modal fade" id="joinClassModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog" role="document" style="max-width:420px;margin:60px auto;">
+    <div class="modal-content" style="border-radius:14px;border:1px solid #e2e8f0;box-shadow:0 20px 45px -12px rgba(0,0,0,0.25);overflow:hidden;">
+      <div class="modal-header" style="padding:14px 18px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;background:#fff;">
+        <h4 class="modal-title" style="font-size:14.5px;font-weight:800;color:#0f172a;margin:0;display:flex;align-items:center;gap:7px;">
+          <i class="fa fa-plus-circle" style="color:#10b981;"></i> Join Class by Code
+        </h4>
+        <button type="button" class="close" data-dismiss="modal" style="font-size:22px;color:#94a3b8;border:none;background:none;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:18px;">
+        <label style="font-size:12px;font-weight:700;color:#334155;margin-bottom:6px;display:block;">
+          Enter Class / Subject Code:
+        </label>
+        <input type="text" id="joinClassCodeInput" class="form-control" placeholder="e.g. CAP09-A" style="height:40px;font-size:14px;font-weight:700;letter-spacing:1px;border-radius:8px;border:1.5px solid #cbd5e1;padding:8px 12px;text-transform:uppercase;">
+        <p style="font-size:11.5px;color:#64748b;margin-top:8px;margin-bottom:0;">
+          <i class="fa fa-info-circle" style="color:#0284c7;"></i> Ask your teacher for the class code, then enter it above to join.
+        </p>
+      </div>
+      <div class="modal-footer" style="padding:10px 18px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px;">
+        <button type="button" class="btn btn-default" data-dismiss="modal" style="border-radius:7px;font-weight:600;font-size:12px;padding:6px 14px;color:#475569;border:1px solid #cbd5e1;background:#fff;">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btnSubmitJoinCode" onclick="joinWithCode()" style="border-radius:7px;font-weight:700;font-size:12px;padding:6px 18px;background:#10b981;border:none;box-shadow:0 2px 8px rgba(16,185,129,0.3);">
+          <i class="fa fa-sign-in"></i> Join Class
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="../bower_components/jquery/dist/jquery.min.js"></script>
 <script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
 <script>
@@ -711,11 +810,12 @@ function switchTab(tabId, btn){
 }
 
 function filterCards(){
-  var q = document.getElementById('classSearch').value.toLowerCase();
-  var cards = document.querySelectorAll('#classesGrid .class-row-card, #availableGrid .class-row-card');
+  var q = (document.getElementById('classSearch').value || '').toLowerCase();
+  var cards = document.querySelectorAll('#classesGrid .class-row-card, #availableGrid .class-row-card, #historyGrid .class-row-card');
   var visible = 0;
   cards.forEach(function(c){
-    var match = c.dataset.name.includes(q);
+    var name = (c.dataset.name || '').toLowerCase();
+    var match = name.includes(q);
     c.style.display = match ? 'flex' : 'none';
     if(match) visible++;
   });
@@ -724,10 +824,7 @@ function filterCards(){
 }
 
 function filterHistory(){
-  var q = document.getElementById('classSearch').value.toLowerCase();
-  document.querySelectorAll('#historyGrid .class-row-card').forEach(function(c){
-    c.style.display = c.dataset.name.includes(q) ? 'flex' : 'none';
-  });
+  filterCards();
 }
 
 function quickJoin(classId, btn){
@@ -744,6 +841,30 @@ function quickJoin(classId, btn){
     }
   }, 'json');
 }
+
+function joinWithCode(){
+  var code = ($('#joinClassCodeInput').val() || '').trim();
+  if(!code){
+    alert('Please enter a class code.');
+    $('#joinClassCodeInput').focus();
+    return;
+  }
+  var btn = $('#btnSubmitJoinCode');
+  btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Joining…');
+  $.post('../shared/class_save.php', { action: 'join', class_code: code }, function(res){
+    if(res.success){
+      alert("Successfully joined '" + (res.class_name || code) + "'!");
+      location.reload();
+    } else {
+      btn.prop('disabled', false).html('<i class="fa fa-sign-in"></i> Join Class');
+      alert(res.msg || 'Could not join class.');
+    }
+  }, 'json').fail(function(){
+    btn.prop('disabled', false).html('<i class="fa fa-sign-in"></i> Join Class');
+    alert('Network error. Please try again.');
+  });
+}
+
 function leaveClass(classId, className){
   if(confirm("Are you sure you want to leave '" + className + "'? You will no longer have access to this class.")){
     $.post('../shared/class_save.php', { action: 'leave_class', class_id: classId }, function(res){

@@ -41,6 +41,7 @@ $confirmations = $conn->query("
     LEFT JOIN class_confirmations cc ON cc.class_id=c.id AND cc.student_code='$uc'
     WHERE cm.user_code='$uc' AND c.teacher_code!='$uc'
       AND (c.is_archived=0 OR c.is_archived IS NULL)
+      AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)
     ORDER BY FIELD(COALESCE(cc.status,'pending'),'pending','accepted','declined'), cm.joined_at DESC
 ");
 $rows = [];

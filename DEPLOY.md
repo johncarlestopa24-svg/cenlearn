@@ -19,17 +19,37 @@ Your server structure should look like:
 public_html/
   index.php
   proxy.php
-  teacher_dashboard.php
-  student_dashboard.php
-  class_view.php
-  ... (all other .php files)
+  complete_profile.php
+  save_profile.php
+  set_password.php
+  register.php
+  logout.php
   includes/
     conn.php
     session.php
-    db_config.php   ← CREATE THIS MANUALLY (see Step 2)
+    schema_sync.php
+    db_config.php   ← OPTIONAL (fallback in conn.php is already configured)
+  student/
+    dashboard.php
+    classes.php
+    ...
+  teacher/
+    dashboard.php
+    classes.php
+    ...
+  superadmin/
+    dashboard.php
+    ...
+  shared/
+    class_view.php
+    live_class.php
+    ...
   dist/
   bower_components/
+  plugins/
   uploads/          ← must be writable (chmod 755)
+    modules/
+    submissions/
 ```
 
 ---

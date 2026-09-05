@@ -244,7 +244,6 @@ while($r = $classesQ->fetch_assoc()) $classes[] = $r;
       <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
       <li><a href="classes.php"><i class="fa fa-book"></i> Classes</a></li>
       <li class="active"><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="syllabus.php"><i class="fa fa-file-text-o"></i> Syllabus</a></li>
       <li><a href="logbook.php"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
       <li><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
     </ul>
@@ -1525,8 +1524,8 @@ function submitPublishQuiz() {
     instructions: $('#quizInstructions').val().trim(),
     time_limit: $('#quizTimeLimit').val() || 0,
     due_date: dueDate || '',
-    shuffle_questions: $('#shuffleQ').is(':checked') ? 1 : 0,
-    shuffle_answers: $('#shuffleA').is(':checked') ? 1 : 0,
+    shuffle_questions: ($('#shuffleQ').length ? ($('#shuffleQ').is(':checked') ? 1 : 0) : 1),
+    shuffle_answers: ($('#shuffleA').length ? ($('#shuffleA').is(':checked') ? 1 : 0) : 1),
     term: $('#quizTerm').val(),
     questions: JSON.stringify(formattedQuestions)
   };

@@ -868,6 +868,33 @@ $iconInfo = $fileIcons[$ext] ?? [
             background: rgba(255,255,255,0.03);
         }
 
+        /* Responsive Mobile Breakpoint */
+        @media (max-width: 768px) {
+            .hdr {
+                padding: 8px 12px;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .hdr-toolbar {
+                order: 3;
+                width: 100%;
+                justify-content: center;
+            }
+            .doc-scroll-area {
+                padding: 12px 8px;
+            }
+            .docx-wrapper-container .docx-wrapper > section,
+            .mammoth-doc-card {
+                padding: 24px 16px !important;
+                border-radius: 8px;
+                font-size: 13.5px;
+            }
+            .pptx-slide-card {
+                padding: 20px 16px;
+                min-height: auto;
+            }
+        }
+
         /* Print styles */
         @media print {
             body { background: #fff !important; color: #000 !important; }

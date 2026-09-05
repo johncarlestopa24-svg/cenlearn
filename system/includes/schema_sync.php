@@ -7,7 +7,9 @@
  * keeping normal page reloads and API responses blazing fast (0ms DDL overhead).
  */
 
-define('CENLEARN_SCHEMA_VERSION', 12);
+if (!defined('CENLEARN_SCHEMA_VERSION')) {
+    define('CENLEARN_SCHEMA_VERSION', 14);
+}
 
 if (!function_exists('cenlearn_sync_schema')) {
     function cenlearn_sync_schema($conn, $force = false) {
@@ -75,7 +77,7 @@ if (!function_exists('cenlearn_sync_schema')) {
                 // Quizzes
                 "CREATE TABLE IF NOT EXISTS `quizzes` (
                     `id` int(11) NOT NULL AUTO_INCREMENT,
-                    `class_id` int(11) NOT NULL,
+                    `class_id` int(11) NOT NULL DEFAULT 0,
                     `teacher_code` varchar(50) NOT NULL,
                     `title` varchar(200) NOT NULL,
                     `instructions` text DEFAULT NULL,
@@ -94,13 +96,12 @@ if (!function_exists('cenlearn_sync_schema')) {
                 "CREATE TABLE IF NOT EXISTS `quiz_questions` (
                     `id` int(11) NOT NULL AUTO_INCREMENT,
                     `quiz_id` int(11) NOT NULL,
-                    `question` text NOT NULL,
-                    `question_type` varchar(20) NOT NULL DEFAULT 'multiple_choice',
-                    `points` int(11) NOT NULL DEFAULT 1,
+                    `topic` varchar(255) DEFAULT NULL,
+                    `question_text` text NOT NULL,
+                    `question_type` varchar(30) NOT NULL DEFAULT 'multiple_choice',
                     `options` text DEFAULT NULL,
                     `correct_answer` text DEFAULT NULL,
-                    `topic` varchar(255) DEFAULT NULL,
-                    `sort_order` int(11) DEFAULT 0,
+                    `points` int(11) NOT NULL DEFAULT 1,
                     PRIMARY KEY (`id`),
                     KEY `quiz_id` (`quiz_id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
@@ -115,6 +116,7 @@ if (!function_exists('cenlearn_sync_schema')) {
                     `total_points` int(11) DEFAULT NULL,
                     `tab_switches` int(11) DEFAULT 0,
                     `fullscreen_exits` int(11) DEFAULT 0,
+                    `essay_scores` text DEFAULT NULL,
                     `submitted_at` datetime DEFAULT NULL,
                     PRIMARY KEY (`id`),
                     UNIQUE KEY `quiz_student` (`quiz_id`,`student_code`)
@@ -321,44 +323,35 @@ if (!function_exists('cenlearn_sync_schema')) {
                     UNIQUE KEY `class_repo_term` (`class_id`,`repo_id`,`term`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
-                // Class Syllabus
-                "CREATE TABLE IF NOT EXISTS `class_syllabus` (
-                    `id` int(11) NOT NULL AUTO_INCREMENT,
-                    `class_id` int(11) NOT NULL,
-                    `teacher_code` varchar(50) NOT NULL,
-                    `course_title` varchar(200) DEFAULT NULL,
-                    `course_code` varchar(50) DEFAULT NULL,
-                    `course_description` text DEFAULT NULL,
-                    `credit_units` varchar(20) DEFAULT NULL,
-                    `prerequisites` varchar(200) DEFAULT NULL,
-                    `schedule` varchar(100) DEFAULT NULL,
-                    `classroom` varchar(50) DEFAULT NULL,
-                    `instructor_info` text DEFAULT NULL,
-                    `consultation_hours` varchar(100) DEFAULT NULL,
-                    `learning_outcomes` text DEFAULT NULL,
-                    `grading_system` text DEFAULT NULL,
-                    `course_policies` text DEFAULT NULL,
-                    `references_list` text DEFAULT NULL,
-                    `weeks_json` longtext DEFAULT NULL,
-                    `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    PRIMARY KEY (`id`),
-                    UNIQUE KEY `class_id` (`class_id`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
-
                 // Material Analysis
                 "CREATE TABLE IF NOT EXISTS `class_material_analysis` (
                     `id` int(11) NOT NULL AUTO_INCREMENT,
-                    `module_id` int(11) NOT NULL,
                     `class_id` int(11) NOT NULL,
-                    `word_count` int(11) DEFAULT 0,
-                    `reading_time_min` int(11) DEFAULT 0,
-                    `key_topics` text DEFAULT NULL,
-                    `difficulty_level` varchar(20) DEFAULT 'intermediate',
-                    `ai_summary` text DEFAULT NULL,
-                    `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `module_id` int(11) NOT NULL,
+                    `title` varchar(200) NOT NULL,
+                    `filename` varchar(255) NOT NULL,
+                    `topics_json` text DEFAULT NULL,
+                    `keywords_json` text DEFAULT NULL,
+                    `definitions_json` text DEFAULT NULL,
+                    `objectives_json` text DEFAULT NULL,
+                    `formulas_json` text DEFAULT NULL,
+                    `dates_json` text DEFAULT NULL,
+                    `people_json` text DEFAULT NULL,
+                    `terms_json` text DEFAULT NULL,
+                    `extracted_text` mediumtext DEFAULT NULL,
+                    `analyzed_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (`id`),
-                    KEY `module_id` (`module_id`)
+                    UNIQUE KEY `class_module_unique` (`class_id`,`module_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+                // Login Attempts (Security / Rate Limiter)
+                "CREATE TABLE IF NOT EXISTS `login_attempts` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `identifier` varchar(150) NOT NULL,
+                    `attempted_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    KEY `identifier` (`identifier`),
+                    KEY `attempted_at` (`attempted_at`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
                 // Topic Performance
@@ -409,23 +402,59 @@ if (!function_exists('cenlearn_sync_schema')) {
                     `id` int(11) NOT NULL AUTO_INCREMENT,
                     `class_id` int(11) NOT NULL,
                     `teacher_code` varchar(50) NOT NULL,
-                    `session_date` date NOT NULL,
-                    `session_time` time DEFAULT NULL,
+                    `title` varchar(150) NOT NULL DEFAULT '',
+                    `attendance_date` date NOT NULL,
                     `term` varchar(20) NOT NULL DEFAULT 'midterm',
-                    `remarks` varchar(255) DEFAULT NULL,
+                    `remarks` text DEFAULT NULL,
                     `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (`id`),
-                    KEY `class_id` (`class_id`)
+                    KEY `class_id` (`class_id`),
+                    KEY `idx_class_date` (`class_id`,`attendance_date`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
                 "CREATE TABLE IF NOT EXISTS `class_attendance_records` (
                     `id` int(11) NOT NULL AUTO_INCREMENT,
                     `session_id` int(11) NOT NULL,
+                    `class_id` int(11) NOT NULL DEFAULT 0,
                     `student_code` varchar(50) NOT NULL,
                     `status` enum('present','late','absent','excused') NOT NULL DEFAULT 'present',
                     `remarks` varchar(255) DEFAULT NULL,
+                    `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     PRIMARY KEY (`id`),
-                    UNIQUE KEY `session_student_rec` (`session_id`,`student_code`)
+                    UNIQUE KEY `session_student_rec` (`session_id`,`student_code`),
+                    KEY `idx_session` (`session_id`),
+                    KEY `idx_student` (`student_code`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+                "CREATE TABLE IF NOT EXISTS `class_record_columns` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `class_id` int(11) NOT NULL,
+                    `term` varchar(20) NOT NULL DEFAULT 'midterm',
+                    `component` varchar(50) NOT NULL DEFAULT 'performance',
+                    `title` varchar(100) NOT NULL,
+                    `max_score` decimal(6,2) NOT NULL DEFAULT 100.00,
+                    `sort_order` int(11) DEFAULT 0,
+                    `session_id` int(11) DEFAULT NULL,
+                    `quiz_id` int(11) DEFAULT NULL,
+                    `assignment_id` int(11) DEFAULT NULL,
+                    `is_f2f` tinyint(1) NOT NULL DEFAULT 0,
+                    `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    KEY `class_id` (`class_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+                "CREATE TABLE IF NOT EXISTS `class_record_scores` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `column_id` int(11) NOT NULL,
+                    `class_id` int(11) NOT NULL,
+                    `student_code` varchar(50) NOT NULL,
+                    `score` decimal(6,2) DEFAULT NULL,
+                    `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `col_student` (`column_id`,`student_code`),
+                    KEY `column_id` (`column_id`),
+                    KEY `class_id` (`class_id`),
+                    KEY `student_code` (`student_code`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
             ];
 
@@ -459,36 +488,84 @@ if (!function_exists('cenlearn_sync_schema')) {
             ]);
 
             safeAddColumns($conn, 'quizzes', [
-                'start_date'        => 'datetime DEFAULT NULL',
-                'shuffle_questions' => 'tinyint(1) DEFAULT 0',
-                'shuffle_answers'   => 'tinyint(1) DEFAULT 0',
-                'term'              => "varchar(20) NOT NULL DEFAULT 'midterm'"
+                'start_date'                 => 'datetime DEFAULT NULL',
+                'shuffle_questions'          => 'tinyint(1) DEFAULT 0',
+                'shuffle_answers'            => 'tinyint(1) DEFAULT 0',
+                'shuffle_matching'           => 'tinyint(1) DEFAULT 0',
+                'shuffle_tf'                 => 'tinyint(1) DEFAULT 0',
+                'randomize_student'          => 'tinyint(1) DEFAULT 0',
+                'module_id'                  => 'int(11) DEFAULT NULL',
+                'module_version'             => "varchar(20) DEFAULT '1.0'",
+                'grading_mode'               => "varchar(50) DEFAULT 'exact'",
+                'multi_select_scoring_mode'  => "varchar(50) DEFAULT 'partial_credit'",
+                'term'                       => "varchar(20) NOT NULL DEFAULT 'midterm'"
             ]);
 
             safeAddColumns($conn, 'quiz_questions', [
-                'topic' => 'varchar(255) DEFAULT NULL'
+                'topic'               => 'varchar(255) DEFAULT NULL',
+                'question_uid'        => 'varchar(50) DEFAULT NULL',
+                'options_data'        => 'longtext DEFAULT NULL',
+                'correct_option_ids'  => 'text DEFAULT NULL',
+                'acceptable_answers'  => 'text DEFAULT NULL',
+                'matching_pairs'      => 'text DEFAULT NULL',
+                'rubric_json'         => 'text DEFAULT NULL',
+                'required_concepts'   => 'text DEFAULT NULL',
+                'module_id'           => 'int(11) DEFAULT NULL',
+                'module_version'      => "varchar(20) DEFAULT '1.0'",
+                'difficulty'          => "varchar(20) DEFAULT 'medium'",
+                'explanation'         => 'text DEFAULT NULL',
+                'case_sensitive'      => 'tinyint(1) DEFAULT 0',
+                'spelling_tolerance'  => 'int(11) DEFAULT 1',
+                'order_matters'       => 'tinyint(1) DEFAULT 0',
+                'truth_value'         => 'tinyint(1) DEFAULT NULL',
+                'incorrect_phrase'    => 'varchar(255) DEFAULT NULL',
+                'correct_replacement' => 'varchar(255) DEFAULT NULL'
             ]);
 
             safeAddColumns($conn, 'quiz_submissions', [
-                'tab_switches'     => 'int(11) DEFAULT 0',
-                'fullscreen_exits' => 'int(11) DEFAULT 0'
+                'tab_switches'         => 'int(11) DEFAULT 0',
+                'fullscreen_exits'     => 'int(11) DEFAULT 0',
+                'essay_feedback'       => 'text DEFAULT NULL',
+                'rubric_scores'        => 'text DEFAULT NULL',
+                'ai_suggested_scores'  => 'text DEFAULT NULL',
+                'teacher_overrides'    => 'text DEFAULT NULL',
+                'teacher_feedback'     => 'text DEFAULT NULL',
+                'final_score'          => 'decimal(6,2) DEFAULT NULL',
+                'module_version_used'  => "varchar(20) DEFAULT NULL"
             ]);
 
             safeAddColumns($conn, 'quiz_attempts', [
                 'last_heartbeat'       => 'datetime NOT NULL DEFAULT CURRENT_TIMESTAMP',
-                'total_paused_seconds' => 'int(11) NOT NULL DEFAULT 0'
+                'total_paused_seconds' => 'int(11) NOT NULL DEFAULT 0',
+                'shuffle_seed'         => 'bigint(20) DEFAULT NULL',
+                'question_order'       => 'text DEFAULT NULL',
+                'options_order'        => 'text DEFAULT NULL'
             ]);
 
             safeAddColumns($conn, 'live_sessions', [
                 'term' => "varchar(20) NOT NULL DEFAULT 'midterm'"
             ]);
 
+            safeAddColumns($conn, 'class_attendance_sessions', [
+                'title'           => "varchar(150) NOT NULL DEFAULT ''",
+                'attendance_date' => "date NOT NULL DEFAULT '2026-01-01'",
+                'term'            => "varchar(20) NOT NULL DEFAULT 'midterm'",
+                'remarks'         => 'text DEFAULT NULL'
+            ]);
+
+            safeAddColumns($conn, 'class_attendance_records', [
+                'class_id'   => 'int(11) NOT NULL DEFAULT 0',
+                'updated_at' => 'datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+            ]);
+
             safeAddColumns($conn, 'class_record_columns', [
-                'session_id'    => 'int(11) DEFAULT NULL',
-                'term'          => "varchar(20) NOT NULL DEFAULT 'midterm'",
-                'quiz_id'       => 'int(11) DEFAULT NULL',
-                'assignment_id' => 'int(11) DEFAULT NULL',
-                'is_f2f'        => 'tinyint(1) NOT NULL DEFAULT 0'
+                'component'             => "varchar(50) NOT NULL DEFAULT 'performance'",
+                'session_id'            => 'int(11) DEFAULT NULL',
+                'attendance_session_id' => 'int(11) DEFAULT NULL',
+                'term'                  => "varchar(20) NOT NULL DEFAULT 'midterm'",
+                'quiz_id'               => 'int(11) DEFAULT NULL',
+                'assignment_id'         => 'int(11) DEFAULT NULL',
+                'is_f2f'                => 'tinyint(1) NOT NULL DEFAULT 0'
             ]);
 
             safeAddColumns($conn, 'class_record_weights', [
@@ -503,28 +580,11 @@ if (!function_exists('cenlearn_sync_schema')) {
                 'term' => "varchar(20) NOT NULL DEFAULT 'midterm'"
             ]);
 
-            // 4. Ensure Stored Procedure sp_resequence_all_ids exists
+            // 4. Stored Procedure sp_resequence_all_ids (Safe Stub)
             $conn->query("DROP PROCEDURE IF EXISTS `sp_resequence_all_ids`");
             $conn->query("CREATE PROCEDURE `sp_resequence_all_ids`()
             BEGIN
-                SET FOREIGN_KEY_CHECKS = 0;
-                SET @count = 0; UPDATE `users` SET `id` = (@count := @count + 1); ALTER TABLE `users` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `classes` SET `id` = (@count := @count + 1); ALTER TABLE `classes` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `class_members` SET `id` = (@count := @count + 1); ALTER TABLE `class_members` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `class_modules` SET `id` = (@count := @count + 1); ALTER TABLE `class_modules` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `class_syllabus` SET `id` = (@count := @count + 1); ALTER TABLE `class_syllabus` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `class_confirmations` SET `id` = (@count := @count + 1); ALTER TABLE `class_confirmations` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `assignments` SET `id` = (@count := @count + 1); ALTER TABLE `assignments` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `assignment_submissions` SET `id` = (@count := @count + 1); ALTER TABLE `assignment_submissions` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `quizzes` SET `id` = (@count := @count + 1); ALTER TABLE `quizzes` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `quiz_questions` SET `id` = (@count := @count + 1); ALTER TABLE `quiz_questions` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `quiz_submissions` SET `id` = (@count := @count + 1); ALTER TABLE `quiz_submissions` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `live_sessions` SET `id` = (@count := @count + 1); ALTER TABLE `live_sessions` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `class_record_columns` SET `id` = (@count := @count + 1); ALTER TABLE `class_record_columns` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `class_record_scores` SET `id` = (@count := @count + 1); ALTER TABLE `class_record_scores` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `class_attendance_sessions` SET `id` = (@count := @count + 1); ALTER TABLE `class_attendance_sessions` AUTO_INCREMENT = 1;
-                SET @count = 0; UPDATE `class_attendance_records` SET `id` = (@count := @count + 1); ALTER TABLE `class_attendance_records` AUTO_INCREMENT = 1;
-                SET FOREIGN_KEY_CHECKS = 1;
+                SELECT 'Resequence aborted: Primary keys cannot be safely renumbered without cascading foreign keys.' AS `status`;
             END");
 
             // 5. Update Schema Version in Database and Session

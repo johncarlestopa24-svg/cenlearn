@@ -224,15 +224,21 @@ $initials = strtoupper(substr($user['first_name'] ?? 'T', 0, 1) . substr($user['
         </div>
         <select id="programSelect" class="fc-sm" onchange="loadSubjects()">
           <option value="">— All Programs —</option>
-          <option value="IS">IS — Information Systems</option>
-          <option value="CRIM">CRIM — Criminology</option>
-          <option value="ARTS">ARTS — Arts (BSOA, AB)</option>
-          <option value="EDUCATION">EDUCATION — Education</option>
+          <?php if(!empty($BCC_PROGRAMS)): ?>
+            <?php foreach($BCC_PROGRAMS as $p): ?>
+              <option value="<?php echo htmlspecialchars($p['code']); ?>"><?php echo htmlspecialchars($p['code'].' — '.$p['desc']); ?></option>
+            <?php endforeach; ?>
+          <?php else: ?>
+            <option value="IS">IS — Information Systems</option>
+            <option value="CRIM">CRIM — Criminology</option>
+            <option value="ARTS">ARTS — Arts (BSOA, AB)</option>
+            <option value="EDUCATION">EDUCATION — Education</option>
+          <?php endif; ?>
         </select>
         <select id="statusSelect" class="fc-sm" onchange="loadSubjects()">
-          <option value="all">All Semesters (Active &amp; Past)</option>
+          <option value="archived">Past / Archived Classes</option>
+          <option value="all">All (Active &amp; Past)</option>
           <option value="active">Active Classes Only</option>
-          <option value="archived">Past / Archived Classes Only</option>
         </select>
       </div>
     </div>
@@ -339,6 +345,7 @@ $initials = strtoupper(substr($user['first_name'] ?? 'T', 0, 1) . substr($user['
 <script>
 var rawSubjects = [];
 var myActiveClasses = [];
+var currentSubjectQuizzes = {};
 var currentPreviewQuizId = 0;
 
 function openSidebar(){ document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebarOverlay').classList.add('active'); }
@@ -361,7 +368,8 @@ function loadMyClasses(){
         sel.append('<option value="">— Select destination class —</option>');
         myActiveClasses.forEach(function(c){
           var sec = c.section ? ' (Sec ' + c.section + ')' : '';
-          sel.append('<option value="'+c.id+'">'+c.class_name + sec+'</option>');
+          var prog = c.program_code ? ' [' + c.program_code + ']' : '';
+          sel.append('<option value="'+c.id+'">'+escapeHtml(c.class_name + sec + prog)+'</option>');
         });
       }
     }
@@ -380,17 +388,19 @@ function loadSubjects(){
 
   $.get('../shared/repository_handler.php', params, function(r){
     if(!r.success){
-      $('#subjectsContainer').html('<div class="an-empty"><p style="color:#ef4444;">'+r.msg+'</p></div>');
+      $('#subjectsContainer').html('<div class="an-empty"><p style="color:#ef4444;">'+escapeHtml(r.msg||'Failed to load subjects')+'</p></div>');
       return;
     }
 
     rawSubjects = r.subjects || [];
 
     // Populate stats
-    $('#statTotalSubs').text(r.stats.total_subjects);
-    $('#statTotalQuizzes').text(r.stats.total_quizzes);
-    $('#statTotalFaculty').text(r.stats.total_faculty);
-    $('#statArchived').text(r.stats.archived_count);
+    if(r.stats){
+      $('#statTotalSubs').text(r.stats.total_subjects ?? 0);
+      $('#statTotalQuizzes').text(r.stats.total_quizzes ?? 0);
+      $('#statTotalFaculty').text(r.stats.total_faculty ?? 0);
+      $('#statArchived').text(r.stats.archived_count ?? 0);
+    }
 
     renderSubjects(rawSubjects);
   }, 'json');
@@ -414,7 +424,11 @@ function filterSubjects(){
 
 function renderSubjects(list){
   if(!list || list.length === 0){
-    $('#subjectsContainer').html('<div class="an-empty" style="background:#fff;border-radius:9px;border:1px solid #e2e8f0;"><i class="fa fa-inbox"></i><p>No subjects found matching your filter criteria.</p></div>');
+    var isArchFilter = ($('#statusSelect').val() === 'archived');
+    var emptyMsg = isArchFilter
+      ? '<p style="font-size:12px;margin:0 0 10px;color:#64748b;">No past or archived subjects found.</p><button type="button" class="btn-repo btn-repo-primary" onclick="$(\'#statusSelect\').val(\'all\'); loadSubjects();" style="display:inline-flex;padding:5px 14px;height:auto;font-size:11px;border-radius:6px;"><i class="fa fa-th-list"></i> View All Subjects (Active &amp; Past)</button>'
+      : '<p style="font-size:12px;margin:0;color:#64748b;">No subjects found matching your filter criteria.</p>';
+    $('#subjectsContainer').html('<div class="an-empty" style="background:#fff;border-radius:9px;border:1px solid #e2e8f0;padding:32px 16px;"><i class="fa fa-inbox"></i>' + emptyMsg + '</div>');
     return;
   }
 
@@ -425,9 +439,9 @@ function renderSubjects(list){
       ? '<span class="sc-badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;">Past</span>'
       : '<span class="sc-badge" style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;">Active</span>';
 
-    var progBadge = s.program_code ? '<span class="sc-badge" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;margin-left:3px;">'+s.program_code+'</span>' : '';
-    var secTag = s.section ? ' &bull; Sec ' + s.section : '';
-    var yrTag = s.year_level ? 'Yr ' + s.year_level : '';
+    var progBadge = s.program_code ? '<span class="sc-badge" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;margin-left:3px;">'+escapeHtml(s.program_code)+'</span>' : '';
+    var secTag = s.section ? ' &bull; Sec ' + escapeHtml(s.section) : '';
+    var yrTag = s.year_level ? 'Yr ' + escapeHtml(s.year_level) : '';
 
     var tFirst = s.teacher_first_name || 'Faculty';
     var tLast  = s.teacher_last_name || '';
@@ -437,24 +451,24 @@ function renderSubjects(list){
     html += '<div class="subj-card">' +
             '  <div class="sc-header">' +
             '    <div>' +
-            '      <h4 class="sc-title">'+(s.class_name || s.subject)+'</h4>' +
-            '      <div class="sc-code">'+(s.class_code ? s.class_code : (s.subject || '')) + (yrTag ? ' &bull; ' + yrTag : '') + secTag + '</div>' +
+            '      <h4 class="sc-title">'+escapeHtml(s.class_name || s.subject)+'</h4>' +
+            '      <div class="sc-code">'+escapeHtml(s.class_code ? s.class_code : (s.subject || '')) + (yrTag ? ' &bull; ' + yrTag : '') + secTag + '</div>' +
             '    </div>' +
             '    <div>' + statusBadge + progBadge + '</div>' +
             '  </div>' +
             '  <div class="sc-instructor">' +
-            '    <div class="sc-inst-av">'+tInit+'</div>' +
-            '    <div class="sc-inst-name"><i class="fa fa-user" style="color:#94a3b8;font-size:9px;margin-right:2px;"></i> '+tFirst+' '+tLast + isOwn + '</div>' +
+            '    <div class="sc-inst-av">'+escapeHtml(tInit)+'</div>' +
+            '    <div class="sc-inst-name"><i class="fa fa-user" style="color:#94a3b8;font-size:9px;margin-right:2px;"></i> '+escapeHtml(tFirst+' '+tLast) + isOwn + '</div>' +
             '  </div>' +
             '  <div class="sc-counts">' +
-            '    <div><div class="sc-cnt-num" style="color:#8b5cf6;">'+s.quiz_count+'</div><div class="sc-cnt-lbl">Quizzes</div></div>' +
-            '    <div><div class="sc-cnt-num" style="color:#3b82f6;">'+s.module_count+'</div><div class="sc-cnt-lbl">Modules</div></div>' +
-            '    <div><div class="sc-cnt-num" style="color:#f59e0b;">'+s.assign_count+'</div><div class="sc-cnt-lbl">Tasks</div></div>' +
-            '    <div><div class="sc-cnt-num" style="color:#10b981;">'+s.student_count+'</div><div class="sc-cnt-lbl">Students</div></div>' +
+            '    <div><div class="sc-cnt-num" style="color:#8b5cf6;">'+parseInt(s.quiz_count||0)+'</div><div class="sc-cnt-lbl">Quizzes</div></div>' +
+            '    <div><div class="sc-cnt-num" style="color:#3b82f6;">'+parseInt(s.module_count||0)+'</div><div class="sc-cnt-lbl">Modules</div></div>' +
+            '    <div><div class="sc-cnt-num" style="color:#f59e0b;">'+parseInt(s.assign_count||0)+'</div><div class="sc-cnt-lbl">Tasks</div></div>' +
+            '    <div><div class="sc-cnt-num" style="color:#10b981;">'+parseInt(s.student_count||0)+'</div><div class="sc-cnt-lbl">Students</div></div>' +
             '  </div>' +
             '  <div class="sc-actions">' +
             '    <button class="btn-repo btn-repo-secondary" onclick="openSubjectDetails('+s.id+')"><i class="fa fa-file-text-o"></i> Materials</button>' +
-            '    <button class="btn-repo btn-repo-primary" onclick="openSubjectQuizzes('+s.id+')"><i class="fa fa-question-circle"></i> Quizzes ('+s.quiz_count+')</button>' +
+            '    <button class="btn-repo btn-repo-primary" onclick="openSubjectQuizzes('+s.id+')"><i class="fa fa-question-circle"></i> Quizzes ('+parseInt(s.quiz_count||0)+')</button>' +
             '  </div>' +
             '</div>';
   });
@@ -470,41 +484,33 @@ function openSubjectDetails(classId){
 
   $.get('../shared/repository_handler.php', { action:'get_subject_details', class_id:classId }, function(r){
     if(!r.success){
-      $('#sdModalBody').html('<p style="color:#ef4444;">'+r.msg+'</p>');
+      $('#sdModalBody').html('<p style="color:#ef4444;">'+escapeHtml(r.msg||'Failed to load subject details')+'</p>');
       return;
     }
     var c = r.class;
-    $('#sdModalTitle').html('<i class="fa fa-book"></i> ' + (c.class_name || c.subject) + ' &mdash; Materials &amp; Content');
+    $('#sdModalTitle').html('<i class="fa fa-book"></i> ' + escapeHtml(c.class_name || c.subject) + ' &mdash; Materials &amp; Content');
 
     var html = '<div style="margin-bottom:10px;padding:8px 10px;background:#f8fafc;border-radius:6px;font-size:11.5px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">' +
-               '  <div><strong>Instructor:</strong> '+(c.teacher_first_name||'')+' '+(c.teacher_last_name||'')+' ('+c.teacher_code+')</div>' +
-               '  <div><strong>Program:</strong> '+(c.program_code||'General')+' | <strong>Year/Sec:</strong> '+(c.year_level||'-')+'/'+(c.section||'-')+'</div>' +
+               '  <div><strong>Instructor:</strong> '+(escapeHtml(c.teacher_first_name||''))+' '+(escapeHtml(c.teacher_last_name||''))+' ('+escapeHtml(c.teacher_code)+')</div>' +
+               '  <div><strong>Program:</strong> '+(escapeHtml(c.program_code||'General'))+' | <strong>Year/Sec:</strong> '+(escapeHtml(c.year_level||'-'))+'/'+(escapeHtml(c.section||'-'))+'</div>' +
                '</div>';
-
-    html += '<h5 style="font-size:12px;font-weight:700;color:#0f172a;margin:10px 0 6px;"><i class="fa fa-folder-open" style="color:#3b82f6;"></i> Learning Modules &amp; Materials ('+r.modules.length+')</h5>';
-    if(r.modules.length === 0){
+    html += '<h5 style="font-size:12px;font-weight:700;color:#0f172a;margin:10px 0 6px;"><i class="fa fa-folder-open" style="color:#3b82f6;"></i> Learning Modules &amp; Materials ('+(r.modules ? r.modules.length : 0)+')</h5>';
+    if(!r.modules || r.modules.length === 0){
       html += '<p style="font-size:11px;color:#94a3b8;font-style:italic;">No modules uploaded for this class.</p>';
     } else {
       html += '<div style="display:grid;grid-template-columns:1fr;gap:5px;margin-bottom:10px;">';
       r.modules.forEach(function(m){
-        var topicTag = m.topic ? '<span style="background:#eff6ff;color:#1d4ed8;padding:1px 5px;border-radius:3px;font-size:9.5px;font-weight:600;margin-left:4px;"><i class="fa fa-tag"></i> '+m.topic+'</span>' : '';
+        var topicTag = m.topic ? '<span style="background:#eff6ff;color:#1d4ed8;padding:1px 5px;border-radius:3px;font-size:9.5px;font-weight:600;margin-left:4px;"><i class="fa fa-tag"></i> '+escapeHtml(m.topic)+'</span>' : '';
+        var fname = m.filename || m.file_name || '';
+        var dlUrl  = '../shared/module_download.php?id='+encodeURIComponent(m.id);
+        var ext    = fname.split('.').pop().toLowerCase();
+        var canView = ['pdf','jpg','jpeg','png','gif','webp'].indexOf(ext) !== -1;
+        var viewBtn = canView
+          ? '<a href="'+dlUrl+'&view=1" target="_blank" class="btn-repo btn-repo-secondary" style="padding:3px 7px;font-size:10px;height:24px;flex:none;"><i class="fa fa-eye"></i> View</a>'
+          : '';
         html += '<div style="padding:6px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;display:flex;align-items:center;justify-content:space-between;font-size:11.5px;">' +
-                '  <div><strong>'+m.title+'</strong> '+topicTag+'<div style="font-size:10px;color:#64748b;">'+(m.original_name||m.file_name||'')+'</div></div>' +
-                '  <a href="../uploads/modules/'+(m.file_name||'')+'" target="_blank" class="btn-repo btn-repo-secondary" style="padding:3px 7px;font-size:10px;height:24px;flex:none;"><i class="fa fa-download"></i> View</a>' +
-                '</div>';
-      });
-      html += '</div>';
-    }
-
-    html += '<h5 style="font-size:12px;font-weight:700;color:#0f172a;margin:10px 0 6px;"><i class="fa fa-tasks" style="color:#f59e0b;"></i> Class Assignments ('+r.assignments.length+')</h5>';
-    if(r.assignments.length === 0){
-      html += '<p style="font-size:11px;color:#94a3b8;font-style:italic;">No assignments recorded for this class.</p>';
-    } else {
-      html += '<div style="display:grid;grid-template-columns:1fr;gap:5px;">';
-      r.assignments.forEach(function(a){
-        html += '<div style="padding:6px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:11.5px;">' +
-                '  <div style="display:flex;justify-content:space-between;"><strong>'+a.title+'</strong><span style="font-size:10.5px;font-weight:700;color:#f59e0b;">'+(a.points||100)+' pts ('+(a.term||'term')+')</span></div>' +
-                '  <div style="font-size:10.5px;color:#64748b;margin-top:1px;">'+(a.instructions||'No specific instructions')+'</div>' +
+                '  <div><strong>'+escapeHtml(m.title)+'</strong> '+topicTag+'<div style="font-size:10px;color:#64748b;">'+escapeHtml(m.original_name||fname||'')+'</div></div>' +
+                '  <div style="display:flex;gap:4px;flex:none;">'+(viewBtn)+'<a href="'+dlUrl+'" class="btn-repo btn-repo-primary" style="padding:3px 7px;font-size:10px;height:24px;flex:none;"><i class="fa fa-download"></i> Download</a></div>' +
                 '</div>';
       });
       html += '</div>';
@@ -521,31 +527,33 @@ function openSubjectQuizzes(classId){
 
   $.get('../shared/repository_handler.php', { action:'get_subject_details', class_id:classId }, function(r){
     if(!r.success){
-      $('#pqModalBody').html('<p style="color:#ef4444;">'+r.msg+'</p>');
+      $('#pqModalBody').html('<p style="color:#ef4444;">'+escapeHtml(r.msg||'Failed to load quizzes')+'</p>');
       return;
     }
     var c = r.class;
-    $('#pqModalTitle').html('<i class="fa fa-question-circle"></i> ' + (c.class_name || c.subject) + ' &mdash; Past Quizzes');
+    $('#pqModalTitle').html('<i class="fa fa-question-circle"></i> ' + escapeHtml(c.class_name || c.subject) + ' &mdash; Past Quizzes');
 
-    if(r.quizzes.length === 0){
+    currentSubjectQuizzes = {};
+    if(!r.quizzes || r.quizzes.length === 0){
       $('#pqModalBody').html('<div class="an-empty" style="padding:16px;"><i class="fa fa-question-circle"></i><p>No quizzes have been created under this subject yet.</p></div>');
       return;
     }
 
     var html = '<div style="display:grid;grid-template-columns:1fr;gap:6px;">';
     r.quizzes.forEach(function(q){
-      var termBadge = '<span style="background:#f1f5f9;color:#475569;padding:1px 6px;border-radius:99px;font-size:9px;font-weight:700;text-transform:uppercase;">'+(q.term||'Midterm')+'</span>';
+      currentSubjectQuizzes[q.id] = q;
+      var termBadge = '<span style="background:#f1f5f9;color:#475569;padding:1px 6px;border-radius:99px;font-size:9px;font-weight:700;text-transform:uppercase;">'+escapeHtml(q.term||'Midterm')+'</span>';
       html += '<div style="padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">' +
               '  <div>' +
-              '    <div style="font-size:12px;font-weight:700;color:#0f172a;">'+q.title+' '+termBadge+'</div>' +
+              '    <div style="font-size:12px;font-weight:700;color:#0f172a;">'+escapeHtml(q.title)+' '+termBadge+'</div>' +
               '    <div style="font-size:10.5px;color:#64748b;margin-top:1px;">' +
-              '      <strong>'+q.question_count+'</strong> questions &bull; <strong>'+q.total_points+'</strong> total pts' +
-              (q.time_limit ? ' &bull; ' + q.time_limit + ' mins' : '') +
+              '      <strong>'+parseInt(q.question_count||0)+'</strong> questions &bull; <strong>'+parseInt(q.total_points||0)+'</strong> total pts' +
+              (q.time_limit ? ' &bull; ' + parseInt(q.time_limit) + ' mins' : '') +
               '    </div>' +
               '  </div>' +
               '  <div style="display:flex;align-items:center;gap:5px;">' +
               '    <button class="btn-repo btn-repo-secondary" onclick="previewQuizQuestions('+q.id+')" style="padding:3px 8px;font-size:10.5px;height:24px;"><i class="fa fa-eye"></i> Preview</button>' +
-              '    <button class="btn-repo btn-repo-primary" onclick="openCloneModal('+q.id+', \''+escapeHtml(q.title)+'\')" style="padding:3px 8px;font-size:10.5px;height:24px;"><i class="fa fa-clone"></i> Clone</button>' +
+              '    <button class="btn-repo btn-repo-primary" onclick="openCloneModal('+q.id+')" style="padding:3px 8px;font-size:10.5px;height:24px;"><i class="fa fa-clone"></i> Clone</button>' +
               '  </div>' +
               '</div>';
     });
@@ -563,35 +571,35 @@ function previewQuizQuestions(quizId){
 
   $.get('../shared/repository_handler.php', { action:'preview_quiz', quiz_id:quizId }, function(r){
     if(!r.success){
-      $('#prevQuizBody').html('<p style="color:#ef4444;">'+r.msg+'</p>');
+      $('#prevQuizBody').html('<p style="color:#ef4444;">'+escapeHtml(r.msg||'Failed to preview quiz')+'</p>');
       return;
     }
     var qz = r.quiz;
-    $('#prevQuizTitle').html('<i class="fa fa-eye"></i> ' + qz.title);
+    $('#prevQuizTitle').html('<i class="fa fa-eye"></i> ' + escapeHtml(qz.title));
     $('#prevQuizMeta').text('Created by ' + (qz.teacher_first_name||'') + ' ' + (qz.teacher_last_name||'') + ' for ' + (qz.class_name||qz.subject||''));
-    $('#prevQuizFooterInfo').text(r.questions.length + ' questions in question bank');
+    $('#prevQuizFooterInfo').text((r.questions ? r.questions.length : 0) + ' questions in question bank');
 
     $('#btnCloneFromPreview').off('click').on('click', function(){
       $('#previewQuizModal').modal('hide');
       openCloneModal(qz.id, qz.title);
     });
 
-    if(r.questions.length === 0){
+    if(!r.questions || r.questions.length === 0){
       $('#prevQuizBody').html('<div class="an-empty" style="padding:16px;"><i class="fa fa-inbox"></i><p>No questions found in this quiz.</p></div>');
       return;
     }
 
     var html = '';
     r.questions.forEach(function(q, i){
-      var topicBadge = q.topic ? '<span style="background:#eff6ff;color:#1d4ed8;padding:1px 5px;border-radius:3px;font-size:9.5px;font-weight:600;margin-left:4px;"><i class="fa fa-tag"></i> '+q.topic+'</span>' : '';
+      var topicBadge = q.topic ? '<span style="background:#eff6ff;color:#1d4ed8;padding:1px 5px;border-radius:3px;font-size:9.5px;font-weight:600;margin-left:4px;"><i class="fa fa-tag"></i> '+escapeHtml(q.topic)+'</span>' : '';
       var typeLbl = q.question_type ? q.question_type.replace('_',' ') : 'multiple choice';
 
       html += '<div class="q-item">' +
               '  <div class="q-item-hdr">' +
-              '    <span>Q' + (i+1) + ' &bull; ' + typeLbl.toUpperCase() + ' ' + topicBadge + '</span>' +
+              '    <span>Q' + (i+1) + ' &bull; ' + escapeHtml(typeLbl.toUpperCase()) + ' ' + topicBadge + '</span>' +
               '    <span>' + (q.points || 1) + ' pt' + ((q.points!=1)?'s':'') + '</span>' +
               '  </div>' +
-              '  <div class="q-text">' + q.question_text + '</div>';
+              '  <div class="q-text">' + escapeHtml(q.question_text) + '</div>';
 
       if(q.options && q.options.length > 0){
         html += '<div style="margin-top:3px;">';
@@ -599,11 +607,11 @@ function previewQuizQuestions(quizId){
           var isCorrect = (String(opt).trim().toLowerCase() === String(q.correct_answer).trim().toLowerCase());
           var cls = isCorrect ? 'q-opt correct' : 'q-opt';
           var check = isCorrect ? '<i class="fa fa-check-circle" style="color:#166534;margin-right:3px;"></i>' : '';
-          html += '<div class="'+cls+'">'+check+opt+'</div>';
+          html += '<div class="'+cls+'">'+check+escapeHtml(opt)+'</div>';
         });
         html += '</div>';
       } else if(q.correct_answer) {
-        html += '<div style="font-size:10.5px;margin-top:3px;color:#166534;font-weight:700;"><i class="fa fa-check"></i> Correct Answer: ' + q.correct_answer + '</div>';
+        html += '<div style="font-size:10.5px;margin-top:3px;color:#166534;font-weight:700;"><i class="fa fa-check"></i> Correct Answer: ' + escapeHtml(q.correct_answer) + '</div>';
       }
 
       html += '</div>';
@@ -614,6 +622,10 @@ function previewQuizQuestions(quizId){
 }
 
 function openCloneModal(quizId, quizTitle){
+  if(!quizTitle && currentSubjectQuizzes[quizId]){
+    quizTitle = currentSubjectQuizzes[quizId].title;
+  }
+  quizTitle = quizTitle || 'Quiz #' + quizId;
   $('#clone_source_quiz_id').val(quizId);
   $('#clone_orig_title').text(quizTitle);
   $('#clone_new_title').val(quizTitle + ' (Imported)');
@@ -641,17 +653,18 @@ function submitCloneQuiz(){
   }, function(res){
     $('#btnSubmitClone').prop('disabled', false).html('<i class="fa fa-check"></i> Clone Quiz');
     if(res.success){
-      $('#cloneAlert').attr('class','alert alert-success').html('<i class="fa fa-check-circle"></i> ' + res.msg).show();
+      $('#cloneAlert').attr('class','alert alert-success').html('<i class="fa fa-check-circle"></i> ' + escapeHtml(res.msg)).show();
       setTimeout(function(){
         $('#cloneQuizModal').modal('hide');
       }, 1800);
     } else {
-      $('#cloneAlert').attr('class','alert alert-danger').text(res.msg).show();
+      $('#cloneAlert').attr('class','alert alert-danger').text(res.msg || 'Failed to clone quiz.').show();
     }
   }, 'json');
 }
 
 function escapeHtml(text) {
+  if(text === null || text === undefined) return '';
   var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
   return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
 }

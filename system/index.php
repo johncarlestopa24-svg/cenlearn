@@ -32,7 +32,7 @@ session_destroy();
     }
     .hero-bg {
       position: absolute; inset: 0;
-      background: url('dist/img/photo_6235555515043876345_y.jpg') center/cover no-repeat;
+      background: url('dist/img/bcc_entrance_hd.jpg') center/cover no-repeat;
       filter: brightness(.55);
       transform: scale(1.04);
       transition: transform 7s ease-out;
@@ -109,7 +109,7 @@ session_destroy();
       font-size: clamp(20px, 3vw, 34px);
       font-weight: 800; color: #fff; line-height: 1.2;
       margin-bottom: 6px; max-width: 900px;
-      white-space: nowrap;
+      white-space: normal;
       text-shadow: 0 2px 12px rgba(0,0,0,.4);
     }
     .hero-body p { font-size: 14px; color: rgba(255,255,255,.75); margin-bottom: 24px; }
@@ -642,12 +642,9 @@ function login(){
         else if(role === 'STUDENT' && profileIncomplete)  targetUrl = 'complete_profile.php';
         else if(role === 'STUDENT')                       targetUrl = 'student/dashboard.php';
         else if(role === 'TEACHER' || role === 'FACULTY') targetUrl = 'teacher/dashboard.php';
-        else if(role === 'SUPERADMIN')                    targetUrl = 'superadmin/dashboard.php';
-        else if(role === 'ADMIN')                         targetUrl = 'admin/dashboard.php';
+        else if(role === 'SUPERADMIN' || role === 'ADMIN') targetUrl = 'superadmin/dashboard.php';
 
-        setTimeout(function() {
-          window.location.href = targetUrl;
-        }, 1200);
+        window.location.href = targetUrl;
       }
     },
     error: function(xhr, status, err){

@@ -52,16 +52,21 @@ if($action === 'save_attendance'){
     }
 
     // Auto-sync / auto-insert into class_record_columns
-    $created_at = $date . ' ' . date('H:i:s');
-    $conn->query("UPDATE class_record_columns SET component='attendance' WHERE session_id > 0 OR is_f2f = 1");
-    $colCheck = $conn->query("SELECT id FROM class_record_columns WHERE class_id=$class_id AND (session_id=$session_id OR (is_f2f=1 AND title='$title' AND term='$term')) LIMIT 1");
-    if(!$colCheck || $colCheck->num_rows === 0){
-        $conn->query("INSERT INTO class_record_columns (class_id, component, title, max_score, sort_order, term, session_id, is_f2f, created_at)
-                      VALUES ($class_id, 'attendance', '$title', 1.00, 0, '$term', $session_id, 1, '$created_at')");
-        $col_id = $conn->insert_id;
-    } else {
-        $col_id = intval($colCheck->fetch_assoc()['id']);
-        $conn->query("UPDATE class_record_columns SET component='attendance', title='$title', term='$term', session_id=$session_id, is_f2f=1 WHERE id=$col_id");
+    $col_id = 0;
+    try {
+        $created_at = $date . ' ' . date('H:i:s');
+        $displayTitle = date('M d', strtotime($date));
+        $colCheck = $conn->query("SELECT id FROM class_record_columns WHERE class_id=$class_id AND (attendance_session_id=$session_id OR (is_f2f=1 AND session_id=$session_id) OR (is_f2f=1 AND created_at LIKE '$date%')) LIMIT 1");
+        if(!$colCheck || $colCheck->num_rows === 0){
+            $conn->query("INSERT INTO class_record_columns (class_id, component, title, max_score, sort_order, term, session_id, attendance_session_id, is_f2f, created_at)
+                          VALUES ($class_id, 'attendance', '$displayTitle', 1.00, 0, '$term', $session_id, $session_id, 1, '$created_at')");
+            $col_id = (int)$conn->insert_id;
+        } else {
+            $col_id = intval($colCheck->fetch_assoc()['id']);
+            $conn->query("UPDATE class_record_columns SET component='attendance', title='$displayTitle', term='$term', session_id=$session_id, attendance_session_id=$session_id, is_f2f=1, created_at='$created_at' WHERE id=$col_id");
+        }
+    } catch (\Throwable $e) {
+        error_log("Attendance class_record_columns sync notice: " . $e->getMessage());
     }
 
     // Save individual student attendance records & sync to class_record_scores
@@ -85,9 +90,15 @@ if($action === 'save_attendance'){
             if($status === 'absent')  $score = 0.00;
             if($status === 'excused') $score = 1.00;
 
-            $conn->query("INSERT INTO class_record_scores (column_id, class_id, student_code, score)
-                          VALUES ($col_id, $class_id, '$stuCode', $score)
-                          ON DUPLICATE KEY UPDATE score = $score");
+            if($col_id > 0){
+                try {
+                    $conn->query("INSERT INTO class_record_scores (column_id, class_id, student_code, score)
+                                  VALUES ($col_id, $class_id, '$stuCode', $score)
+                                  ON DUPLICATE KEY UPDATE score = $score");
+                } catch (\Throwable $e) {
+                    error_log("Attendance score sync notice: " . $e->getMessage());
+                }
+            }
         }
     }
 

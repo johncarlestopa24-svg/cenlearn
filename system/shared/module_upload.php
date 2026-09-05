@@ -11,11 +11,11 @@ if (empty($_SESSION['user'])) {
 }
 
 $user = $_SESSION['user'];
-$role = strtoupper($user['user_group'] ?? '');
+$role = strtoupper($user['role'] ?? $user['user_group'] ?? '');
 
-if (!in_array($role, ['TEACHER', 'ADMIN', 'SUPERADMIN'])) {
+if (!in_array($role, ['TEACHER', 'ADMIN', 'SUPERADMIN', 'STUDENT'])) {
     ob_end_clean();
-    echo json_encode(['success' => false, 'msg' => 'Only teachers and admins can upload modules']);
+    echo json_encode(['success' => false, 'msg' => 'Unauthorized']);
     exit;
 }
 
@@ -133,17 +133,6 @@ try {
     }
 } catch (\Throwable $e) {
     error_log("Material Analyzer Warning: " . $e->getMessage());
-}
-
-try {
-    if (file_exists(__DIR__ . '/syllabus_handler.php')) {
-        require_once __DIR__ . '/syllabus_handler.php';
-        if (function_exists('syncClassMaterialsToSyllabus')) {
-            syncClassMaterialsToSyllabus($conn, $class_id, $tc);
-        }
-    }
-} catch (\Throwable $e) {
-    error_log("Syllabus Handler Warning: " . $e->getMessage());
 }
 
 ob_end_clean();

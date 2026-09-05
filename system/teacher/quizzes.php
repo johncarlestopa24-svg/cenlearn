@@ -21,6 +21,11 @@ $classesQ = $conn->query("
 $classes = [];
 while($r = $classesQ->fetch_assoc()) $classes[] = $r;
 
+// Fetch teacher's uploaded learning modules for AI Quiz Generator
+$modulesQ = $conn->query("SELECT m.id, m.title, m.filename, m.topic, m.class_id, c.class_name FROM class_modules m LEFT JOIN classes c ON m.class_id=c.id WHERE m.teacher_code = '$tc' ORDER BY m.id DESC");
+$teacherModules = [];
+if($modulesQ) while($mr = $modulesQ->fetch_assoc()) $teacherModules[] = $mr;
+
 // Filters
 $classFilter  = intval($_GET['class_id'] ?? 0);
 $termFilter   = trim($_GET['term'] ?? '');
@@ -112,20 +117,23 @@ foreach($rawQuizzes as $row){
         if(empty($groupedQuizzes[$titleKey]['due_date']) && !empty($row['due_date'])) $groupedQuizzes[$titleKey]['due_date'] = $row['due_date'];
     }
 
-    $dispCode = trim($row['display_code'] ?? '');
-    if(empty($dispCode) || $dispCode === $row['class_name']) {
-        $dispCode = trim($row['subject'] ?? '');
-    }
-    $cName = trim($row['class_name'] ?? '');
-    
-    $subKey = $dispCode . '___' . $cName . '___' . intval($row['class_id'] ?? 0);
-    if(!isset($groupedQuizzes[$titleKey]['subjects'][$subKey])){
-        $groupedQuizzes[$titleKey]['subjects'][$subKey] = [
-            'class_id' => intval($row['class_id'] ?? 0),
-            'code' => $dispCode,
-            'name' => $cName,
-            'section' => trim($row['section'] ?? '')
-        ];
+    $cid = intval($row['class_id'] ?? 0);
+    if($cid > 0){
+        $dispCode = trim($row['display_code'] ?? '');
+        if(empty($dispCode) || $dispCode === $row['class_name']) {
+            $dispCode = trim($row['subject'] ?? '');
+        }
+        $cName = trim($row['class_name'] ?? '');
+        
+        $subKey = $dispCode . '___' . $cName . '___' . $cid;
+        if(!isset($groupedQuizzes[$titleKey]['subjects'][$subKey])){
+            $groupedQuizzes[$titleKey]['subjects'][$subKey] = [
+                'class_id' => $cid,
+                'code' => $dispCode,
+                'name' => $cName,
+                'section' => trim($row['section'] ?? '')
+            ];
+        }
     }
 }
 
@@ -402,13 +410,13 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
     /* ── Create New Quiz Responsive & Resizable Modal Styles (Reference UI) ── */
     #createQuizModal .modal-dialog { max-width: 100vw; width: 100vw; height: 100vh; margin: 0; padding: 0; }
     .cq-modal-content { border-radius: 0; border: none; background: #f8fafc; box-shadow: none; overflow: hidden; font-family: 'Inter', sans-serif; height: 100vh; display: flex; flex-direction: column; }
-    .cq-modal-header { padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; background: #ffffff; flex-shrink: 0; z-index: 11; }
-    .cq-header-title { display: flex; align-items: center; gap: 12px; }
-    .cq-title-icon { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700; box-shadow: 0 4px 10px rgba(139,92,246,0.3); }
-    .cq-header-title h2 { font-size: 18px; font-weight: 800; color: #0f172a; margin: 0; }
-    .cq-fs-toggle-btn { background: #f1f5f9; border: 1px solid #cbd5e1; font-size: 13px; color: #475569; cursor: pointer; padding: 6px 12px; border-radius: 8px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; transition: all .15s; }
+    .cq-modal-header { padding: 8px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e2e8f0; background: #ffffff; flex-shrink: 0; z-index: 11; flex-wrap: wrap; gap: 8px; }
+    .cq-header-title { display: flex; align-items: center; gap: 8px; }
+    .cq-title-icon { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 700; box-shadow: 0 2px 6px rgba(139,92,246,0.25); flex-shrink: 0; }
+    .cq-header-title h2 { font-size: 14.5px; font-weight: 800; color: #0f172a; margin: 0; }
+    .cq-fs-toggle-btn { background: #f1f5f9; border: 1px solid #cbd5e1; font-size: 11.5px; color: #475569; cursor: pointer; padding: 4px 10px; border-radius: 6px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 28px; transition: all .15s; white-space: nowrap; }
     .cq-fs-toggle-btn:hover { background: #e2e8f0; color: #0f172a; }
-    .cq-close-btn { background: none; border: none; font-size: 24px; color: #94a3b8; cursor: pointer; padding: 0 4px; line-height: 1; transition: color .15s; }
+    .cq-close-btn { background: none; border: none; font-size: 20px; color: #94a3b8; cursor: pointer; padding: 0 4px; line-height: 1; transition: color .15s; display: inline-flex; align-items: center; justify-content: center; }
     .cq-close-btn:hover { color: #0f172a; }
 
     /* Windowed Mode Override */
@@ -417,8 +425,9 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
 
     /* Top Config Card Compact (Small Resize) */
     .cq-config-strip { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 10px 18px; margin: 12px 20px 0; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.02); }
-    .cq-config-grid { display: grid; grid-template-columns: 2fr 1fr 1.2fr; gap: 12px; align-items: end; }
-    @media(max-width: 768px) { .cq-config-grid { grid-template-columns: 1fr; } }
+    .cq-config-grid { display: grid; grid-template-columns: 2fr 1.6fr 1fr 1.1fr; gap: 12px; align-items: end; }
+    @media(max-width: 900px) { .cq-config-grid { grid-template-columns: 1fr 1fr; } }
+    @media(max-width: 600px) { .cq-config-grid { grid-template-columns: 1fr; } }
 
     .cq-label { font-size: 11px; font-weight: 700; color: #1e293b; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
     .cq-input-icon-wrapper { position: relative; width: 100%; }
@@ -524,13 +533,11 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
 
     .cq-preview-banner { background: #f3e8ff; border-radius: 10px; padding: 10px 14px; margin-top: 12px; font-size: 12px; font-weight: 600; color: #6b21a8; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
-    .cq-modal-footer { padding: 14px 28px; background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: flex-end; gap: 14px; flex-shrink: 0; position: sticky; bottom: 0; z-index: 10; box-shadow: 0 -4px 12px rgba(0,0,0,0.03); }
-    .cq-btn-cancel { padding: 10px 24px; border-radius: 10px; font-size: 13px; font-weight: 600; background: #f1f5f9; color: #475569; border: none; cursor: pointer; transition: all .15s; white-space: nowrap; }
+    .cq-modal-footer { padding: 8px 18px; background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; position: sticky; bottom: 0; z-index: 10; box-shadow: 0 -2px 8px rgba(0,0,0,0.03); flex-wrap: wrap; }
+    .cq-btn-cancel { padding: 5px 14px; border-radius: 7px; font-size: 11.5px; font-weight: 600; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; cursor: pointer; transition: all .15s; white-space: nowrap; height: 30px; display: inline-flex; align-items: center; justify-content: center; }
     .cq-btn-cancel:hover { background: #e2e8f0; color: #0f172a; }
-    .cq-btn-create { padding: 11px 26px; border-radius: 10px; font-size: 13px; font-weight: 700; background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: #ffffff; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 14px rgba(109,40,217,.35); transition: all .15s; white-space: nowrap; }
-    .cq-btn-create:hover { background: linear-gradient(135deg, #7c3aed, #5b21b6); transform: translateY(-1px); box-shadow: 0 6px 18px rgba(109,40,217,.45); }
-    .cq-btn-create:hover { background: linear-gradient(135deg, #7c3aed, #5b21b6); transform: translateY(-1px); }
-    .cq-btn-create:hover { background: linear-gradient(135deg, #7c3aed, #5b21b6); transform: translateY(-1px); }
+    .cq-btn-create { padding: 5px 16px; border-radius: 7px; font-size: 11.5px; font-weight: 700; background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: #ffffff; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; box-shadow: 0 2px 8px rgba(109,40,217,.28); transition: all .15s; white-space: nowrap; height: 30px; }
+    .cq-btn-create:hover { background: linear-gradient(135deg, #7c3aed, #5b21b6); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(109,40,217,.38); }
   </style>
 </head>
 <body>
@@ -673,19 +680,22 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
                   <span class="qz-class-badge" style="cursor:pointer;" onclick="viewAssignedClasses('<?php echo addslashes($q['title']); ?>', <?php echo $subjectsJson; ?>)" title="Click to view all assigned classes">
                     <i class="fa fa-users"></i> <strong><?php echo $classCount; ?></strong> Classes Assigned <i class="fa fa-chevron-down" style="font-size:9px;margin-left:3px;"></i>
                   </span>
-                <?php else: 
+                <?php elseif($classCount === 1): 
                   $firstSub = reset($q['subjects']);
                   $sCode = trim($firstSub['code'] ?? '');
                   $sName = trim($firstSub['name'] ?? '');
                   $sLabel = (!empty($sCode) && strtolower($sCode) !== 'general' && strtolower($sCode) !== strtolower($sName))
                     ? '<strong>' . htmlspecialchars($sCode) . '</strong> : ' . htmlspecialchars($sName)
                     : htmlspecialchars($sName);
-                  if(!empty($sLabel)):
                 ?>
                   <span class="qz-class-badge" style="cursor:pointer;" onclick="viewAssignedClasses('<?php echo addslashes($q['title']); ?>', <?php echo $subjectsJson; ?>)" title="Click to view class details">
                     <i class="fa fa-graduation-cap"></i> <?php echo $sLabel; ?>
                   </span>
-                <?php endif; endif; ?>
+                <?php else: ?>
+                  <span class="qz-class-badge" style="background:#f1f5f9;color:#64748b;border-color:#e2e8f0;">
+                    <i class="fa fa-file-text-o"></i> Unassigned Template
+                  </span>
+                <?php endif; ?>
                 <span class="qz-term-badge <?php echo $termClass; ?>"><?php echo strtoupper($q['term']); ?></span>
                 <div class="qrc-meta">
                   <span class="qz-pill" title="Number of Questions"><i class="fa fa-question-circle" style="color:#6366f1;"></i> <strong><?php echo $q['question_count']; ?></strong> Questions</span>
@@ -708,7 +718,7 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
                 <button class="qz-act-btn" title="AI Relevance & Quality Analytics" onclick="analyzeQuizRelevance(<?php echo $q['id']; ?>)">
                   <i class="fa fa-magic" style="color:#0284c7;"></i>
                 </button>
-                <button class="qz-act-btn" title="View Submissions & Results" onclick="viewSubmissions('<?php echo $allIds; ?>')">
+                <button class="qz-act-btn" title="View Questions & Answer Key" onclick="viewSubmissions('<?php echo $allIds; ?>')">
                   <i class="fa fa-eye"></i>
                 </button>
                 <button class="qz-act-btn" title="Add Class / Assign to Class" onclick="openCopyModal(<?php echo $q['id']; ?>, '<?php echo addslashes($q['title']); ?>', '<?php echo !empty($q['start_date']) ? date('Y-m-d\TH:i', strtotime($q['start_date'])) : ''; ?>', '<?php echo !empty($q['due_date']) ? date('Y-m-d\TH:i', strtotime($q['due_date'])) : ''; ?>')">
@@ -748,34 +758,39 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
   </div>
 </div>
 
-<!-- ── View Submissions Modal ── -->
+<!-- ── View Quiz Questions & Answer Key / Submissions Modal ── -->
 <div class="modal fade" id="submissionsModal" tabindex="-1" role="dialog">
-  <div class="modal-dialog modal-lg" role="document" style="max-width:900px;">
+  <div class="modal-dialog modal-lg" role="document" style="max-width:920px;">
     <div class="modal-content" style="border-radius:16px;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.18);">
       <div class="modal-header" style="background:linear-gradient(135deg,#0f2d4a,#1e3a5f);color:#fff;padding:16px 22px;display:flex;align-items:center;justify-content:space-between;">
-        <h5 class="modal-title" id="subModalTitle" style="font-weight:700;display:flex;align-items:center;gap:8px;margin:0;font-size:15px;"><i class="fa fa-eye" style="color:#60a5fa;"></i> Student Submissions</h5>
+        <h5 class="modal-title" id="subModalTitle" style="font-weight:700;display:flex;align-items:center;gap:8px;margin:0;font-size:15px;"><i class="fa fa-list-alt" style="color:#60a5fa;"></i> Quiz Overview & Submissions</h5>
         <button type="button" class="close" data-dismiss="modal" style="color:#fff;opacity:.9;background:none;border:none;font-size:20px;">&times;</button>
       </div>
-      <div class="modal-body" style="padding:22px;">
-        <div id="subStatsHeader" class="row mb-3"></div>
-        <div class="table-responsive">
-          <table class="table table-hover table-striped" style="font-size:13px;">
-            <thead>
-              <tr style="background:#0f2d4a;color:#fff;">
-                <th>Student</th>
-                <th>Student Code</th>
-                <th>Score</th>
-                <th>Percentage</th>
-                <th>Anti-Cheat Log</th>
-                <th>Submitted Date</th>
-                <th style="text-align:center;">Action</th>
-              </tr>
-            </thead>
-            <tbody id="subTableBody"></tbody>
-          </table>
+
+      <div class="modal-body" style="padding:20px 22px;background:#f8fafc;max-height:calc(85vh - 120px);overflow-y:auto;">
+        <!-- Submissions vs Questions Tabs -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;border-bottom:1px solid #e2e8f0;padding-bottom:12px;">
+          <button type="button" class="btn btn-sm" id="btnTabQuestions" onclick="switchSubModalTab('questions')" style="border-radius:8px;font-weight:700;padding:7px 16px;background:#4f46e5;color:#fff;border:none;">
+            <i class="fa fa-list-alt"></i> Questions & Answer Key
+          </button>
+          <button type="button" class="btn btn-sm" id="btnTabSubmissions" onclick="switchSubModalTab('submissions')" style="border-radius:8px;font-weight:700;padding:7px 16px;background:#e2e8f0;color:#475569;border:none;">
+            <i class="fa fa-users"></i> Student Submissions (<span id="subCountBadge">0</span>)
+          </button>
+        </div>
+
+        <!-- Tab 1: Questions & Answer Key View -->
+        <div id="tabQuestionsView">
+          <div id="quizQuestionsStats" style="margin-bottom:16px;"></div>
+          <div id="quizQuestionsContainer" style="display:flex;flex-direction:column;gap:12px;"></div>
+        </div>
+
+        <!-- Tab 2: Student Submissions View -->
+        <div id="tabSubmissionsView" style="display:none;">
+          <div id="quizSubmissionsContainer"></div>
         </div>
       </div>
-      <div class="modal-footer" style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:12px 20px;">
+
+      <div class="modal-footer" style="background:#fff;border-top:1px solid #e2e8f0;padding:12px 20px;">
         <button type="button" class="btn btn-default" data-dismiss="modal" style="border-radius:8px;font-weight:600;">Close</button>
       </div>
     </div>
@@ -784,15 +799,15 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
 
 <!-- ── Detailed Student Answers Review Modal ── -->
 <div class="modal fade" id="studentAnswersModal" tabindex="-1" role="dialog">
-  <div class="modal-dialog modal-lg" role="document" style="max-width:850px;">
-    <div class="modal-content" style="border-radius:16px;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.18);">
-      <div class="modal-header" style="background:linear-gradient(135deg,#4f46e5,#4338ca);color:#fff;padding:16px 22px;display:flex;align-items:center;justify-content:space-between;">
-        <h5 class="modal-title" id="saModalTitle" style="font-weight:700;display:flex;align-items:center;gap:8px;margin:0;font-size:15px;">
+  <div class="modal-dialog" role="document" style="max-width:96%;width:1200px;margin:20px auto;">
+    <div class="modal-content" style="border-radius:16px;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.18);display:flex;flex-direction:column;max-height:calc(96vh - 40px);">
+      <div class="modal-header" style="background:linear-gradient(135deg,#4f46e5,#4338ca);color:#fff;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+        <h5 class="modal-title" id="saModalTitle" style="font-weight:700;display:flex;align-items:center;gap:8px;margin:0;font-size:16px;">
           <i class="fa fa-list-alt" style="color:#a5b4fc;"></i> Student Quiz Answers Review
         </h5>
-        <button type="button" class="close" data-dismiss="modal" style="color:#fff;opacity:.9;background:none;border:none;font-size:20px;">&times;</button>
+        <button type="button" class="close" data-dismiss="modal" style="color:#fff;opacity:.9;background:none;border:none;font-size:22px;line-height:1;">&times;</button>
       </div>
-      <div class="modal-body" style="padding:22px;background:#f8fafc;max-height:calc(85vh - 120px);overflow-y:auto;">
+      <div class="modal-body" style="padding:24px 28px;background:#f8fafc;flex:1;min-height:0;overflow-y:auto;">
         <!-- Student & Quiz Info Header Bar -->
         <div id="saStudentHeader" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
           <!-- Filled dynamically -->
@@ -803,9 +818,9 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
           <!-- Filled dynamically -->
         </div>
       </div>
-      <div class="modal-footer" style="background:#fff;border-top:1px solid #e2e8f0;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;">
-        <button type="button" class="btn btn-default" onclick="$('#studentAnswersModal').modal('hide'); $('#submissionsModal').modal('show');" style="border-radius:8px;font-weight:600;"><i class="fa fa-arrow-left"></i> Back to Submissions</button>
-        <button type="button" class="btn btn-default" data-dismiss="modal" style="border-radius:8px;font-weight:600;">Close</button>
+      <div class="modal-footer" style="background:#fff;border-top:1px solid #e2e8f0;padding:14px 24px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+        <button type="button" class="btn btn-default" onclick="$('#studentAnswersModal').modal('hide'); $('#submissionsModal').modal('show');" style="border-radius:8px;font-weight:600;padding:8px 18px;"><i class="fa fa-arrow-left"></i> Back to Submissions</button>
+        <button type="button" class="btn btn-default" data-dismiss="modal" style="border-radius:8px;font-weight:600;padding:8px 20px;">Close</button>
       </div>
     </div>
   </div>
@@ -896,27 +911,47 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
         </div>
       </div>
 
-      <div class="cq-config-strip">
-        <div class="cq-config-grid">
+      <!-- Compact Responsive Config Strip -->
+      <div style="background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 10px 18px 8px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 10px; align-items: end;">
           <div>
-            <label class="cq-label">Quiz Title <span class="text-danger">*</span></label>
-            <input type="text" class="cq-input-field" id="cqQuizTitle" placeholder="e.g. Chapter 1 Quiz" required>
+            <label style="font-size: 11px; font-weight: 700; color: #334155; margin-bottom: 3px; display: block; white-space: nowrap;">Quiz Title <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="cqQuizTitle" placeholder="e.g. Chapter 1 Quiz" style="height: 32px; font-size: 12px; border-radius: 7px; border: 1.5px solid #cbd5e1; padding: 4px 10px;" required>
           </div>
           <div>
-            <label class="cq-label">Time Limit (min)</label>
-            <div class="cq-input-icon-wrapper">
-              <i class="fa fa-clock-o cq-input-icon"></i>
-              <input type="number" class="cq-input-field has-icon" id="cqQuizTimeLimit" placeholder="0" min="0">
-            </div>
+            <label style="font-size: 11px; font-weight: 700; color: #334155; margin-bottom: 3px; display: block; white-space: nowrap;"><i class="fa fa-clock-o" style="color:#64748b;"></i> Time Limit (min)</label>
+            <input type="number" class="form-control" id="cqQuizTimeLimit" placeholder="0" min="0" style="height: 32px; font-size: 12px; border-radius: 7px; border: 1.5px solid #cbd5e1; padding: 4px 10px;">
           </div>
           <div>
-            <label class="cq-label"><i class="fa fa-graduation-cap" style="color:#7c3aed;"></i> Class Record Term</label>
-            <select class="cq-input-field" id="cqQuizTerm">
+            <label style="font-size: 11px; font-weight: 700; color: #334155; margin-bottom: 3px; display: block; white-space: nowrap;"><i class="fa fa-graduation-cap" style="color:#7c3aed;"></i> Term</label>
+            <select class="form-control" id="cqQuizTerm" style="height: 32px; font-size: 11.5px; border-radius: 7px; border: 1.5px solid #cbd5e1; padding: 4px 8px; color: #1e293b;">
               <option value="midterm">Midterm</option>
               <option value="final">Final</option>
               <option value="none">Practice</option>
             </select>
           </div>
+        </div>
+
+        <!-- Shuffle Controls Row (Clean & Responsive) -->
+        <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 10px 14px; font-size: 11px;">
+          <span style="font-weight: 700; color: #0f172a; display: inline-flex; align-items: center; gap: 5px;">
+            <i class="fa fa-random" style="color:#7c3aed;"></i> Presentation Shuffle:
+          </span>
+          <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer; margin: 0; font-weight: 600; color: #334155; user-select: none;">
+            <input type="checkbox" id="cqShuffleQuestions" checked style="accent-color: #6366f1; cursor: pointer; margin: 0;"> Questions
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer; margin: 0; font-weight: 600; color: #334155; user-select: none;">
+            <input type="checkbox" id="cqShuffleAnswers" checked style="accent-color: #6366f1; cursor: pointer; margin: 0;"> Choices
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer; margin: 0; font-weight: 600; color: #334155; user-select: none;">
+            <input type="checkbox" id="cqShuffleMatching" checked style="accent-color: #6366f1; cursor: pointer; margin: 0;"> Matching
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer; margin: 0; font-weight: 600; color: #334155; user-select: none;">
+            <input type="checkbox" id="cqShuffleTF" checked style="accent-color: #6366f1; cursor: pointer; margin: 0;"> True/False
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer; margin: 0; font-weight: 600; color: #334155; user-select: none;">
+            <input type="checkbox" id="cqRandomizeStudent" checked style="accent-color: #6366f1; cursor: pointer; margin: 0;"> Randomize for Each Student
+          </label>
         </div>
       </div>
 
@@ -924,43 +959,35 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
         <div class="row cq-main-row">
           <!-- Left Column -->
           <div class="col-lg-6 col-md-12 cq-left-pane">
-            <div class="cq-tabs">
-              <button type="button" class="cq-tab-btn active" id="cqTabBtnPaste" onclick="switchCqTab('paste')">
-                <i class="fa fa-paste"></i> Paste Questions
-              </button>
-              <button type="button" class="cq-tab-btn" id="cqTabBtnUpload" onclick="switchCqTab('upload')">
-                <i class="fa fa-cloud-upload"></i> Upload File
-              </button>
-            </div>
-
             <div id="cqTabContentPaste">
-              <div class="cq-info-box" style="margin-bottom:14px;margin-top:2px;">
-                <div class="cq-info-text">
-                  <i class="fa fa-info-circle"></i> Use the Insert buttons below or follow the format examples.
-                </div>
-                <button type="button" class="cq-btn-guide" onclick="copyCqSampleData()">View Format Guide</button>
-              </div>
-
-              <div class="cq-shortcuts-section">
-                <span class="cq-shortcuts-title">Insert shortcut:</span>
-                <div class="cq-shortcuts-pills">
-                  <button type="button" class="cq-pill pill-mc" onclick="insertCqShortcut('mc')">
-                    <i class="fa fa-plus-circle"></i> MC Multiple Choice
+              <div class="cq-shortcuts-section" style="margin-bottom: 8px;">
+                <span class="cq-shortcuts-title" style="font-size: 10px; font-weight: 800; color: #64748b; letter-spacing: 0.6px; text-transform: uppercase; margin-bottom: 5px; display: flex; align-items: center; gap: 5px;">
+                  <i class="fa fa-book" style="color: #6366f1;"></i> View Format Guide / Question Types:
+                </span>
+                <div class="cq-shortcuts-pills" style="display: flex; flex-wrap: wrap; gap: 5px;">
+                  <button type="button" class="cq-pill pill-mc" onclick="openQuestionGuide('mc')" style="padding: 3px 8px; font-size: 11px; border-radius: 6px; height: 26px;">
+                    <i class="fa fa-eye"></i> Single MCQ
                   </button>
-                  <button type="button" class="cq-pill pill-tf" onclick="insertCqShortcut('tf')">
-                    <i class="fa fa-plus-circle"></i> T/F True / False
+                  <button type="button" class="cq-pill" style="padding: 3px 8px; font-size: 11px; border-radius: 6px; height: 26px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;" onclick="openQuestionGuide('msq')">
+                    <i class="fa fa-eye"></i> Multi-Select MCQ
                   </button>
-                  <button type="button" class="cq-pill pill-id" onclick="insertCqShortcut('id')">
-                    <i class="fa fa-plus-circle"></i> ID Identification
+                  <button type="button" class="cq-pill pill-tf" onclick="openQuestionGuide('tf')" style="padding: 3px 8px; font-size: 11px; border-radius: 6px; height: 26px;">
+                    <i class="fa fa-eye"></i> True / False
                   </button>
-                  <button type="button" class="cq-pill pill-enum" onclick="insertCqShortcut('enum')">
-                    <i class="fa fa-plus-circle"></i> ENUM Enumeration
+                  <button type="button" class="cq-pill pill-mtf" onclick="openQuestionGuide('mtf')" style="padding: 3px 8px; font-size: 11px; border-radius: 6px; height: 26px;">
+                    <i class="fa fa-eye"></i> Modified T/F
                   </button>
-                  <button type="button" class="cq-pill pill-mtf" onclick="insertCqShortcut('mtf')">
-                    <i class="fa fa-plus-circle"></i> MTF Modified T/F
+                  <button type="button" class="cq-pill pill-id" onclick="openQuestionGuide('id')" style="padding: 3px 8px; font-size: 11px; border-radius: 6px; height: 26px;">
+                    <i class="fa fa-eye"></i> Identification
                   </button>
-                  <button type="button" class="cq-pill pill-essay" onclick="insertCqShortcut('essay')">
-                    <i class="fa fa-plus-circle"></i> ESSAY Essay
+                  <button type="button" class="cq-pill pill-enum" onclick="openQuestionGuide('enum')" style="padding: 3px 8px; font-size: 11px; border-radius: 6px; height: 26px;">
+                    <i class="fa fa-eye"></i> Enumeration
+                  </button>
+                  <button type="button" class="cq-pill" style="padding: 3px 8px; font-size: 11px; border-radius: 6px; height: 26px; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;" onclick="openQuestionGuide('match')">
+                    <i class="fa fa-eye"></i> Matching
+                  </button>
+                  <button type="button" class="cq-pill pill-essay" onclick="openQuestionGuide('essay')" style="padding: 3px 8px; font-size: 11px; border-radius: 6px; height: 26px;">
+                    <i class="fa fa-eye"></i> Essay (Rubric)
                   </button>
                 </div>
               </div>
@@ -971,7 +998,7 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
 
               <div class="cq-editor-container">
                 <div class="cq-editor-body">
-                  <textarea class="cq-code-area" id="cqPasteArea" wrap="off" placeholder="1. Which organ pumps blood throughout the human body?&#10;A. Brain&#10;B. Lungs&#10;C. Heart&#10;D. Liver&#10;Answer: C. Heart&#10;points: 2&#10;&#10;2. The Earth revolves around the Sun.&#10;True / False&#10;Answer: True&#10;points: 2&#10;&#10;3. It is the largest land animal on Earth.&#10;Answer: Elephant&#10;points: 2&#10;&#10;4. Name the three states of matter.&#10;Answer: Solid, Liquid, Gas&#10;points: 2&#10;&#10;5. Why is water important to living things? (2–3 sentences)&#10;points: 10" oninput="updateCqEditorStats()"></textarea>
+                  <textarea class="cq-code-area" id="cqPasteArea" wrap="off" placeholder="1. Which organ pumps blood throughout the human body?&#10;A. Brain&#10;B. Lungs&#10;C. Heart&#10;D. Liver&#10;Answer: C. Heart&#10;points: 2&#10;&#10;2. The Earth revolves around the Sun.&#10;True / False&#10;Answer: True&#10;points: 2" oninput="updateCqEditorStats()"></textarea>
                 </div>
                 <div class="cq-editor-footer">
                   <span id="cqEditorLines">Lines: 1</span>
@@ -986,15 +1013,6 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
                 <button type="button" class="cq-btn-parse" onclick="parseAndPreviewCq()">
                   <i class="fa fa-magic"></i> Parse & Preview Questions
                 </button>
-              </div>
-            </div>
-
-            <div id="cqTabContentUpload" style="display:none;">
-              <div class="cq-drop-zone" id="cqDropZone" onclick="$('#cqFileInput').click()" style="border:2px dashed #cbd5e1;border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;">
-                <i class="fa fa-cloud-upload" style="font-size:36px;color:#7c3aed;margin-bottom:8px;"></i>
-                <div style="font-weight:700;font-size:14px;color:#1e293b;">Drop CSV / TSV / TXT File Here</div>
-                <div style="font-size:12px;color:#64748b;margin-top:4px;">Click or drag file from your computer</div>
-                <input type="file" id="cqFileInput" accept=".csv,.tsv,.txt" style="display:none;" onchange="handleCqFileSelect(this.files)">
               </div>
             </div>
           </div>
@@ -1019,7 +1037,31 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
 
       <div class="cq-modal-footer">
         <button type="button" class="cq-btn-cancel" data-dismiss="modal">Cancel</button>
-        <button type="button" class="cq-btn-create" onclick="submitCqQuiz()"><i class="fa fa-floppy-o"></i> Create Quiz</button>
+        <button type="button" class="cq-btn-create" id="cqBtnSubmit" onclick="submitCqQuiz()"><i class="fa fa-floppy-o"></i> Create Quiz</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Question Type Format Guide Modal (Matching Picture) ── -->
+<div class="modal fade" id="questionGuideModal" tabindex="-1" role="dialog" style="z-index: 1070;">
+  <div class="modal-dialog" role="document" style="max-width: 520px; margin: 50px auto;">
+    <div class="modal-content" style="border-radius: 14px; border: 1px solid #e2e8f0; box-shadow: 0 20px 45px -12px rgba(0,0,0,0.25); background: #ffffff; overflow: hidden;">
+      <div class="modal-header" style="padding: 12px 18px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; background: #fff;">
+        <h4 class="modal-title" style="font-size: 14px; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 7px; margin: 0;">
+          <i class="fa fa-book" style="color: #6366f1; font-size: 14px;"></i> <span id="qgModalTitle">Single MCQ Format Guide</span>
+        </h4>
+        <button type="button" class="close" data-dismiss="modal" style="font-size: 22px; color: #94a3b8; opacity: 1; outline: none; border: none; background: none; line-height: 1;">&times;</button>
+      </div>
+
+      <div class="modal-body" style="padding: 16px 18px; background: #f8fafc;">
+        <div style="font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">
+          Format Syntax:
+        </div>
+        <div style="background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+          <pre id="qgFormatPreview" style="margin: 0; background: transparent; border: none; font-family: 'Courier New', Courier, monospace; font-size: 13px; color: #334155; line-height: 1.65; white-space: pre-wrap; word-break: break-word;"></pre>
+        </div>
+        <div id="qgFormatHint" style="margin-top: 10px; font-size: 11.5px; color: #64748b; line-height: 1.45;"></div>
       </div>
     </div>
   </div>
@@ -1225,12 +1267,94 @@ function switchCqTab(tab) {
   if(tab === 'paste') {
     $('#cqTabBtnPaste').addClass('active');
     $('#cqTabContentPaste').show();
+    $('#cqTabContentAi').hide();
     $('#cqTabContentUpload').hide();
+  } else if(tab === 'ai') {
+    $('#cqTabBtnAi').addClass('active');
+    $('#cqTabContentPaste').hide();
+    $('#cqTabContentAi').show();
+    $('#cqTabContentUpload').hide();
+    // Sync module select if already picked
+    var curMod = $('#cqQuizModule').val();
+    if(curMod && curMod != '0') $('#cqAiSelectModule').val(curMod);
   } else if(tab === 'upload') {
     $('#cqTabBtnUpload').addClass('active');
     $('#cqTabContentPaste').hide();
+    $('#cqTabContentAi').hide();
     $('#cqTabContentUpload').show();
   }
+}
+
+function onCqClassChange(cid) {
+  cid = parseInt(cid) || 0;
+  $('#cqQuizModule option').each(function(){
+    var optClass = parseInt($(this).data('class')) || 0;
+    if(cid === 0 || optClass === 0 || optClass === cid){
+      $(this).show();
+    } else {
+      $(this).hide();
+    }
+  });
+}
+
+function runAiQuizGeneration() {
+  var modId = parseInt($('#cqAiSelectModule').val() || $('#cqQuizModule').val()) || 0;
+  if(!modId || modId <= 0) {
+    alert('Please select an uploaded Learning Module as the source of truth.');
+    $('#cqAiSelectModule').focus();
+    return;
+  }
+
+  var reqTypes = [];
+  var counts = {};
+
+  if($('#aiTypeMC').is(':checked'))   { reqTypes.push('multiple_choice');     counts['multiple_choice'] = parseInt($('#aiCountMC').val()) || 2; }
+  if($('#aiTypeMSQ').is(':checked'))  { reqTypes.push('multi_select');        counts['multi_select'] = parseInt($('#aiCountMSQ').val()) || 2; }
+  if($('#aiTypeTF').is(':checked'))   { reqTypes.push('true_false');          counts['true_false'] = parseInt($('#aiCountTF').val()) || 2; }
+  if($('#aiTypeMTF').is(':checked'))  { reqTypes.push('modified_true_false'); counts['modified_true_false'] = parseInt($('#aiCountMTF').val()) || 2; }
+  if($('#aiTypeID').is(':checked'))   { reqTypes.push('identification');      counts['identification'] = parseInt($('#aiCountID').val()) || 2; }
+  if($('#aiTypeENUM').is(':checked')) { reqTypes.push('enumeration');         counts['enumeration'] = parseInt($('#aiCountENUM').val()) || 1; }
+  if($('#aiTypeMATCH').is(':checked')){ reqTypes.push('matching');            counts['matching'] = parseInt($('#aiCountMATCH').val()) || 1; }
+  if($('#aiTypeESSAY').is(':checked')){ reqTypes.push('essay');               counts['essay'] = parseInt($('#aiCountESSAY').val()) || 1; }
+
+  if(reqTypes.length === 0) {
+    alert('Please check at least one question type to generate.');
+    return;
+  }
+
+  var difficulty = $('#aiDifficulty').val() || 'medium';
+  var btn = $('#btnRunAiGen');
+  btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Analyzing Module & Generating Quiz...');
+
+  $.post('../shared/quiz_handler.php', {
+    action: 'generate_quiz_from_module',
+    module_id: modId,
+    class_id: parseInt($('#cqQuizClass').val()) || 0,
+    requested_types: JSON.stringify(reqTypes),
+    question_counts: JSON.stringify(counts),
+    difficulty: difficulty
+  }, function(res) {
+    btn.prop('disabled', false).html('<i class="fa fa-bolt"></i> Generate Quiz from Module');
+    if(typeof res === 'string') { try { res = JSON.parse(res.trim()); } catch(e){} }
+    if(!res || !res.success || !res.questions || res.questions.length === 0) {
+      alert(res && res.msg ? res.msg : 'Failed to generate questions. Ensure module text is readable.');
+      return;
+    }
+
+    // Set quiz title if empty
+    if(!$('#cqQuizTitle').val().trim()){
+      var modTitle = $('#cqAiSelectModule option:selected').text().trim();
+      $('#cqQuizTitle').val(modTitle ? (modTitle.replace(/\s*\[.*\]/, '') + ' Quiz') : 'AI Module Quiz');
+    }
+    $('#cqQuizModule').val(modId);
+
+    cqQuestionsData = res.questions;
+    renderCqCards();
+    alert('Successfully generated ' + res.questions.length + ' questions grounded strictly in the module! You can review and edit questions before saving.');
+  }, 'json').fail(function(xhr, status, error){
+    btn.prop('disabled', false).html('<i class="fa fa-bolt"></i> Generate Quiz from Module');
+    alert('AI Generation request failed: ' + (xhr.responseText || error || 'Network error'));
+  });
 }
 
 function updateCqEditorStats() {
@@ -1243,34 +1367,89 @@ function updateCqEditorStats() {
   $('#cqEditorChars').text(`Characters: ${charCount}`);
 }
 
-function insertCqShortcut(type) {
-  const textarea = document.getElementById('cqPasteArea');
-  let snippet = '';
+let currentGuideSnippet = '';
 
-  if(type === 'mc') {
-    snippet = `\n1. What is a variable in programming?\na) A container for storing data\nb) A type of loop\nc) A function\nd) A class\nAnswer: a\nPoints: 1\n`;
-  } else if(type === 'tf') {
-    snippet = `\n2. Elephant is the largest land mammal.\nAnswer: True\nPoints: 1\n`;
-  } else if(type === 'id') {
-    snippet = `\n8. It is the process by which plants make food using sunlight.\nAnswer: Photosynthesis\nTopic: e.g. Loops\nPoints: 2\n`;
-  } else if(type === 'enum') {
-    snippet = `\n9. Name the three states of matter.\nAnswer: Solid, Liquid, Gas\nPoints: 2\n`;
-  } else if(type === 'mtf') {
-    snippet = `\n5. Water boils at 50 degrees Celsius at sea level.\nAnswer: False (100°C)\nPoints: 1\n`;
-  } else if(type === 'essay') {
-    snippet = `\n6. Explain the difference between compiled and interpreted programming languages.\nAnswer: Rubric: Technical Accuracy (50%), Clarity (50%)\nPoints: 5\n`;
+const guideFormats = {
+  'mc': {
+    title: 'Single MCQ Format Guide',
+    snippet: `1. Which organ pumps blood throughout the human body?\nA. Brain\nB. Lungs\nC. Heart\nD. Liver\nAnswer: C. Heart\npoints: 2`,
+    hint: 'List choices A through D on separate lines. Specify the correct choice under <code>Answer:</code>.'
+  },
+  'msq': {
+    title: 'Multi-Select MCQ Format Guide',
+    snippet: `2. Which of the following are primary colors? (Select all correct answers)\nA. Red\nB. Green\nC. Blue\nD. Yellow\nAnswer: A, C, D\npoints: 2`,
+    hint: 'Specify multiple letters separated by commas under <code>Answer:</code>.'
+  },
+  'tf': {
+    title: 'True / False Format Guide',
+    snippet: `3. The Earth revolves around the Sun.\nTrue / False\nAnswer: True\npoints: 1`,
+    hint: 'Specify either <code>True</code> or <code>False</code> under <code>Answer:</code>.'
+  },
+  'mtf': {
+    title: 'Modified True / False Format Guide',
+    snippet: `4. Photosynthesis occurs in the mitochondria of plant cells.\nAnswer: False (Chloroplasts)\npoints: 2`,
+    hint: 'If False, provide the correction in parentheses, e.g. <code>False (Correct Word)</code>.'
+  },
+  'id': {
+    title: 'Identification Format Guide',
+    snippet: `5. What is the largest land mammal on Earth?\nAnswer: Elephant\npoints: 1`,
+    hint: 'Provide the exact term or concept under <code>Answer:</code>.'
+  },
+  'enum': {
+    title: 'Enumeration Format Guide',
+    snippet: `6. Name the three states of matter.\nAnswer: Solid, Liquid, Gas\npoints: 3`,
+    hint: 'List items separated by commas or on separate lines under <code>Answer:</code>.'
+  },
+  'match': {
+    title: 'Matching Type Format Guide',
+    snippet: `7. Match Column A terms with Column B definitions.\nColumn A:\n1. Predictive Analytics\n2. Descriptive Analytics\n3. Prescriptive Analytics\nColumn B:\nA. Recommends optimal actions\nB. Predicts future outcomes\nC. Explains historical events\nAnswer: 1-B, 2-C, 3-A\npoints: 3`,
+    hint: 'List numbered Column A items, lettered Column B items, and answer pairs like <code>1-B, 2-C</code>.'
+  },
+  'essay': {
+    title: 'Essay (Rubric) Format Guide',
+    snippet: `8. Explain why photosynthesis is essential for life on Earth.\nRubric: Understanding (4 pts), Accuracy (3 pts), Clarity (3 pts)\npoints: 10`,
+    hint: 'Include rubric criteria points in parentheses under <code>Rubric:</code>.'
   }
+};
 
-  const start = textarea.selectionStart || textarea.value.length;
-  const end = textarea.selectionEnd || textarea.value.length;
+function openQuestionGuide(type) {
+  const g = guideFormats[type] || guideFormats['mc'];
+  currentGuideSnippet = g.snippet;
+  $('#qgModalTitle').text(g.title);
+  $('#qgFormatPreview').text(g.snippet);
+  $('#qgFormatHint').html('<i class="fa fa-info-circle text-primary"></i> ' + g.hint);
+  $('#qgBtnCopy').html('<i class="fa fa-clone"></i> Copy Format');
+  $('#questionGuideModal').modal('show');
+}
+
+function copyGuideFormat() {
+  if(!currentGuideSnippet) return;
+  if(navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(currentGuideSnippet).then(function() {
+      $('#qgBtnCopy').html('<i class="fa fa-check text-success"></i> Copied!');
+      setTimeout(function(){
+        $('#qgBtnCopy').html('<i class="fa fa-clone"></i> Copy Format');
+      }, 1500);
+    });
+  } else {
+    const temp = $('<textarea>').val(currentGuideSnippet).appendTo('body').select();
+    document.execCommand('copy');
+    temp.remove();
+    $('#qgBtnCopy').html('<i class="fa fa-check text-success"></i> Copied!');
+    setTimeout(function(){
+      $('#qgBtnCopy').html('<i class="fa fa-clone"></i> Copy Format');
+    }, 1500);
+  }
+}
+
+function insertQuestionFromGuide() {
+  if(!currentGuideSnippet) return;
+  const textarea = document.getElementById('cqPasteArea');
   const currentVal = textarea.value;
-
-  textarea.value = currentVal.substring(0, start) + snippet + currentVal.substring(end);
-  textarea.selectionStart = textarea.selectionEnd = start + snippet.length;
-  textarea.focus();
-
+  textarea.value = currentVal ? (currentVal.trimEnd() + '\n\n' + currentGuideSnippet) : currentGuideSnippet;
   updateCqEditorStats();
   parseAndPreviewCq();
+  $('#questionGuideModal').modal('hide');
 }
 
 function clearCqArea() {
@@ -1290,66 +1469,45 @@ B. Lungs
 C. Heart
 D. Liver
 Answer: C. Heart
-points: 2
+points: 1
 
-2. What is the chemical symbol for water?
-A. CO₂
-B. H₂O
-C. O₂
-D. NaCl
-Answer: B. H₂O
+Multi-Select
+
+2. Which of the following are primary colors? (Select all correct answers)
+A. Red
+B. Green
+C. Blue
+D. Yellow
+Answer: A, C, D
 points: 2
 
 True or False
 
 3. The Earth revolves around the Sun.
-True / False
 Answer: True
-points: 2
-
-4. Fish can live without water.
-True / False
-Answer: False
-points: 2
+points: 1
 
 Modified True or False
 
-(Write TRUE if correct. If false, change the underlined word to make it correct.)
-
-5. The capital of Japan is Beijing.
-Answer: Tokyo
-points: 2
-
-6. Plants make their own food through photosynthesis.
-Answer: True
+4. Photosynthesis occurs in the mitochondria of plant cells.
+Answer: False (Chloroplasts)
 points: 2
 
 Identification
 
-7. It is the largest land animal on Earth.
+5. It is the largest land mammal on Earth.
 Answer: Elephant
-points: 2
-
-8. It is the process by which plants make food using sunlight.
-Answer: Photosynthesis
-points: 2
+points: 1
 
 Enumeration
 
-9. Name the three states of matter.
+6. Name the three states of matter.
 Answer: Solid, Liquid, Gas
-points: 2
-
-10. Give two primary colors.
-Answer: Red, Blue (also Yellow)
-points: 2
+points: 3
 
 Essay
 
-11. Why is water important to living things? (2–3 sentences)
-points: 10
-
-12. Explain why plants are important to humans. (2–3 sentences)
+7. Explain why photosynthesis is essential for life on Earth. (2–3 sentences)
 points: 10`;
 
   $('#cqPasteArea').val(sampleText);
@@ -1367,136 +1525,259 @@ function parseAndPreviewCq() {
 
   const lines = text.split(/\r?\n/);
   cqQuestionsData = [];
-  const isTSV = text.includes('\t');
+  let qCounter = 1;
 
-  if(isTSV) {
-    lines.forEach((line, index) => {
-      if(!line.trim()) return;
-      let cols = line.split('\t').map(c => c.replace(/^["']|["']$/g, '').trim());
-      if(cols.length < 1) return;
+  const blocks = text.split(/\n\s*\n/);
 
-      const qText = cols[0] || '';
-      if(!qText) return;
+  blocks.forEach(block => {
+    const bLines = block.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
+    if(bLines.length === 0) return;
 
-      let qType = 'multiple_choice';
-      let options = ['', '', '', ''];
-      let correctAnswer = cols[1] || cols[5] || '';
-
-      const lastCol = (cols[cols.length - 1] || '').toLowerCase().trim();
-      if(lastCol.includes('id') || lastCol.includes('identification')) qType = 'identification';
-      else if(lastCol.includes('enum')) qType = 'enumeration';
-      else if(lastCol.includes('tf') || lastCol.includes('true_false')) qType = 'true_false';
-      else if(lastCol.includes('essay')) qType = 'essay';
-      else qType = 'identification';
-
-      cqQuestionsData.push({
-        id: Date.now() + Math.random(),
-        question_type: qType,
-        question_text: qText,
-        options: options,
-        correct_answer: correctAnswer,
-        points: 2,
-        topic: 'e.g. Loops'
-      });
-    });
-  } else {
+    // Check for section headers
     let currentSection = '';
-    const blocks = text.split(/\n\s*\n/);
+    const firstLineLower = bLines[0].toLowerCase();
+    if(bLines.length <= 2 && !bLines[0].match(/^\d+[\.\)]/)) {
+      if(firstLineLower.includes('multi-select') || firstLineLower.includes('multiple answers')) { currentSection = 'msq'; if(bLines.length === 1) return; }
+      else if(firstLineLower.includes('multiple choice')) { currentSection = 'mc'; if(bLines.length === 1) return; }
+      else if(firstLineLower.includes('modified true')) { currentSection = 'mtf'; if(bLines.length === 1) return; }
+      else if(firstLineLower.includes('true or false') || firstLineLower.includes('true / false')) { currentSection = 'tf'; if(bLines.length === 1) return; }
+      else if(firstLineLower.includes('identification')) { currentSection = 'id'; if(bLines.length === 1) return; }
+      else if(firstLineLower.includes('enumeration')) { currentSection = 'enum'; if(bLines.length === 1) return; }
+      else if(firstLineLower.includes('matching')) { currentSection = 'match'; if(bLines.length === 1) return; }
+      else if(firstLineLower.includes('essay')) { currentSection = 'essay'; if(bLines.length === 1) return; }
+    }
 
-    blocks.forEach(block => {
-      const bLines = block.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
-      if(bLines.length === 0) return;
+    const blockText = bLines.join('\n');
+    const isMatchingBlock = currentSection === 'match' ||
+      /matching/i.test(firstLineLower) ||
+      /column\s*a/i.test(blockText) ||
+      /column\s*b/i.test(blockText) ||
+      /answer:\s*\d+[\-\:\=][a-zA-Z]/i.test(blockText);
 
-      // Check for section headers (e.g. "Multiple Choice", "True or False", "Essay")
-      const firstLineLower = bLines[0].toLowerCase();
-      if(bLines.length <= 2 && !bLines[0].match(/^\d+[\.\)]/)) {
-        if(firstLineLower.includes('multiple choice')) { currentSection = 'mc'; if(bLines.length === 1) return; }
-        else if(firstLineLower.includes('true or false') || firstLineLower.includes('true / false')) { currentSection = 'tf'; if(bLines.length === 1) return; }
-        else if(firstLineLower.includes('modified true')) { currentSection = 'mtf'; if(bLines.length === 1) return; }
-        else if(firstLineLower.includes('identification')) { currentSection = 'id'; if(bLines.length === 1) return; }
-        else if(firstLineLower.includes('enumeration')) { currentSection = 'enum'; if(bLines.length === 1) return; }
-        else if(firstLineLower.includes('essay') || firstLineLower.includes('short answer')) { currentSection = 'essay'; if(bLines.length === 1) return; }
-        else if(firstLineLower.includes('write true if') || firstLineLower.includes('instructions')) { if(bLines.length === 1) return; }
-      }
+    let qStatement = '';
+    let options = [];
+    let correctAnswer = '';
+    let points = 1;
+    let topic = 'General';
+    let matchingPairs = [];
 
-      let qStatement = '';
-      let options = [];
-      let correctAnswer = '';
-      let points = 2;
-      let topic = 'General';
+    if(isMatchingBlock) {
+      // Parse Matching Type
+      let inColA = false;
+      let inColB = false;
+      let colAMap = {};
+      let colBMap = {};
+      let mainTitle = '';
 
       bLines.forEach(l => {
         const lowerL = l.toLowerCase();
-
-        // Filter out section titles/instructions inside a question block
-        if(lowerL.startsWith('(write true') || lowerL === 'true or false' || lowerL === 'true / false' || lowerL === 'multiple choice' || lowerL === 'identification' || lowerL === 'enumeration' || lowerL === 'essay') {
-          return;
-        }
+        if(lowerL === 'matching type' || lowerL === 'matching') return;
 
         if(lowerL.startsWith('answer:')) {
           correctAnswer = l.substring(7).trim();
+          inColA = false; inColB = false;
         } else if(lowerL.startsWith('points:')) {
-          points = parseInt(l.substring(7).trim()) || 2;
+          points = parseFloat(l.substring(7).trim()) || 1;
+          inColA = false; inColB = false;
         } else if(lowerL.startsWith('topic:')) {
           topic = l.substring(6).trim() || 'General';
-        } else if(l.match(/^[a-d][\.\)]\s*/i)) {
-          options.push(l.replace(/^[a-d][\.\)]\s*/i, '').trim());
+          inColA = false; inColB = false;
+        } else if(lowerL.startsWith('column a:') || lowerL === 'column a') {
+          inColA = true; inColB = false;
+        } else if(lowerL.startsWith('column b:') || lowerL === 'column b') {
+          inColB = true; inColA = false;
+        } else if(inColA) {
+          const matchA = l.match(/^(\d+)[\.\)]\s*(.+)/i);
+          if(matchA) {
+            colAMap[matchA[1]] = matchA[2].trim();
+          } else {
+            const nextIdx = Object.keys(colAMap).length + 1;
+            colAMap[nextIdx] = l.replace(/^\d+[\.\)]\s*/, '').trim();
+          }
+        } else if(inColB) {
+          const matchB = l.match(/^([a-zA-Z])[\.\)]\s*(.+)/i);
+          if(matchB) {
+            colBMap[matchB[1].toUpperCase()] = matchB[2].trim();
+          } else {
+            const nextLetter = String.fromCharCode(65 + Object.keys(colBMap).length);
+            colBMap[nextLetter] = l.replace(/^[a-zA-Z][\.\)]\s*/, '').trim();
+          }
         } else {
-          const cleanL = l.replace(/^\d+[\.\)]\s*/, '').trim();
-          if(cleanL && !cleanL.toLowerCase().startsWith('answer:') && !cleanL.toLowerCase().startsWith('points:')) {
-            qStatement = qStatement ? (qStatement + ' ' + cleanL) : cleanL;
+          const directMatch = l.match(/^\d+[\.\)]\s*([^=\-\:]+)\s*[\-\=\:]\s*([a-zA-Z])[\.\)]\s*(.+)/i);
+          if(directMatch) {
+            const itemNum = Object.keys(colAMap).length + 1;
+            const letter = directMatch[2].toUpperCase();
+            colAMap[itemNum] = directMatch[1].trim();
+            colBMap[letter] = directMatch[3].trim();
+            if(!correctAnswer) correctAnswer = itemNum + '-' + letter;
+            else correctAnswer += ', ' + itemNum + '-' + letter;
+          } else {
+            const cleanL = l.replace(/^\d+[\.\)]\s*/, '').trim();
+            if(cleanL && !cleanL.toLowerCase().startsWith('column a') && !cleanL.toLowerCase().startsWith('column b')) {
+              mainTitle = mainTitle ? (mainTitle + ' ' + cleanL) : cleanL;
+            }
           }
         }
       });
 
-      if(!qStatement) return;
+      qStatement = mainTitle || 'Match Column A terms with Column B definitions.';
 
-      const lowerStmt = qStatement.toLowerCase();
-      const lowerAns = correctAnswer.toLowerCase();
-
-      let qType = 'multiple_choice';
-
-      // 1. Intelligent Essay Detection
-      const isEssayKeyword = lowerStmt.startsWith('why ') || lowerStmt.startsWith('explain ') || lowerStmt.startsWith('describe ') || 
-                             lowerStmt.startsWith('discuss ') || lowerStmt.startsWith('summarize ') || lowerStmt.startsWith('elaborate ') || 
-                             lowerStmt.startsWith('compare ') || lowerStmt.includes('(2–3 sentences)') || lowerStmt.includes('(2-3 sentences)') || 
-                             lowerStmt.includes('sentence') || lowerStmt.includes('essay') || lowerStmt.includes('in your own words');
-
-      if(currentSection === 'essay' || isEssayKeyword || (options.length === 0 && !correctAnswer && points >= 5)) {
-        qType = 'essay';
+      // Parse answer pairs: "1-C, 2-A, 3-B" or "1:C, 2:A, 3:B"
+      if(correctAnswer) {
+        const pairRegex = /(\d+)\s*[\-\:\=]\s*([a-zA-Z])/g;
+        let pMatch;
+        while((pMatch = pairRegex.exec(correctAnswer)) !== null) {
+          const aKey = pMatch[1];
+          const bKey = pMatch[2].toUpperCase();
+          const aText = colAMap[aKey] || ('Item ' + aKey);
+          const bText = colBMap[bKey] || ('Definition ' + bKey);
+          matchingPairs.push({
+            col_a_id: 'a-' + aKey,
+            col_a_text: aText,
+            col_b_id: 'b-' + bKey,
+            col_b_text: bText
+          });
+        }
       }
-      // 2. Multiple Choice
-      else if(options.length >= 2) {
+
+      if(matchingPairs.length === 0 && Object.keys(colAMap).length > 0) {
+        Object.keys(colAMap).forEach((k, idx) => {
+          const bKey = String.fromCharCode(65 + idx);
+          matchingPairs.push({
+            col_a_id: 'a-' + k,
+            col_a_text: colAMap[k],
+            col_b_id: 'b-' + bKey,
+            col_b_text: colBMap[bKey] || colBMap[Object.keys(colBMap)[idx]] || ('Option ' + bKey)
+          });
+        });
+      }
+
+      if(points <= 1 && matchingPairs.length > 0) {
+        points = matchingPairs.length * 2;
+      }
+    } else {
+      bLines.forEach(l => {
+        const lowerL = l.toLowerCase();
+        if(lowerL === 'true or false' || lowerL === 'multiple choice' || lowerL === 'identification' || lowerL === 'enumeration' || lowerL === 'essay') return;
+
+        if(lowerL.startsWith('answer:')) {
+          correctAnswer = l.substring(7).trim();
+        } else if(lowerL.startsWith('points:') || lowerL.startsWith('point:')) {
+          points = parseFloat(l.replace(/^points?:/i, '').trim()) || 1;
+        } else if(lowerL.startsWith('topic:')) {
+          topic = l.substring(6).trim() || 'General';
+        } else if(l.match(/^[a-z][\.\)]\s*/i)) {
+          options.push(l.replace(/^[a-z][\.\)]\s*/i, '').trim());
+        } else {
+          const cleanL = l.replace(/^\d+[\.\)]\s*/, '').trim();
+          if(cleanL && !cleanL.toLowerCase().startsWith('answer:') && !cleanL.toLowerCase().startsWith('point:') && !cleanL.toLowerCase().startsWith('points:')) {
+            qStatement = qStatement ? (qStatement + ' ' + cleanL) : cleanL;
+          }
+        }
+      });
+    }
+
+    if(!qStatement) return;
+
+    const lowerStmt = qStatement.toLowerCase();
+    const lowerAns = correctAnswer.toLowerCase();
+
+    let qType = 'multiple_choice';
+    if(isMatchingBlock || matchingPairs.length > 0) {
+      qType = 'matching';
+    } else if(options.length >= 2) {
+      // Split answer by comma, semicolon, '&', 'and'
+      const ansParts = correctAnswer.split(/[,;&]|\band\b/i).map(s => s.trim().toLowerCase()).filter(Boolean);
+      let matchedCount = 0;
+
+      options.forEach((optText, oIdx) => {
+        const letter = String.fromCharCode(65 + oIdx).toLowerCase();
+        const optLower = optText.trim().toLowerCase();
+        const cleanOpt = optLower.replace(/^[a-z][\.\)\:\-\s]+/i, '').trim();
+
+        let isMatch = false;
+        ansParts.forEach(p => {
+          p = p.trim().toLowerCase();
+          const cleanP = p.replace(/^[a-z][\.\)\:\-\s]+/i, '').trim();
+          if (optLower === p || cleanOpt === p || (cleanP && cleanOpt === cleanP)) {
+            isMatch = true;
+          } else if (/^[a-z]$/i.test(p) && p === letter) {
+            isMatch = true;
+          }
+        });
+
+        if (isMatch) matchedCount++;
+      });
+
+      // If 1 answer: Single MCQ; If more than 1 answer: Multi-Select
+      if(matchedCount > 1 || (ansParts.length > 1 && matchedCount > 0) || lowerStmt.includes('select all') || currentSection === 'msq') {
+        qType = 'multi_select';
+        if(points < 2) points = 2;
+      } else {
         qType = 'multiple_choice';
       }
-      // 3. True / False
-      else if(currentSection === 'tf' || lowerAns === 'true' || lowerAns === 'false' || lowerAns === 't' || lowerAns === 'f') {
-        qType = 'true_false';
-      }
-      // 4. Modified True / False
-      else if(currentSection === 'mtf') {
-        qType = 'modified_true_false';
-      }
-      // 5. Enumeration
-      else if(currentSection === 'enum' || correctAnswer.includes(',') || lowerStmt.startsWith('name ') || lowerStmt.startsWith('give ') || lowerStmt.startsWith('enumerate ') || lowerStmt.startsWith('list ')) {
-        qType = 'enumeration';
-      }
-      // 6. Identification
-      else {
-        qType = 'identification';
-      }
+    } else if(currentSection === 'essay' || lowerStmt.startsWith('explain ') || lowerStmt.startsWith('why ') || lowerStmt.startsWith('describe ') || points >= 5) {
+      qType = 'essay';
+      if(points < 5) points = 10;
+    } else if(currentSection === 'tf' || lowerAns === 'true' || lowerAns === 'false') {
+      qType = 'true_false';
+    } else if(currentSection === 'mtf' || lowerAns.includes('(') || lowerAns.includes('false -') || lowerAns.includes('false —')) {
+      qType = 'modified_true_false';
+      if(points < 2) points = 2;
+    } else if(currentSection === 'enum' || correctAnswer.includes(',') || lowerStmt.startsWith('name ') || lowerStmt.startsWith('enumerate ') || lowerStmt.startsWith('list ')) {
+      qType = 'enumeration';
+      if(points < 2) points = 3;
+    } else {
+      qType = 'identification';
+    }
 
-      cqQuestionsData.push({
-        id: Date.now() + Math.random(),
-        question_type: qType,
-        question_text: qStatement,
-        options: options,
-        correct_answer: correctAnswer || (qType === 'essay' ? 'Teacher Grading / Rubric' : ''),
-        points: points,
-        topic: topic
+    const qUid = (qType === 'multiple_choice' ? 'MCQ' : (qType === 'multi_select' ? 'MSQ' : (qType === 'true_false' ? 'TF' : (qType === 'modified_true_false' ? 'MTF' : (qType === 'identification' ? 'ID' : (qType === 'enumeration' ? 'ENUM' : (qType === 'matching' ? 'MATCH' : 'ESSAY'))))))) + '-' + String(qCounter).padStart(3, '0');
+    qCounter++;
+
+    // Generate options data and accurate correct option IDs
+    let optionsData = [];
+    let correctOptionIds = [];
+    if(options.length > 0) {
+      const ansParts = correctAnswer.split(/[,;&]|\band\b/i).map(s => s.trim().toLowerCase()).filter(Boolean);
+      options.forEach((optText, oIdx) => {
+        const optId = 'opt-' + qUid.toLowerCase() + '-' + String(oIdx + 1).padStart(2, '0');
+        optionsData.push({ id: optId, text: optText });
+
+        const letter = String.fromCharCode(65 + oIdx).toLowerCase();
+        const optLower = optText.trim().toLowerCase();
+        const cleanOpt = optLower.replace(/^[a-z][\.\)\:\-\s]+/i, '').trim();
+
+        let isCorrect = false;
+        ansParts.forEach(p => {
+          p = p.trim().toLowerCase();
+          const cleanP = p.replace(/^[a-z][\.\)\:\-\s]+/i, '').trim();
+          if (optLower === p || cleanOpt === p || (cleanP && cleanOpt === cleanP)) {
+            isCorrect = true;
+          } else if (/^[a-z]$/i.test(p) && p === letter) {
+            isCorrect = true;
+          }
+        });
+
+        if(isCorrect) {
+          correctOptionIds.push(optId);
+        }
       });
+    }
+
+    cqQuestionsData.push({
+      id: Date.now() + Math.random(),
+      question_uid: qUid,
+      question_type: qType,
+      question_text: qStatement,
+      options: options,
+      options_data: optionsData,
+      correct_option_ids: correctOptionIds,
+      matching_pairs: matchingPairs,
+      correct_answer: correctAnswer || (qType === 'essay' ? 'Teacher Grading / Rubric' : ''),
+      points: points,
+      topic: topic
     });
-  }
+  });
 
   renderCqCards();
 }
@@ -1512,93 +1793,94 @@ function renderCqCards() {
       <div class="cq-empty-preview">
         <div class="cq-empty-icon"><i class="fa fa-inbox"></i></div>
         <h4 class="cq-empty-title">No questions parsed yet</h4>
-        <p class="cq-empty-desc">Type or paste questions on the left and click "Parse & Preview Questions" to see the live rendering here.</p>
+        <p class="cq-empty-desc">Type or paste questions on the left, or use the "AI Generate from Module" tab to generate questions automatically.</p>
       </div>
     `);
     $('#cqDetectedBadge').text('0 Questions Detected (0 pts)');
     return;
   }
 
-  const badgeColors = {
-    multiple_choice: '#7c3aed',
-    true_false: '#16a34a',
-    modified_true_false: '#e11d48',
-    identification: '#f97316',
-    enumeration: '#1d4ed8',
-    essay: '#475569'
-  };
-
   const typeTags = {
-    multiple_choice: { label: 'MC', class: 'tag-mc' },
-    true_false: { label: 'T/F', class: 'tag-tf' },
-    modified_true_false: { label: 'MTF', class: 'tag-mtf' },
-    identification: { label: 'ID', class: 'tag-id' },
-    enumeration: { label: 'ENUM', class: 'tag-enum' },
-    essay: { label: 'ESSAY', class: 'tag-essay' }
+    multiple_choice: { label: 'Single MCQ', class: 'tag-mc', color: '#7c3aed' },
+    multi_select: { label: 'Multi-Select MCQ', class: 'tag-msq', color: '#1d4ed8' },
+    true_false: { label: 'True / False', class: 'tag-tf', color: '#16a34a' },
+    modified_true_false: { label: 'Modified T/F', class: 'tag-mtf', color: '#e11d48' },
+    identification: { label: 'Identification', class: 'tag-id', color: '#f97316' },
+    enumeration: { label: 'Enumeration', class: 'tag-enum', color: '#0284c7' },
+    matching: { label: 'Matching', class: 'tag-match', color: '#d97706' },
+    essay: { label: 'Essay', class: 'tag-essay', color: '#475569' }
   };
 
   cqQuestionsData.forEach((q, idx) => {
-    const qType = q.question_type || 'identification';
-    const pts = parseInt(q.points) || 2;
+    const pts = parseFloat(q.points || 1);
     totalPoints += pts;
+    const typeInfo = typeTags[q.question_type] || { label: q.question_type, color: '#64748b', class: 'tag-id' };
+    const qUid = q.question_uid || ('Q-' + (idx + 1));
+    const bColor = typeInfo.color;
 
-    const bColor = badgeColors[qType] || '#f97316';
-    const tagInfo = typeTags[qType] || { label: 'ID', class: 'tag-id' };
-    const displayNum = idx + 1;
-
-    let ansDisplay = q.correct_answer || (qType === 'true_false' ? 'True' : 'N/A');
-
-    const cardHtml = `
-      <div class="cq-q-card" style="border-left-color:${bColor};">
-        <div class="cq-q-header">
-          <span class="cq-q-badge" style="background:${bColor};">${displayNum}</span>
-          <div class="cq-q-text">
-            ${escapeCqHtml(q.question_text)}
+    let bodyHtml = '';
+    if(q.options_data && q.options_data.length > 0) {
+      bodyHtml = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">';
+      q.options_data.forEach((opt, oIdx) => {
+        const isCorr = (q.correct_option_ids && q.correct_option_ids.includes(opt.id));
+        bodyHtml += `
+          <div style="font-size:12px;padding:5px 10px;border-radius:6px;background:${isCorr ? '#dcfce7' : '#f8fafc'};border:1px solid ${isCorr ? '#86efac' : '#e2e8f0'};color:${isCorr ? '#166534' : '#334155'};display:flex;align-items:center;justify-content:space-between;">
+            <span><strong>${String.fromCharCode(65 + oIdx)}.</strong> ${escapeCqHtml(opt.text)}</span>
+            ${isCorr ? '<span style="font-size:10px;font-weight:700;color:#15803d;"><i class="fa fa-check"></i> Correct</span>' : ''}
           </div>
-          <span class="cq-type-tag ${tagInfo.class}">${tagInfo.label}</span>
+        `;
+      });
+      bodyHtml += '</div>';
+    } else if(q.options && q.options.length > 0) {
+      bodyHtml = '<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">';
+      q.options.forEach((opt, oIdx) => {
+        bodyHtml += `<div style="font-size:12px;padding:5px 10px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;color:#334155;"><strong>${String.fromCharCode(65 + oIdx)}.</strong> ${escapeCqHtml(opt)}</div>`;
+      });
+      bodyHtml += '</div>';
+    } else if(q.question_type === 'essay') {
+      bodyHtml = `
+        <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;font-size:11.5px;color:#92400e;margin-top:8px;">
+          <i class="fa fa-pencil"></i> <strong>Semantic AI Essay Grading:</strong> Graded against module concepts and rubric criteria.
         </div>
+      `;
+    } else if(q.question_type === 'matching' && q.matching_pairs) {
+      bodyHtml = '<div style="margin-top:8px;font-size:12px;">';
+      q.matching_pairs.forEach(mp => {
+        bodyHtml += `<div style="padding:3px 0;color:#334155;"><strong>${escapeCqHtml(mp.col_a_text)}</strong> &rarr; <span style="color:#0284c7;">${escapeCqHtml(mp.col_b_text)}</span></div>`;
+      });
+      bodyHtml += '</div>';
+    }
 
-        <div class="cq-ans-box">
-          <div class="cq-ans-label">CORRECT ANSWER</div>
-          <div class="cq-ans-val">
-            <i class="fa fa-check" style="color:#16a34a;"></i>
-            <span>${escapeCqHtml(ansDisplay)}</span>
+    let answerDisplay = '';
+    if(q.correct_answer) {
+      answerDisplay = `<div style="margin-top:6px;font-size:12px;color:#15803d;background:#f0fdf4;padding:4px 8px;border-radius:6px;display:inline-block;"><i class="fa fa-check-circle"></i> Ans: <strong>${escapeCqHtml(q.correct_answer)}</strong></div>`;
+    }
+
+    container.append(`
+      <div class="cq-preview-card" style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid ${bColor};border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:11px;font-weight:800;background:#f1f5f9;color:#0f172a;padding:2px 6px;border-radius:4px;">${qUid}</span>
+            <span style="font-size:10.5px;font-weight:700;background:${bColor}15;color:${bColor};padding:2px 8px;border-radius:4px;">${typeInfo.label}</span>
+            <span style="font-size:10px;color:#64748b;background:#f8fafc;padding:2px 6px;border-radius:4px;border:1px solid #e2e8f0;"><i class="fa fa-tag"></i> ${escapeCqHtml(q.topic || 'General')}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11.5px;font-weight:700;color:#64748b;">${pts} pt${pts !== 1 ? 's' : ''}</span>
+            <button type="button" class="btn btn-xs btn-default" onclick="deleteCqCard(${idx})" title="Remove question" style="border:none;color:#ef4444;font-size:14px;padding:0 4px;"><i class="fa fa-times"></i></button>
           </div>
         </div>
-
-        <div class="cq-q-foot">
-          <div style="display:flex;align-items:center;gap:12px;">
-            <span class="cq-meta-input"><i class="fa fa-tag"></i> Topic: <input type="text" class="cq-input-sm" style="width:100px;" value="${escapeCqHtml(q.topic || 'General')}"></span>
-            <span class="cq-meta-input">Points: <input type="number" class="cq-input-sm" style="width:46px;" value="${pts}"></span>
-          </div>
-          <div style="display:flex;align-items:center;gap:4px;">
-            <button type="button" class="btn-act" style="padding:2px 6px;font-size:11px;border:1px solid #e2e8f0;background:#fff;border-radius:6px;color:#ef4444;" onclick="deleteCqQuestion(${idx})"><i class="fa fa-trash"></i></button>
-          </div>
-        </div>
+        <div style="font-size:13px;font-weight:600;color:#0f172a;line-height:1.4;">${escapeCqHtml(q.question_text)}</div>
+        ${bodyHtml}
+        ${answerDisplay}
       </div>
-    `;
-
-    container.append(cardHtml);
+    `);
   });
 
   $('#cqDetectedBadge').text(`${cqQuestionsData.length} Questions Detected (${totalPoints} pts)`);
 }
 
-function deleteCqQuestion(idx) {
+function deleteCqCard(idx) {
   cqQuestionsData.splice(idx, 1);
-  renderCqCards();
-}
-
-function addCqManualQuestion() {
-  cqQuestionsData.push({
-    id: Date.now(),
-    question_type: 'identification',
-    question_text: 'Enter question prompt...',
-    options: [],
-    correct_answer: 'Sample Answer',
-    points: 2,
-    topic: 'e.g. Loops'
-  });
   renderCqCards();
 }
 
@@ -1630,126 +1912,388 @@ function toggleCqFullscreenModal() {
 function submitCqQuiz() {
   let title = $('#cqQuizTitle').val() ? $('#cqQuizTitle').val().trim() : '';
   const term = $('#cqQuizTerm').val() || 'midterm';
-  const timeLimit = $('#cqQuizTimeLimit').val() || 0;
+  const timeLimit = parseInt($('#cqQuizTimeLimit').val()) || 0;
+  const classId = 0;
+  const moduleId = 0;
+  const sq = $('#cqShuffleQuestions').is(':checked') ? 1 : 0;
+  const sa = ($('#cqShuffleAnswers').length === 0 || $('#cqShuffleAnswers').is(':checked')) ? 1 : 0;
+  const sm = $('#cqShuffleMatching').is(':checked') ? 1 : 0;
+  const stf = $('#cqShuffleTF').is(':checked') ? 1 : 0;
+  const randStudent = $('#cqRandomizeStudent').is(':checked') ? 1 : 0;
+  const msScoring = $('#cqMultiSelectScoring').val() || 'partial_credit';
 
-  // Fallback title if user leaves title blank
   if(!title) {
-    const termFormatted = term ? term.charAt(0).toUpperCase() + term.slice(1) : 'Midterm';
-    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    title = `${termFormatted} Quiz (${dateStr})`;
-  }
-
-  if(cqQuestionsData.length === 0) {
-    alert('Please paste or parse questions first.');
+    alert('Please enter a Quiz Title.');
+    $('#cqQuizTitle').focus();
     return;
   }
 
-  const formattedQuestions = cqQuestionsData.map(q => ({
-    question_type: q.question_type || 'identification',
-    question_text: q.question_text,
-    topic: q.topic || 'General',
-    points: q.points || 2,
-    options: q.options || [],
-    correct_answer: q.correct_answer || ''
-  }));
+  if(cqQuestionsData.length === 0) {
+    alert('Please add or parse questions first.');
+    return;
+  }
 
   const payload = {
     action: 'create',
-    class_id: 0,
+    class_id: classId,
+    module_id: moduleId,
+    module_version: '1.0',
     title: title,
     instructions: '',
     time_limit: timeLimit,
     due_date: '',
     start_date: '',
-    shuffle_questions: 1,
-    shuffle_answers: 1,
+    shuffle_questions: sq,
+    shuffle_answers: sa,
+    shuffle_matching: sm,
+    shuffle_tf: stf,
+    randomize_student: randStudent,
+    multi_select_scoring_mode: msScoring,
     term: term,
-    questions: JSON.stringify(formattedQuestions)
+    questions: JSON.stringify(cqQuestionsData)
   };
+
+  const btn = $('#cqBtnSubmit');
+  if(btn.length) btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Saving Quiz...');
 
   $.post('../shared/quiz_handler.php', payload, function(res) {
     if(res.success) {
-      alert('Quiz created successfully!');
+      alert('Quiz created successfully with full AI, Seed Shuffle & Rubrics support!');
       location.reload();
     } else {
       alert(res.msg || 'Error saving quiz.');
+      if(btn.length) btn.prop('disabled', false).html('<i class="fa fa-floppy-o"></i> Create Quiz');
     }
-  }, 'json');
+  }, 'json').fail(function(xhr, status, error){
+    alert('Request failed: ' + (xhr.responseText || error || 'Network error'));
+    if(btn.length) btn.prop('disabled', false).html('<i class="fa fa-floppy-o"></i> Create Quiz');
+  });
 }
 
 var currentActiveQuizId = 0;
 
+// Global helper functions for resolving option choices & boolean answers
+function normalizeChoice(val, opts){
+  if(val === undefined || val === null) return { index: -1, letter: '', text: '' };
+  var str = String(val).trim();
+  if(!str) return { index: -1, letter: '', text: '' };
+  var strLower = str.toLowerCase();
+
+  // 1. If single letter A-Z
+  if(str.length === 1 && /^[a-zA-Z]$/.test(str)){
+    var idx = str.toUpperCase().charCodeAt(0) - 65;
+    if(opts && opts[idx] !== undefined){
+      return { index: idx, letter: str.toUpperCase(), text: opts[idx] };
+    }
+  }
+
+  // 2. If starts with letter prefix like "C. Heart", "C) Heart", "C: Heart", "C - Heart"
+  var letterPrefixMatch = str.match(/^([a-zA-Z])[\.\)\:\-\s]+(.*)$/);
+  if(letterPrefixMatch){
+    var letChar = letterPrefixMatch[1].toUpperCase();
+    var letIdx = letChar.charCodeAt(0) - 65;
+    if(opts && opts[letIdx] !== undefined){
+      return { index: letIdx, letter: letChar, text: opts[letIdx] };
+    }
+  }
+
+  // 3. If number 0, 1, 2... or 1, 2, 3...
+  if(/^\d+$/.test(str)){
+    var num = parseInt(str, 10);
+    if(opts && opts[num] !== undefined){
+      return { index: num, letter: String.fromCharCode(65 + num), text: opts[num] };
+    }
+    if(opts && opts[num - 1] !== undefined){
+      return { index: num - 1, letter: String.fromCharCode(65 + num - 1), text: opts[num - 1] };
+    }
+  }
+
+  // 4. Exact, trimmed, or stripped prefix match with option text
+  var cleanVal = strLower.replace(/^[a-zA-Z0-9][\.\)\:\-\s]+/i, '').trim();
+  if(opts && opts.length){
+    for(var i = 0; i < opts.length; i++){
+      var optStr = String(opts[i]).trim().toLowerCase();
+      var cleanOpt = optStr.replace(/^[a-zA-Z0-9][\.\)\:\-\s]+/i, '').trim();
+      if(optStr === strLower || cleanOpt === cleanVal || cleanOpt === strLower || optStr === cleanVal){
+        return { index: i, letter: String.fromCharCode(65 + i), text: opts[i] };
+      }
+    }
+  }
+
+  return { index: -1, letter: '', text: str };
+}
+
+function switchSubModalTab(tab){
+  if(tab === 'submissions'){
+    $('#tabQuestionsView').hide();
+    $('#tabSubmissionsView').show();
+    $('#btnTabQuestions').css({ background:'#e2e8f0', color:'#475569' });
+    $('#btnTabSubmissions').css({ background:'#4f46e5', color:'#fff' });
+  } else {
+    $('#tabSubmissionsView').hide();
+    $('#tabQuestionsView').show();
+    $('#btnTabSubmissions').css({ background:'#e2e8f0', color:'#475569' });
+    $('#btnTabQuestions').css({ background:'#4f46e5', color:'#fff' });
+  }
+}
+
+function allowStudentRetake(quizId, studentCode, studentName){
+  var displayName = studentName || studentCode;
+  if(!confirm('Allow ' + displayName + ' (' + studentCode + ') to retake this quiz?\n\nThis will reset ONLY this student\'s submission and attempt records so they can take the quiz again.\n(Other students will remain submitted.)')){
+    return;
+  }
+  $.post('../shared/quiz_handler.php', { action: 'allow_retake', quiz_id: quizId, student_code: studentCode }, function(res){
+    if(typeof res === 'string'){ try { res = JSON.parse(res.trim()); } catch(e){} }
+    if(res && res.success){
+      alert(res.msg || 'Quiz attempt has been reset for ' + displayName + '. Only this student can now retake the quiz.');
+      if(currentActiveQuizId) viewSubmissions(currentActiveQuizId);
+      $('#studentAnswersModal').modal('hide');
+    } else {
+      alert((res && res.msg) ? res.msg : 'Failed to reset quiz attempt.');
+    }
+  }, 'json').fail(function(){
+    alert('Network error while resetting quiz attempt.');
+  });
+}
+
+function normalizeBool(val){
+  if(!val) return '';
+  var s = String(val).trim().toLowerCase();
+  if(s === 't' || s === 'true' || s === '1') return 'true';
+  if(s === 'f' || s === 'false' || s === '0') return 'false';
+  return s;
+}
+
 function viewSubmissions(quizId) {
   currentActiveQuizId = quizId;
+  $('#quizQuestionsContainer').html('<div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fa fa-spinner fa-spin fa-2x"></i><p style="margin-top:10px;font-size:13.5px;font-weight:600;">Loading questions & correct answers...</p></div>');
+  $('#quizSubmissionsContainer').html('<div style="text-align:center;padding:40px;color:#94a3b8;"><i class="fa fa-spinner fa-spin fa-2x"></i><p style="margin-top:10px;font-size:13.5px;font-weight:600;">Loading submissions...</p></div>');
+  $('#quizQuestionsStats').empty();
+  switchSubModalTab('questions');
+  $('#submissionsModal').modal('show');
+
   $.post('../shared/quiz_handler.php', { action: 'get_submissions', quiz_id: quizId }, function(res) {
     if(typeof res === 'string'){ try { res = JSON.parse(res.trim()); } catch(e){} }
     if(!res || !res.success) {
-      alert(res && res.msg ? res.msg : 'Failed to fetch submissions');
+      $('#quizQuestionsContainer').html('<div class="alert alert-danger" style="margin:20px;">' + (res && res.msg ? res.msg : 'Failed to fetch quiz details') + '</div>');
       return;
     }
     var qTitle = (res.quiz && res.quiz.title) ? res.quiz.title : 'Quiz';
-    var actualQid = (res.quiz && res.quiz.id) ? res.quiz.id : quizId;
-    $('#subModalTitle').html('<i class="fa fa-eye"></i> ' + escapeCqHtml(qTitle) + ' &bull; Submissions');
+    $('#subModalTitle').html('<i class="fa fa-list-alt" style="color:#60a5fa;"></i> ' + escapeCqHtml(qTitle) + ' &bull; Overview & Submissions');
 
-    // Render Stats
-    var stats = res.stats || { submission_count: 0, avg_pct: 0, high_score: 0, violation_count: 0 };
-    var statsHtml = `
-      <div class="col-xs-6 col-md-3 text-center">
-        <div class="well well-sm"><strong>${stats.submission_count}</strong><br><small class="text-muted">Attempts</small></div>
-      </div>
-      <div class="col-xs-6 col-md-3 text-center">
-        <div class="well well-sm"><strong>${stats.avg_pct}%</strong><br><small class="text-muted">Average Score</small></div>
-      </div>
-      <div class="col-xs-6 col-md-3 text-center">
-        <div class="well well-sm"><strong>${stats.high_score} pts</strong><br><small class="text-muted">High Score</small></div>
-      </div>
-      <div class="col-xs-6 col-md-3 text-center">
-        <div class="well well-sm"><strong class="text-danger">${stats.violation_count}</strong><br><small class="text-muted">Anti-Cheat Alerts</small></div>
+    var questions = res.questions || [];
+    var subs = res.submissions || [];
+    $('#subCountBadge').text(subs.length);
+
+    // ── RENDER QUESTIONS & CORRECT ANSWERS ──
+    var totalPoints = 0;
+    questions.forEach(function(q){ totalPoints += parseFloat(q.points || 1); });
+
+    var qStatsHtml = `
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+          <div><span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;display:block;">Questions</span><strong style="font-size:18px;color:#0f172a;">${questions.length}</strong></div>
+          <div style="width:1px;height:28px;background:#e2e8f0;"></div>
+          <div><span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;display:block;">Total Points</span><strong style="font-size:18px;color:#4f46e5;">${totalPoints} pts</strong></div>
+          <div style="width:1px;height:28px;background:#e2e8f0;"></div>
+          <div><span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;display:block;">Submissions</span><strong style="font-size:18px;color:#10b981;">${subs.length}</strong></div>
+        </div>
+        <div>
+          <span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:5px;">
+            <i class="fa fa-key"></i> Correct Answer Key
+          </span>
+        </div>
       </div>
     `;
-    $('#subStatsHeader').html(statsHtml);
+    $('#quizQuestionsStats').html(qStatsHtml);
 
-    // Render Rows
-    var rows = '';
-    var subs = res.submissions || [];
-    if(subs.length === 0) {
-      rows = `<tr><td colspan="7" class="text-center text-muted" style="padding:24px;">No student submissions recorded yet.</td></tr>`;
+    var qListHtml = '';
+    if(questions.length === 0){
+      qListHtml = '<div class="alert alert-info" style="margin:10px 0;">No questions created for this quiz yet.</div>';
     } else {
-      subs.forEach(s => {
-        const tabSw = parseInt(s.tab_switches || 0);
-        const fsEx = parseInt(s.fullscreen_exits || 0);
-        let alertBadge = '<span class="label label-success">Clean Attempt</span>';
-        if(tabSw > 0 || fsEx > 0) {
-          alertBadge = `<span class="badge-alert"><i class="fa fa-exclamation-triangle"></i> ${tabSw} tab switches, ${fsEx} fs exits</span>`;
+      questions.forEach(function(q, idx){
+        var typeFormatted = (q.question_type || 'multiple_choice').replace(/_/g, ' ').toUpperCase();
+        var topicTag = (q.topic && q.topic !== 'General') ? `<span style="background:#e0f2fe;color:#0369a1;padding:2px 8px;border-radius:4px;font-size:10.5px;font-weight:700;"><i class="fa fa-tag"></i> ${escapeCqHtml(q.topic)}</span>` : '';
+        var corr = q.correct_answer ? String(q.correct_answer).trim() : '';
+
+        var answerBlock = '';
+        if(q.question_type === 'multiple_choice' && q.options && q.options.length){
+          var resC = normalizeChoice(corr, q.options);
+          answerBlock = '<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">';
+          q.options.forEach(function(opt, optIdx){
+            var letter = String.fromCharCode(65 + optIdx);
+            var cleanOpt = String(opt).trim().toLowerCase().replace(/^[a-zA-Z0-9][\.\)\:\-\s]+/i, '');
+            var cleanCorr = corr.toLowerCase().replace(/^[a-zA-Z0-9][\.\)\:\-\s]+/i, '');
+            var isCorrect = (resC.index === optIdx || (resC.index === -1 && (cleanCorr === cleanOpt || corr.toLowerCase() === String(opt).trim().toLowerCase())));
+
+            var optStyle = isCorrect
+              ? 'background:#f0fdf4;border:2px solid #22c55e;color:#14532d;font-weight:700;'
+              : 'background:#f8fafc;border:1px solid #e2e8f0;color:#334155;';
+            var optTag = isCorrect
+              ? '<span style="color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:800;margin-left:auto;"><i class="fa fa-check-circle"></i> Correct Answer</span>'
+              : '';
+
+            answerBlock += `
+              <div style="${optStyle}padding:9px 14px;border-radius:8px;font-size:13px;display:flex;align-items:center;gap:8px;">
+                <span style="font-weight:800;width:22px;color:#0f172a;">${letter}.</span>
+                <span style="flex:1;">${escapeCqHtml(opt)}</span>
+                ${optTag}
+              </div>
+            `;
+          });
+          answerBlock += '</div>';
+        } else if(q.question_type === 'true_false'){
+          var tfOpts = ['True', 'False'];
+          var normC = normalizeBool(corr);
+
+          answerBlock = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">';
+          tfOpts.forEach(function(opt){
+            var isCorrect = (normC === opt.toLowerCase());
+            var optStyle = isCorrect
+              ? 'background:#f0fdf4;border:2px solid #22c55e;color:#14532d;font-weight:700;'
+              : 'background:#f8fafc;border:1px solid #e2e8f0;color:#334155;';
+            var tag = isCorrect
+              ? '<div style="font-size:11px;font-weight:800;color:#15803d;margin-top:4px;"><i class="fa fa-check-circle"></i> Correct Answer</div>'
+              : '';
+
+            answerBlock += `
+              <div style="${optStyle}padding:12px 14px;border-radius:8px;text-align:center;">
+                <strong style="font-size:14px;display:block;">${opt}</strong>${tag}
+              </div>
+            `;
+          });
+          answerBlock += '</div>';
+        } else if(q.question_type === 'essay'){
+          answerBlock = `
+            <div style="margin-top:10px;background:#fffbeb;border:1.5px solid #f59e0b;color:#92400e;padding:12px 14px;border-radius:8px;font-size:13px;">
+              <i class="fa fa-pencil" style="margin-right:6px;"></i> <strong>Subjective / Essay Question</strong> &bull; Graded manually by teacher
+            </div>
+          `;
+        } else if(q.question_type === 'matching' || (q.matching_pairs && q.matching_pairs.length > 0)){
+          var pairs = q.matching_pairs || [];
+          answerBlock = '<div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">';
+          if(pairs.length > 0){
+            pairs.forEach(function(p, pIdx){
+              var aText = p.col_a_text || p.item_text || ('Item ' + (pIdx+1));
+              var bText = p.col_b_text || p.target_text || ('Definition ' + (pIdx+1));
+              answerBlock += `
+                <div style="background:#f0fdf4;border:1px solid #86efac;padding:8px 12px;border-radius:8px;font-size:12.5px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                  <div>
+                    <span style="font-weight:700;color:#0f172a;"><span style="color:#64748b;margin-right:4px;">${pIdx+1}.</span> ${escapeCqHtml(aText)}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <i class="fa fa-arrow-right" style="color:#10b981;font-size:11px;"></i>
+                    <span style="background:#fff;border:1.5px solid #22c55e;color:#15803d;font-weight:800;padding:3px 12px;border-radius:6px;">${escapeCqHtml(bText)}</span>
+                  </div>
+                </div>
+              `;
+            });
+          } else {
+            answerBlock += `
+              <div style="background:#f0fdf4;border:1.5px solid #22c55e;color:#15803d;padding:12px 14px;border-radius:8px;font-size:13px;display:flex;align-items:center;justify-content:space-between;">
+                <div>
+                  <i class="fa fa-check-circle" style="color:#16a34a;font-size:16px;margin-right:6px;"></i>
+                  <strong style="color:#14532d;">Correct Pairs:</strong>
+                  <span style="background:#fff;border:1px solid #86efac;padding:4px 12px;border-radius:6px;color:#15803d;font-weight:800;margin-left:6px;font-size:13.5px;">${escapeCqHtml(corr || '(None)')}</span>
+                </div>
+                <span style="background:#22c55e;color:#fff;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:800;"><i class="fa fa-check"></i> ANSWER KEY</span>
+              </div>
+            `;
+          }
+          answerBlock += '</div>';
+        } else {
+          answerBlock = `
+            <div style="margin-top:10px;background:#f0fdf4;border:1.5px solid #22c55e;color:#15803d;padding:12px 14px;border-radius:8px;font-size:13px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div>
+                <i class="fa fa-check-circle" style="color:#16a34a;font-size:16px;margin-right:6px;"></i>
+                <strong style="color:#14532d;">Correct Answer:</strong>
+                <span style="background:#fff;border:1px solid #86efac;padding:4px 12px;border-radius:6px;color:#15803d;font-weight:800;margin-left:6px;font-size:13.5px;">${escapeCqHtml(corr || '(None)')}</span>
+              </div>
+              <span style="background:#22c55e;color:#fff;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:800;"><i class="fa fa-check"></i> ANSWER KEY</span>
+            </div>
+          `;
         }
 
-        const pct = parseFloat(s.percentage || 0);
-        let pctBadge = 'label-success';
-        if(pct < 60) pctBadge = 'label-danger';
-        else if(pct < 75) pctBadge = 'label-warning';
+        qListHtml += `
+          <div style="background:#fff;border:1.5px solid #e2e8f0;border-left:5px solid #4f46e5;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:12px;font-weight:800;color:#0f172a;background:#f1f5f9;padding:2px 8px;border-radius:6px;">#${idx+1}</span>
+                <span style="font-size:10px;font-weight:800;color:#4f46e5;background:#e0e7ff;padding:2px 8px;border-radius:4px;text-transform:uppercase;">${typeFormatted}</span>
+                ${topicTag}
+              </div>
+              <span style="background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;">
+                <i class="fa fa-trophy" style="color:#f59e0b;"></i> ${q.points} pt${parseFloat(q.points)!==1?'s':''}
+              </span>
+            </div>
+            <div style="font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.4;margin-bottom:6px;">
+              ${escapeCqHtml(q.question_text)}
+            </div>
+            ${answerBlock}
+          </div>
+        `;
+      });
+    }
+    $('#quizQuestionsContainer').html(qListHtml);
 
-        const subQid = s.quiz_id || actualQid;
-        const uCode = s.user_code || s.student_code;
+    // ── RENDER STUDENT SUBMISSIONS & PER-STUDENT RETAKE BUTTONS ──
+    var subHtml = '';
+    if(subs.length === 0){
+      subHtml = '<div class="alert alert-info" style="margin:10px 0;"><i class="fa fa-info-circle"></i> No student submissions recorded for this quiz yet.</div>';
+    } else {
+      subHtml = `
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+          <table class="table table-hover" style="margin:0;font-size:13px;">
+            <thead style="background:#f8fafc;color:#475569;font-weight:700;border-bottom:1px solid #e2e8f0;">
+              <tr>
+                <th style="padding:12px 14px;">Student Name</th>
+                <th style="padding:12px 10px;">ID Number</th>
+                <th style="padding:12px 10px;">Score</th>
+                <th style="padding:12px 10px;text-align:center;">Percentage</th>
+                <th style="padding:12px 10px;">Submitted Date</th>
+                <th style="padding:12px 14px;text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
 
-        rows += `
-          <tr>
-            <td><strong>${escapeCqHtml(s.first_name || '')} ${escapeCqHtml(s.last_name || '')}</strong></td>
-            <td><code>${escapeCqHtml(uCode)}</code></td>
-            <td><strong>${s.score || 0}</strong> / ${s.total_points || 0}</td>
-            <td><span class="label ${pctBadge}">${pct}%</span></td>
-            <td>${alertBadge}</td>
-            <td>${s.submitted_at || '—'}</td>
-            <td style="text-align:center;">
-              <button type="button" class="btn btn-xs" onclick="viewStudentAnswers(${subQid}, '${escapeCqHtml(uCode)}')" style="border-radius:6px;font-weight:700;padding:5px 12px;background:linear-gradient(135deg,#4f46e5,#4338ca);color:#fff;border:none;box-shadow:0 2px 5px rgba(79,70,229,0.25);display:inline-flex;align-items:center;gap:4px;">
-                <i class="fa fa-list-alt"></i> View Answers
-              </button>
+      subs.forEach(function(s){
+        var scoreVal = parseFloat(s.score || 0);
+        var totalPts = parseFloat(s.total_points || 0);
+        var pct = parseFloat(s.percentage || 0);
+        var pctBg = (pct >= 75) ? '#dcfce7' : ((pct >= 60) ? '#fef3c7' : '#fee2e2');
+        var pctColor = (pct >= 75) ? '#15803d' : ((pct >= 60) ? '#b45309' : '#dc2626');
+        var sName = escapeCqHtml(s.first_name + ' ' + s.last_name);
+        var sCode = escapeCqHtml(s.user_code || s.student_code);
+
+        subHtml += `
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:12px 14px;font-weight:700;color:#0f172a;">
+              <i class="fa fa-user-circle" style="color:#6366f1;margin-right:6px;"></i> ${sName}
+            </td>
+            <td style="padding:12px 10px;color:#64748b;font-weight:600;">${sCode}</td>
+            <td style="padding:12px 10px;font-weight:700;color:#0f172a;">${scoreVal.toFixed(1)} / ${totalPts}</td>
+            <td style="padding:12px 10px;text-align:center;">
+              <span style="background:${pctBg};color:${pctColor};padding:3px 8px;border-radius:6px;font-size:11.5px;font-weight:800;">${pct}%</span>
+            </td>
+            <td style="padding:12px 10px;color:#64748b;font-size:12px;">${escapeCqHtml(s.submitted_at)}</td>
+            <td style="padding:12px 14px;text-align:right;">
+              <div style="display:inline-flex;align-items:center;gap:6px;">
+                <button type="button" class="btn btn-xs" onclick="viewStudentAnswers('${quizId}','${escapeCqAttr(s.user_code || s.student_code)}')" style="background:#4f46e5;color:#fff;border-radius:6px;font-weight:700;padding:5px 10px;border:none;">
+                  <i class="fa fa-eye"></i> View Answers
+                </button>
+                <button type="button" class="btn btn-xs" onclick="allowStudentRetake('${quizId}','${escapeCqAttr(s.user_code || s.student_code)}','${escapeCqAttr(s.first_name + ' ' + s.last_name)}')" style="background:#d97706;color:#fff;border-radius:6px;font-weight:700;padding:5px 10px;border:none;" title="Allow ONLY this student to retake the quiz">
+                  <i class="fa fa-refresh"></i> Allow Retake
+                </button>
+              </div>
             </td>
           </tr>
         `;
       });
+
+      subHtml += '</tbody></table></div>';
     }
-    $('#subTableBody').html(rows);
-    $('#submissionsModal').modal('show');
+    $('#quizSubmissionsContainer').html(subHtml);
   }, 'json');
 }
 
@@ -1774,11 +2318,18 @@ function viewStudentAnswers(quizId, studentCode) {
     if(pct < 60) pctBadge = 'label-danger';
     else if(pct < 75) pctBadge = 'label-warning';
 
-    // Anti-cheat alert
     let acAlert = '';
     if(res.tab_switches > 0 || res.fullscreen_exits > 0) {
-      acAlert = `<span style="background:#fee2e2;color:#991b1b;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;"><i class="fa fa-exclamation-triangle"></i> Anti-Cheat Alerts: ${res.tab_switches} tab switches, ${res.fullscreen_exits} fullscreen exits</span>`;
+      acAlert = `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;"><i class="fa fa-exclamation-triangle"></i> Alerts: ${res.tab_switches} tab switches, ${res.fullscreen_exits} fs exits</span>`;
     }
+
+    const qList = res.questions || [];
+    let correctCount = 0, wrongCount = 0, manualCount = 0;
+    qList.forEach(q => {
+      if(q.is_correct === true) correctCount++;
+      else if(q.is_correct === false) wrongCount++;
+      else manualCount++;
+    });
 
     $('#saStudentHeader').html(`
       <div>
@@ -1788,93 +2339,448 @@ function viewStudentAnswers(quizId, studentCode) {
         <span style="font-size:12px;color:#64748b;">ID: <strong style="color:#0f172a;">${escapeCqHtml(res.student_code)}</strong> &bull; Quiz: <strong style="color:#0f172a;">${escapeCqHtml(res.quiz_title)}</strong></span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:800;"><i class="fa fa-check"></i> ${correctCount} Correct</span>
+          <span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:800;"><i class="fa fa-times"></i> ${wrongCount} Wrong</span>
+        </div>
         ${acAlert}
         <span class="label ${pctBadge}" style="font-size:13px;padding:6px 12px;border-radius:8px;">
           Score: <strong>${res.score}</strong> / ${res.total_points} (${pct}%)
         </span>
-        <span style="font-size:11px;color:#64748b;background:#f1f5f9;padding:6px 10px;border-radius:8px;font-weight:600;">
+        <button type="button" onclick="allowStudentRetake(currentActiveQuizId, '${escapeCqAttr(res.student_code)}', '${escapeCqAttr(res.student_name)}')" style="background:#d97706;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;cursor:pointer;box-shadow:0 2px 4px rgba(217,119,6,0.25);" title="Reset ONLY this student's submission to allow retake">
+          <i class="fa fa-refresh"></i> Allow Retake
+        </button>
+      </div>
+      <div style="margin-top:10px;text-align:right;">
+        <span style="font-size:11px;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;padding:6px 10px;border-radius:8px;font-weight:600;">
           <i class="fa fa-calendar"></i> ${res.submitted_at}
         </span>
       </div>
     `);
 
+    // Helper functions for formatting answers
+    function formatAnswerText(rawVal, options, type, pairs, optionsData){
+      if(rawVal === undefined || rawVal === null || rawVal === '') return '(No answer submitted)';
+      var optData = optionsData || [];
+
+      // Multi-select: answer can be array OR object {"a-1":"opt-id","a-2":"opt-id"}
+      if(type === 'multi_select' || type === 'multiple_answers'){
+        var ids = [];
+        if(Array.isArray(rawVal)){
+          ids = rawVal;
+        } else if(rawVal && typeof rawVal === 'object'){
+          ids = Object.values(rawVal);
+        } else if(typeof rawVal === 'string' && rawVal.trim()){
+          try {
+            var p = JSON.parse(rawVal.trim());
+            if(Array.isArray(p)) ids = p;
+            else if(p && typeof p === 'object') ids = Object.values(p);
+          } catch(e){ ids = rawVal.split(',').map(function(s){ return s.trim(); }); }
+        }
+        if(ids.length === 0) return '(No answer submitted)';
+        return ids.map(function(id){ return resolveOptId(id, options, optData); }).join(', ');
+      }
+
+      if(Array.isArray(rawVal)){
+        if(rawVal.length === 0) return '(No answer submitted)';
+        return rawVal.map(function(item){ return formatSingleAnswer(item, options, optData); }).join(', ');
+      }
+
+      if(typeof rawVal === 'string' && (rawVal.trim().startsWith('[') || rawVal.trim().startsWith('{'))){
+        try {
+          var parsed = JSON.parse(rawVal.trim());
+          if(Array.isArray(parsed)){
+            if(parsed.length === 0) return '(No answer submitted)';
+            return parsed.map(function(item){ return formatSingleAnswer(item, options, optData); }).join(', ');
+          }
+          if(typeof parsed === 'object' && parsed !== null){
+            // Modified true/false object
+            if(parsed.truth !== undefined || parsed.correction !== undefined){
+              var t = parsed.truth ? String(parsed.truth).toUpperCase() : '';
+              var c = parsed.correction ? (' — ' + parsed.correction) : '';
+              return t + c;
+            }
+            // Matching type object: keys are col_a_ids, values are col_b_ids — show values
+            var parts = Object.values(parsed);
+            return parts.map(function(v){ return String(v); }).join(', ');
+          }
+        } catch(e){}
+      }
+
+      // Modified true/false stored as "True" or "False — correction"
+      if(typeof rawVal === 'string'){
+        return rawVal;
+      }
+
+      if(typeof rawVal === 'object' && rawVal !== null){
+        // Object (not array) — extract values
+        var vals = Object.values(rawVal);
+        return vals.map(function(v){ return String(v); }).join(', ');
+      }
+
+      return formatSingleAnswer(rawVal, options, optData);
+    }
+
+    function resolveOptId(optId, options, optData){
+      var s = String(optId || '').trim();
+      if(!s) return '';
+      // Try to find in options_data by ID
+      if(optData && optData.length){
+        for(var i=0; i<optData.length; i++){
+          if(optData[i] && optData[i].id === s){
+            return String.fromCharCode(65 + i) + '. ' + optData[i].text;
+          }
+        }
+      }
+      // Fallback to formatSingleAnswer
+      return formatSingleAnswer(s, options, optData);
+    }
+
+    function formatSingleAnswer(val, options, optData){
+      if(val === undefined || val === null || val === '') return '';
+      var s = String(val).trim();
+      // Try options_data first (real IDs like "opt-msq-001-01")
+      if(optData && optData.length){
+        for(var di=0; di<optData.length; di++){
+          if(optData[di] && optData[di].id === s){
+            return String.fromCharCode(65 + di) + '. ' + optData[di].text;
+          }
+        }
+      }
+      // Try positional match "opt-N"
+      if(options && options.length){
+        var match = s.match(/^opt-(\d+)$/i);
+        if(match){
+          var idx = parseInt(match[1]);
+          if(options[idx] !== undefined){
+            return String.fromCharCode(65 + idx) + '. ' + options[idx];
+          }
+        }
+        for(var i=0; i<options.length; i++){
+          if(options[i].toLowerCase() === s.toLowerCase()){
+            return String.fromCharCode(65 + i) + '. ' + options[i];
+          }
+        }
+      }
+      return s;
+    }
+
+    function normChoice(val, opts){
+      if(!val) return { index: -1, letter: '', text: '' };
+      const str = String(val).trim();
+      if(!str) return { index: -1, letter: '', text: '' };
+      const strLower = str.toLowerCase();
+      if(str.length === 1 && /^[a-zA-Z]$/.test(str)){
+        const idx = str.toUpperCase().charCodeAt(0) - 65;
+        if(opts && opts[idx] !== undefined) return { index: idx, letter: str.toUpperCase(), text: opts[idx] };
+      }
+      if(/^\d+$/.test(str)){
+        const num = parseInt(str, 10);
+        if(opts && opts[num] !== undefined) return { index: num, letter: String.fromCharCode(65 + num), text: opts[num] };
+        if(opts && opts[num - 1] !== undefined) return { index: num - 1, letter: String.fromCharCode(65 + num - 1), text: opts[num - 1] };
+      }
+      if(opts && opts.length){
+        for(let i = 0; i < opts.length; i++){
+          const optStr = String(opts[i]).trim().toLowerCase();
+          if(optStr === strLower) return { index: i, letter: String.fromCharCode(65 + i), text: opts[i] };
+          const stripped = optStr.replace(/^[a-z][\.\)]\s*/i, '');
+          if(stripped === strLower || optStr === (String.fromCharCode(97 + i) + '. ' + strLower)){
+            return { index: i, letter: String.fromCharCode(65 + i), text: opts[i] };
+          }
+        }
+      }
+      return { index: -1, letter: '', text: str };
+    }
+
+    function normBool(val){
+      if(!val) return '';
+      const s = String(val).trim().toLowerCase();
+      if(s === 't' || s === 'true' || s === '1') return 'true';
+      if(s === 'f' || s === 'false' || s === '0') return 'false';
+      return s;
+    }
+
     // Render Question Cards
     let qHtml = '';
-    const qList = res.questions || [];
     if(qList.length === 0) {
       qHtml = '<div class="alert alert-info">No questions found for this quiz.</div>';
     } else {
       qList.forEach((q, idx) => {
         const isCorrect = q.is_correct;
         const typeFormatted = (q.question_type || 'multiple_choice').replace(/_/g, ' ').toUpperCase();
+        const given = formatAnswerText(q.given_answer, q.options, q.question_type, q.matching_pairs, q.options_data);
+        const correct = q.correct_answer ? String(q.correct_answer).trim() : '';
         
         let statusBadge = '';
         let cardBorder = '#e2e8f0';
+        let cardLeft = '5px solid #e2e8f0';
         if(isCorrect === true) {
-          statusBadge = `<span style="background:#dcfce7;color:#166534;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;"><i class="fa fa-check"></i> Correct (${q.earned_points}/${q.points} pts)</span>`;
+          statusBadge = `<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:4px 10px;border-radius:6px;font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;gap:4px;"><i class="fa fa-check-circle" style="color:#16a34a;"></i> CORRECT (+${q.earned_points !== undefined ? q.earned_points : q.points}/${q.points} pts)</span>`;
           cardBorder = '#86efac';
+          cardLeft = '5px solid #22c55e';
         } else if(isCorrect === false) {
-          statusBadge = `<span style="background:#fee2e2;color:#991b1b;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;"><i class="fa fa-times"></i> Incorrect (${q.earned_points}/${q.points} pts)</span>`;
+          statusBadge = `<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:4px 10px;border-radius:6px;font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;gap:4px;"><i class="fa fa-times-circle" style="color:#dc2626;"></i> WRONG (${q.earned_points !== undefined ? q.earned_points : 0}/${q.points} pts)</span>`;
           cardBorder = '#fca5a5';
+          cardLeft = '5px solid #ef4444';
         } else {
-          statusBadge = `<span style="background:#fef3c7;color:#92400e;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;"><i class="fa fa-pencil"></i> Manual / Essay (${q.points} pts)</span>`;
+          statusBadge = `<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:4px 10px;border-radius:6px;font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;gap:4px;"><i class="fa fa-pencil"></i> MANUAL GRADING (${q.points} pts)</span>`;
+          cardBorder = '#fde68a';
+          cardLeft = '5px solid #f59e0b';
         }
 
         const topicTag = q.topic && q.topic !== 'General' ? `<span style="background:#e0f2fe;color:#0369a1;padding:2px 7px;border-radius:4px;font-size:10.5px;font-weight:600;"><i class="fa fa-tag"></i> ${escapeCqHtml(q.topic)}</span>` : '';
 
         let answerContent = '';
         if(q.options && q.options.length > 0 && q.question_type === 'multiple_choice') {
-          // Multiple Choice Options list
+          const resG = normChoice(q.given_answer, q.options);
+          const resC = normChoice(correct, q.options);
+
           answerContent = '<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">';
           q.options.forEach((opt, optIdx) => {
             const letter = String.fromCharCode(65 + optIdx);
-            const isStudentChoice = (q.given_answer.toLowerCase() === letter.toLowerCase() || q.given_answer.toLowerCase() === opt.toLowerCase());
-            const isCorrectChoice = (q.correct_answer.toLowerCase() === letter.toLowerCase() || q.correct_answer.toLowerCase() === opt.toLowerCase());
+            const isStudentPick = (resG.index === optIdx || (resG.index === -1 && String(q.given_answer).toLowerCase() === opt.toLowerCase()));
+            const isCorrectPick = (resC.index === optIdx || (resC.index === -1 && correct.toLowerCase() === opt.toLowerCase()));
 
             let optStyle = 'background:#f8fafc;border:1px solid #e2e8f0;color:#334155;';
             let optTag = '';
 
-            if(isStudentChoice && isCorrectChoice) {
-              optStyle = 'background:#f0fdf4;border:1.5px solid #22c55e;color:#166534;font-weight:700;';
-              optTag = '<span style="color:#166534;font-size:11px;margin-left:auto;"><i class="fa fa-check-circle"></i> Student Selected (Correct)</span>';
-            } else if(isStudentChoice && !isCorrectChoice) {
-              optStyle = 'background:#fef2f2;border:1.5px solid #ef4444;color:#991b1b;font-weight:700;';
-              optTag = '<span style="color:#991b1b;font-size:11px;margin-left:auto;"><i class="fa fa-times-circle"></i> Student Selected</span>';
-            } else if(isCorrectChoice) {
-              optStyle = 'background:#f0fdf4;border:1.5px dashed #22c55e;color:#166534;font-weight:600;';
-              optTag = '<span style="color:#166534;font-size:11px;margin-left:auto;"><i class="fa fa-check"></i> Correct Answer</span>';
+            if(isStudentPick && isCorrectPick) {
+              optStyle = 'background:#f0fdf4;border:2px solid #22c55e;color:#14532d;font-weight:700;';
+              optTag = '<span style="color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:800;margin-left:auto;"><i class="fa fa-check-circle"></i> Student Answer (Correct)</span>';
+            } else if(isStudentPick && !isCorrectPick) {
+              optStyle = 'background:#fef2f2;border:2px solid #ef4444;color:#7f1d1d;font-weight:700;';
+              optTag = '<span style="color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:800;margin-left:auto;"><i class="fa fa-times-circle"></i> Student Answer (Wrong)</span>';
+            } else if(isCorrectPick) {
+              optStyle = 'background:#f0fdf4;border:2px dashed #22c55e;color:#15803d;font-weight:700;';
+              optTag = '<span style="color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:800;margin-left:auto;"><i class="fa fa-check"></i> Correct Answer</span>';
             }
 
             answerContent += `
-              <div style="${optStyle}padding:8px 12px;border-radius:8px;font-size:12.5px;display:flex;align-items:center;gap:8px;">
-                <span style="font-weight:700;width:20px;">${letter}.</span>
-                <span>${escapeCqHtml(opt)}</span>
+              <div style="${optStyle}padding:9px 14px;border-radius:8px;font-size:13px;display:flex;align-items:center;gap:8px;">
+                <span style="font-weight:700;width:22px;color:#0f172a;">${letter}.</span>
+                <span style="flex:1;">${escapeCqHtml(opt)}</span>
                 ${optTag}
               </div>
             `;
           });
           answerContent += '</div>';
-        } else {
-          // Written / Identification / True-False / Enumeration / Essay
-          const givenClass = isCorrect === false ? 'background:#fef2f2;border:1px solid #fecaca;color:#991b1b;' : (isCorrect === true ? 'background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;' : 'background:#fffbeb;border:1px solid #fde68a;color:#92400e;');
-          const givenIcon = isCorrect === false ? '<i class="fa fa-times-circle" style="color:#ef4444;"></i>' : (isCorrect === true ? '<i class="fa fa-check-circle" style="color:#10b981;"></i>' : '<i class="fa fa-pencil"></i>');
-          
-          answerContent = `
-            <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
-              <div style="${givenClass}padding:9px 12px;border-radius:8px;font-size:12.5px;">
-                ${givenIcon} <strong>Student Answer:</strong> ${escapeCqHtml(q.given_answer || '(No answer submitted)')}
+        } else if((q.question_type === 'multi_select' || q.question_type === 'multiple_answers') && q.options && q.options.length > 0) {
+          // Extract selected option IDs — handles both array format AND object format {"a-1":"opt-id",...}
+          var selArr = [];
+          if(Array.isArray(q.given_answer)){
+            selArr = q.given_answer;
+          } else if(q.given_answer && typeof q.given_answer === 'object'){
+            // Object format: values are the selected option IDs
+            selArr = Object.values(q.given_answer);
+          } else if(typeof q.given_answer === 'string' && q.given_answer.trim()){
+            try {
+              var parsedG = JSON.parse(q.given_answer.trim());
+              if(Array.isArray(parsedG)) selArr = parsedG;
+              else if(parsedG && typeof parsedG === 'object') selArr = Object.values(parsedG);
+              else selArr = [q.given_answer];
+            } catch(e){ selArr = [q.given_answer]; }
+          }
+          var corrOptIds = q.correct_option_ids || [];
+          // Build map: optId -> index from options_data so we can match selArr to display rows
+          var optDataList = q.options_data || [];
+
+          answerContent = '<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">';
+          q.options.forEach(function(opt, optIdx){
+            // Get the real option ID from options_data (e.g. "opt-msq-001-01")
+            var realOptId = (optDataList[optIdx] && optDataList[optIdx].id) ? optDataList[optIdx].id : ('opt-' + optIdx);
+            var letter = String.fromCharCode(65 + optIdx);
+            // Check if student selected this option — check by real ID, text, or positional fallbacks
+            var isStudentPick = (
+              selArr.indexOf(realOptId) !== -1 ||
+              selArr.indexOf('opt-' + optIdx) !== -1 ||
+              selArr.indexOf(String(optIdx)) !== -1 ||
+              selArr.indexOf(opt) !== -1
+            );
+            // Check if this is a correct option — check by real ID first
+            var isCorrectPick = (
+              corrOptIds.indexOf(realOptId) !== -1 ||
+              corrOptIds.indexOf('opt-' + optIdx) !== -1 ||
+              corrOptIds.indexOf(String(optIdx)) !== -1
+            );
+
+            var optStyle = 'background:#f8fafc;border:1px solid #e2e8f0;color:#334155;';
+            var optTag = '';
+
+            if(isStudentPick && isCorrectPick) {
+              optStyle = 'background:#f0fdf4;border:2px solid #22c55e;color:#14532d;font-weight:700;';
+              optTag = '<span style="color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:800;margin-left:auto;"><i class="fa fa-check-square"></i> Selected (Correct)</span>';
+            } else if(isStudentPick && !isCorrectPick) {
+              optStyle = 'background:#fef2f2;border:2px solid #ef4444;color:#7f1d1d;font-weight:700;';
+              optTag = '<span style="color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:800;margin-left:auto;"><i class="fa fa-times-circle"></i> Selected (Wrong)</span>';
+            } else if(isCorrectPick) {
+              optStyle = 'background:#f0fdf4;border:2px dashed #22c55e;color:#15803d;font-weight:700;';
+              optTag = '<span style="color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:800;margin-left:auto;"><i class="fa fa-check"></i> Expected Selection</span>';
+            }
+
+            answerContent += `
+              <div style="${optStyle}padding:9px 14px;border-radius:8px;font-size:13px;display:flex;align-items:center;gap:8px;">
+                <span style="font-weight:700;width:22px;color:#0f172a;">${letter}.</span>
+                <span style="flex:1;">${escapeCqHtml(opt)}</span>
+                ${optTag}
               </div>
-              ${(isCorrect === false && q.correct_answer) ? `
-                <div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:9px 12px;border-radius:8px;font-size:12.5px;">
-                  <i class="fa fa-check-circle"></i> <strong>Expected / Correct Answer:</strong> ${escapeCqHtml(q.correct_answer)}
+            `;
+          });
+          answerContent += '</div>';
+        } else if(q.question_type === 'true_false') {
+          const tfOpts = ['True', 'False'];
+          const normG = normBool(q.given_answer);
+          const normC = normBool(correct);
+
+          answerContent = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">';
+          tfOpts.forEach(opt => {
+            const key = opt.toLowerCase();
+            const isStudentPick = (normG === key);
+            const isCorrectPick = (normC === key);
+
+            let bg = '#f8fafc', clr = '#334155', bdr = '1px solid #e2e8f0', tag = '';
+            if(isStudentPick && isCorrectPick) {
+              bg = '#f0fdf4'; clr = '#14532d'; bdr = '2px solid #22c55e';
+              tag = '<div style="font-size:11px;font-weight:800;color:#15803d;margin-top:4px;"><i class="fa fa-check-circle"></i> Student Answer (Correct)</div>';
+            } else if(isStudentPick && !isCorrectPick) {
+              bg = '#fef2f2'; clr = '#7f1d1d'; bdr = '2px solid #ef4444';
+              tag = '<div style="font-size:11px;font-weight:800;color:#991b1b;margin-top:4px;"><i class="fa fa-times-circle"></i> Student Answer (Wrong)</div>';
+            } else if(isCorrectPick) {
+              bg = '#f0fdf4'; clr = '#15803d'; bdr = '2px dashed #22c55e';
+              tag = '<div style="font-size:11px;font-weight:800;color:#15803d;margin-top:4px;"><i class="fa fa-check"></i> Correct Answer</div>';
+            }
+
+            answerContent += `
+              <div style="padding:12px 14px;border-radius:8px;background:${bg};color:${clr};border:${bdr};text-align:center;">
+                <strong style="font-size:14px;display:block;">${opt}</strong>${tag}
+              </div>
+            `;
+          });
+          answerContent += '</div>';
+        } else if(q.question_type === 'essay') {
+          const aiScore = q.ai_score !== undefined ? q.ai_score : (q.earned_points || 0);
+          const aiFb = q.ai_feedback || q.feedback || 'Evaluated against module learning concepts and rubric.';
+          const tScore = (q.teacher_score !== null && q.teacher_score !== undefined) ? q.teacher_score : aiScore;
+          const tFb = q.teacher_feedback || '';
+          const hasOverride = (q.teacher_score !== null && q.teacher_score !== undefined);
+
+          let rubricHtml = '';
+          if(q.rubric_scores && typeof q.rubric_scores === 'object') {
+            rubricHtml = '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #fde68a;"><div style="font-weight:700;font-size:11px;color:#92400e;margin-bottom:4px;text-transform:uppercase;">Rubric Breakdown:</div><div style="display:flex;flex-wrap:wrap;gap:6px;">';
+            for(let crit in q.rubric_scores) {
+              rubricHtml += `<span style="background:#fff;border:1px solid #fde68a;padding:2px 8px;border-radius:4px;font-size:11px;color:#78350f;"><strong>${escapeCqHtml(crit)}:</strong> ${q.rubric_scores[crit]} pts</span>`;
+            }
+            rubricHtml += '</div></div>';
+          }
+
+          answerContent = `
+            <div style="margin-top:10px;background:#fffbeb;border:1.5px solid #f59e0b;color:#92400e;padding:14px;border-radius:10px;font-size:13px;">
+              <div style="font-weight:700;margin-bottom:6px;"><i class="fa fa-pencil" style="margin-right:6px;"></i> Student Written Response:</div>
+              <div style="background:#fff;border:1px solid #fde68a;padding:12px;border-radius:8px;white-space:pre-wrap;color:#1e293b;font-size:13px;line-height:1.5;margin-bottom:12px;">${escapeCqHtml(q.given_answer || '(No response submitted)')}</div>
+              
+              <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-bottom:12px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                  <strong style="color:#1e40af;font-size:12.5px;"><i class="fa fa-magic" style="color:#2563eb;"></i> AI Semantic Evaluation</strong>
+                  <span style="background:#dbeafe;color:#1d4ed8;font-weight:800;padding:2px 8px;border-radius:6px;font-size:11.5px;">AI Score: ${aiScore} / ${q.points} pts</span>
                 </div>
-              ` : ''}
+                <p style="margin:0;font-size:12px;color:#1e3a8a;line-height:1.4;">${escapeCqHtml(aiFb)}</p>
+                ${rubricHtml}
+              </div>
+
+              <!-- Teacher Override Form -->
+              <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <strong style="color:#0f172a;font-size:12.5px;"><i class="fa fa-sliders" style="color:#7c3aed;"></i> Teacher Grade & Feedback Override</strong>
+                  ${hasOverride ? '<span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:4px;font-size:10.5px;font-weight:700;"><i class="fa fa-check"></i> Teacher Overridden</span>' : '<span style="color:#64748b;font-size:11px;">(100% Teacher Authority)</span>'}
+                </div>
+                <div style="display:grid;grid-template-columns:120px 1fr auto;gap:10px;align-items:center;">
+                  <div>
+                    <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:2px;">Final Score</label>
+                    <input type="number" step="0.5" min="0" max="${q.points}" id="overrideScore_${q.id}" value="${tScore}" class="form-control input-sm" style="font-weight:800;font-size:13px;border-radius:6px;">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:2px;">Teacher Feedback / Notes to Student</label>
+                    <input type="text" id="overrideFb_${q.id}" value="${escapeCqAttr(tFb)}" placeholder="Add remarks or feedback..." class="form-control input-sm" style="border-radius:6px;font-size:12px;">
+                  </div>
+                  <div style="padding-top:16px;">
+                    <button type="button" class="btn btn-sm btn-primary" style="background:#4f46e5;border:none;border-radius:6px;font-weight:700;" onclick="saveEssayOverride(${res.submission_id || 0}, ${q.id}, ${quizId}, '${studentCode}')">
+                      <i class="fa fa-save"></i> Save Override
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           `;
+        } else if(q.question_type === 'matching' || (q.matching_pairs && q.matching_pairs.length > 0)) {
+          const pairs = q.matching_pairs || [];
+          let givenMap = {};
+          try {
+            givenMap = (typeof q.given_answer === 'object' && q.given_answer !== null) ? q.given_answer : JSON.parse(q.given_answer || '{}');
+          } catch(e){ givenMap = {}; }
+
+          answerContent = '<div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">';
+          if(pairs.length > 0) {
+            pairs.forEach((p, pIdx) => {
+              const aId = p.col_a_id || ('a-' + (pIdx+1));
+              const aText = p.col_a_text || ('Item ' + (pIdx+1));
+              const bText = p.col_b_text || ('Definition ' + (pIdx+1));
+              const targetBId = p.col_b_id || '';
+              const studentChoiceBId = givenMap[aId] || givenMap[pIdx] || '';
+
+              let isPairMatch = (targetBId && studentChoiceBId && targetBId === studentChoiceBId);
+              let pairBg = isPairMatch ? '#f0fdf4' : (studentChoiceBId ? '#fef2f2' : '#f8fafc');
+              let pairBorder = isPairMatch ? '#86efac' : (studentChoiceBId ? '#fca5a5' : '#e2e8f0');
+
+              answerContent += `
+                <div style="background:${pairBg};border:1px solid ${pairBorder};padding:8px 12px;border-radius:8px;font-size:12.5px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                  <div><span style="color:#64748b;font-weight:700;">${pIdx+1}.</span> <strong>${escapeCqHtml(aText)}</strong></div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <i class="fa fa-arrow-right" style="color:${isPairMatch?'#10b981':'#ef4444'};"></i>
+                    <span style="background:#fff;border:1px solid ${pairBorder};padding:2px 10px;border-radius:6px;font-weight:700;color:${isPairMatch?'#15803d':'#991b1b'};">${escapeCqHtml(bText)}</span>
+                    ${isPairMatch ? '<i class="fa fa-check-circle text-success"></i>' : (studentChoiceBId ? '<i class="fa fa-times-circle text-danger"></i>' : '<span style="font-size:10px;color:#94a3b8;">(Blank)</span>')}
+                  </div>
+                </div>
+              `;
+            });
+          } else {
+            answerContent += `
+              <div style="background:#f0fdf4;border:1px solid #86efac;padding:10px 14px;border-radius:8px;color:#15803d;">
+                <strong>Correct Key:</strong> ${escapeCqHtml(correct || '(None)')}
+              </div>
+              <div style="background:#f8fafc;border:1px solid #e2e8f0;padding:10px 14px;border-radius:8px;color:#334155;margin-top:6px;">
+                <strong>Student Answer:</strong> ${escapeCqHtml(given)}
+              </div>
+            `;
+          }
+          answerContent += '</div>';
+        } else {
+          // Identification / Enumeration / Modified T-F
+          if(isCorrect === true) {
+            answerContent = `
+              <div style="margin-top:10px;background:#f0fdf4;border:1.5px solid #22c55e;color:#15803d;padding:10px 14px;border-radius:8px;font-size:13px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                <div><i class="fa fa-check-circle" style="color:#16a34a;font-size:16px;margin-right:6px;"></i><strong style="color:#14532d;">Student Answer:</strong> <span style="background:#fff;border:1px solid #86efac;padding:3px 10px;border-radius:6px;color:#15803d;font-weight:700;margin-left:4px;">${escapeCqHtml(given)}</span></div>
+                <span style="background:#22c55e;color:#fff;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:800;"><i class="fa fa-check"></i> CORRECT</span>
+              </div>
+            `;
+          } else {
+            answerContent = `
+              <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+                <div style="background:#fef2f2;border:1.5px solid #ef4444;color:#991b1b;padding:10px 14px;border-radius:8px;font-size:13px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                  <div><i class="fa fa-times-circle" style="color:#dc2626;font-size:16px;margin-right:6px;"></i><strong style="color:#7f1d1d;">Student Answer:</strong> <span style="background:#fff;border:1px solid #fca5a5;padding:3px 10px;border-radius:6px;color:#991b1b;font-weight:700;margin-left:4px;">${escapeCqHtml(given)}</span></div>
+                  <span style="background:#ef4444;color:#fff;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:800;"><i class="fa fa-times"></i> WRONG</span>
+                </div>
+                ${correct ? `
+                  <div style="background:#f0fdf4;border:1.5px solid #22c55e;color:#15803d;padding:10px 14px;border-radius:8px;font-size:13px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                    <div><i class="fa fa-check-circle" style="color:#16a34a;font-size:16px;margin-right:6px;"></i><strong style="color:#14532d;">Correct / Expected Answer:</strong> <span style="background:#fff;border:1px solid #86efac;padding:3px 10px;border-radius:6px;color:#15803d;font-weight:700;margin-left:4px;">${escapeCqHtml(correct)}</span></div>
+                    <span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:800;"><i class="fa fa-check"></i> CORRECT ANSWER</span>
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          }
         }
 
         qHtml += `
-          <div style="background:#fff;border:1px solid ${cardBorder};border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+          <div style="background:#fff;border:1.5px solid ${cardBorder};border-left:${cardLeft};border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
               <div style="display:flex;align-items:center;gap:6px;">
                 <span style="font-size:12px;font-weight:800;color:#0f172a;background:#f1f5f9;padding:2px 8px;border-radius:6px;">#${idx+1}</span>
@@ -1883,7 +2789,7 @@ function viewStudentAnswers(quizId, studentCode) {
               </div>
               <div>${statusBadge}</div>
             </div>
-            <div style="font-size:13.5px;font-weight:600;color:#0f172a;line-height:1.4;margin-bottom:4px;">
+            <div style="font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.4;margin-bottom:6px;">
               ${escapeCqHtml(q.question_text)}
             </div>
             ${answerContent}
@@ -1894,6 +2800,29 @@ function viewStudentAnswers(quizId, studentCode) {
 
     $('#saQuestionsList').html(qHtml);
   }, 'json');
+}
+
+function saveEssayOverride(subId, qId, quizId, studentCode) {
+  var score = parseFloat($('#overrideScore_' + qId).val()) || 0;
+  var feedback = $('#overrideFb_' + qId).val() || '';
+
+  $.post('../shared/quiz_handler.php', {
+    action: 'override_essay_grade',
+    submission_id: subId,
+    question_id: qId,
+    teacher_score: score,
+    teacher_feedback: feedback
+  }, function(res) {
+    if(typeof res === 'string') { try { res = JSON.parse(res.trim()); } catch(e){} }
+    if(res && res.success) {
+      alert('Teacher grade override and feedback saved successfully!');
+      viewStudentAnswers(quizId, studentCode);
+    } else {
+      alert(res && res.msg ? res.msg : 'Failed to save grade override.');
+    }
+  }, 'json').fail(function(xhr, status, error){
+    alert('Request failed: ' + (xhr.responseText || error || 'Network error'));
+  });
 }
 
 function openCopyModal(quizId, quizTitle, startDate, dueDate) {
@@ -1949,24 +2878,32 @@ function submitCopyQuiz() {
 function viewAssignedClasses(title, subjectsData) {
   $('#acModalTitle').html('<i class="fa fa-users"></i> ' + escapeCqHtml(title) + ' &bull; Assigned Classes');
   
-  let html = '<div style="display:flex;flex-direction:column;gap:10px;">';
-  subjectsData.forEach(s => {
-    let codeBadge = s.code ? `<span class="badge-code-green"><i class="fa fa-tag"></i> ${escapeCqHtml(s.code)}</span>` : '';
-    let classUrl = s.class_id ? `../shared/class_view.php?id=${s.class_id}&tab=classwork` : '#';
-    
-    html += `
-      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
-        <div style="display:flex;align-items:center;gap:10px;">
-          ${codeBadge}
-          <div>
-            <h6 style="margin:0 0 2px 0;font-weight:700;color:#0f172a;font-size:13px;">${escapeCqHtml(s.name)}</h6>
-            ${s.section ? `<span style="font-size:11px;color:#64748b;"><i class="fa fa-users"></i> Section: <strong>${escapeCqHtml(s.section)}</strong></span>` : ''}
-          </div>
-        </div>
-        ${s.class_id ? `<a href="${classUrl}" class="btn btn-xs btn-info" style="border-radius:6px;font-weight:700;padding:6px 14px;background:linear-gradient(135deg,#0284c7,#0369a1);border:none;box-shadow:0 2px 4px rgba(2,132,199,0.2);"><i class="fa fa-external-link"></i> Open Class</a>` : '<span style="font-size:11px;color:#94a3b8;">Template</span>'}
-      </div>
-    `;
+  var realSubjects = (subjectsData || []).filter(function(s){
+    return s && parseInt(s.class_id) > 0 && s.name !== 'Unassigned Template';
   });
+
+  let html = '<div style="display:flex;flex-direction:column;gap:10px;">';
+  if(realSubjects.length === 0){
+    html += '<div style="text-align:center;padding:24px 16px;color:#64748b;"><i class="fa fa-info-circle" style="font-size:24px;color:#94a3b8;margin-bottom:8px;display:block;"></i><p style="margin:0;font-size:13.5px;font-weight:500;">No classes assigned to this quiz yet.<br><span style="font-size:12px;color:#94a3b8;">Use the green <strong>+ (Add Class)</strong> button on the quiz card to assign it to a class section.</span></p></div>';
+  } else {
+    realSubjects.forEach(function(s){
+      let codeBadge = s.code ? `<span class="badge-code-green"><i class="fa fa-tag"></i> ${escapeCqHtml(s.code)}</span>` : '';
+      let classUrl = `../shared/class_view.php?id=${s.class_id}&tab=classwork`;
+      
+      html += `
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+          <div style="display:flex;align-items:center;gap:10px;">
+            ${codeBadge}
+            <div>
+              <h6 style="margin:0 0 2px 0;font-weight:700;color:#0f172a;font-size:13px;">${escapeCqHtml(s.name)}</h6>
+              ${s.section ? `<span style="font-size:11px;color:#64748b;"><i class="fa fa-users"></i> Section: <strong>${escapeCqHtml(s.section)}</strong></span>` : ''}
+            </div>
+          </div>
+          <a href="${classUrl}" class="btn btn-xs btn-info" style="border-radius:6px;font-weight:700;padding:6px 14px;background:linear-gradient(135deg,#0284c7,#0369a1);border:none;box-shadow:0 2px 4px rgba(2,132,199,0.2);"><i class="fa fa-external-link"></i> Open Class</a>
+        </div>
+      `;
+    });
+  }
   html += '</div>';
   
   $('#acModalBody').html(html);

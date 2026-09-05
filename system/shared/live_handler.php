@@ -20,6 +20,7 @@ $action = $_POST['action'] ?? $_GET['action'] ?? '';
 if($action === 'schedule' && $role === 'TEACHER'){
     $class_id    = intval($_POST['class_id'] ?? 0);
     $title       = $conn->real_escape_string(trim($_POST['title'] ?? ''));
+    if(!$title)  $title = $conn->real_escape_string('Live Class: ' . date('M d, g:i A'));
     $scheduled   = trim($_POST['scheduled_at'] ?? '');
     $room_id     = $conn->real_escape_string('cenlearn_'.md5($uc.'_'.$class_id));
     $term        = $conn->real_escape_string(trim($_POST['term'] ?? 'midterm'));
@@ -40,16 +41,18 @@ if($action === 'schedule' && $role === 'TEACHER'){
 // ── Teacher: Start session ────────────────────────────────────────────────
 if($action === 'start' && $role === 'TEACHER'){
     $session_id = intval($_POST['session_id'] ?? 0);
-    // Get the class_id for this session first
-    $sr = $conn->query("SELECT class_id FROM live_sessions WHERE id=$session_id AND teacher_code='$uc'");
+    // Get the class_id and room_id for this session
+    $sr = $conn->query("SELECT class_id, room_id FROM live_sessions WHERE id=$session_id AND teacher_code='$uc'");
     if($sr->num_rows === 0){ echo json_encode(['success'=>false,'msg'=>'Session not found']); exit; }
-    $class_id_for_session = intval($sr->fetch_assoc()['class_id']);
+    $sRow = $sr->fetch_assoc();
+    $class_id_for_session = intval($sRow['class_id']);
+    $room_id = $sRow['room_id'];
     // End any currently live session for this class
     $conn->query("UPDATE live_sessions SET status='ended', ended_at=NOW()
                   WHERE class_id=$class_id_for_session AND status='live' AND teacher_code='$uc' AND id != $session_id");
     $conn->query("UPDATE live_sessions SET status='live', started_at=NOW()
                   WHERE id=$session_id AND teacher_code='$uc'");
-    echo json_encode(['success'=>true]);
+    echo json_encode(['success'=>true, 'room_id'=>$room_id, 'session_id'=>$session_id]);
     exit;
 }
 
@@ -114,14 +117,15 @@ if($action === 'record_attendance' && $role === 'STUDENT'){
     // Add session_id column if it doesn't exist yet (migration)
     safeAddColumns($conn, 'class_record_columns', ['session_id' => 'int(11) DEFAULT NULL AFTER `sort_order`']);
 
-    // Calculate score: 2 points if present on time, 1 point if late by 15 mins
-    $startedTime = strtotime($sess['started_at']);
-    $currentTime = time();
-    $diffMinutes = ($currentTime - $startedTime) / 60;
-
+    // Calculate score: 2 points if present on time, 1 point if late by 15 mins (only for started live sessions)
     $score = 2.00;
-    if ($diffMinutes >= 15) {
-        $score = 1.00;
+    if(($sess['status'] ?? '') === 'live' && !empty($sess['started_at'])){
+        $startedTime = strtotime($sess['started_at']);
+        $currentTime = time();
+        $diffMinutes = ($currentTime - $startedTime) / 60;
+        if ($diffMinutes >= 15) {
+            $score = 1.00;
+        }
     }
 
     // Find or create the attendance column for this specific session
@@ -227,11 +231,16 @@ if($action === 'register_peer'){
     $session_id = intval($_POST['session_id'] ?? 0);
     $peer_id    = $conn->real_escape_string(trim($_POST['peer_id'] ?? ''));
     $name       = $conn->real_escape_string(trim($_POST['name'] ?? ''));
+    $reqRole    = trim($_POST['role'] ?? '');
     if(!$session_id || !$peer_id){ echo json_encode(['success'=>false]); exit; }
-    $r = $conn->real_escape_string($role);
+    $r = ($role === 'TEACHER' || strtoupper($reqRole) === 'TEACHER') ? 'TEACHER' : 'STUDENT';
     $conn->query("INSERT INTO live_peers (session_id,user_code,peer_id,name,role)
                   VALUES ($session_id,'$uc','$peer_id','$name','$r')
-                  ON DUPLICATE KEY UPDATE peer_id='$peer_id', name='$name', last_seen=NOW()");
+                  ON DUPLICATE KEY UPDATE peer_id='$peer_id', name='$name', role='$r', last_seen=NOW()");
+    
+    if($r === 'TEACHER'){
+        $conn->query("UPDATE live_sessions SET room_id='$peer_id' WHERE id=$session_id AND teacher_code='$uc'");
+    }
     echo json_encode(['success'=>true]);
     exit;
 }
@@ -242,7 +251,7 @@ if($action === 'get_peers'){
     if(!$session_id){ echo json_encode(['success'=>false,'peers'=>[]]); exit; }
     $res = $conn->query("SELECT peer_id, name, role, user_code FROM live_peers
                          WHERE session_id=$session_id
-                           AND last_seen > DATE_SUB(NOW(), INTERVAL 30 SECOND)
+                           AND last_seen > DATE_SUB(NOW(), INTERVAL 45 SECOND)
                            AND user_code != '$uc'");
     $peerList = [];
     while($row = $res->fetch_assoc()) $peerList[] = $row;
@@ -266,10 +275,10 @@ if($action === 'sessions_list'){
     $uc2  = $conn->real_escape_string($user['user_code']);
 
     // Verify access
-    $cq = $conn->query("SELECT * FROM classes WHERE id=$class_id AND EXISTS (SELECT 1 FROM class_members WHERE class_id=$class_id AND user_code='$uc2')");
+    $cq = $conn->query("SELECT * FROM classes WHERE id=$class_id AND (teacher_code='$uc2' OR EXISTS (SELECT 1 FROM class_members WHERE class_id=$class_id AND user_code='$uc2'))");
     if(!$cq || $cq->num_rows === 0){ echo json_encode(['success'=>false]); exit; }
     $class = $cq->fetch_assoc();
-    $isTeacher = ($role === 'TEACHER' && $class['teacher_code'] === $user['user_code']);
+    $isTeacher = (in_array($role, ['TEACHER', 'ADMIN', 'SUPERADMIN']) || strcasecmp($class['teacher_code'] ?? '', $user['user_code'] ?? '') === 0);
 
     $sessQ = $conn->query("SELECT * FROM live_sessions WHERE class_id=$class_id ORDER BY created_at DESC");
     $sessions = [];
@@ -295,12 +304,13 @@ if($action === 'sessions_list'){
             if($s['started_at'])   $html .= '<span><i class="fa fa-play"></i>Started '.date('g:i A', strtotime($s['started_at'])).'</span>';
             $html .= '<span><i class="fa fa-users"></i>'.$attCount.' attended</span></div></div>';
             $html .= '<div class="sess-actions">';
+            $roomIdAttr = htmlspecialchars(addslashes($s['room_id'] ?? ''));
             if($isTeacher){
                 if($s['status']==='scheduled'){
-                    $html .= '<button class="btn-lc accent sm" onclick="startSession('.$s['id'].')"><i class="fa fa-play"></i> Start</button>';
+                    $html .= '<button class="btn-lc accent sm" onclick="startSession('.$s['id'].',\''.$roomIdAttr.'\')"><i class="fa fa-play"></i> Start</button>';
                     $html .= '<button class="btn-lc ghost sm" onclick="deleteSession('.$s['id'].')"><i class="fa fa-trash"></i></button>';
                 } elseif($s['status']==='live'){
-                    $html .= '<button class="btn-lc accent sm" onclick="joinCall('.$s['id'].',\''.$s['room_id'].'\')"><i class="fa fa-video-camera"></i> Join</button>';
+                    $html .= '<button class="btn-lc accent sm" onclick="joinCall('.$s['id'].',\''.$roomIdAttr.'\')"><i class="fa fa-video-camera"></i> Join</button>';
                     $html .= '<button class="btn-lc red sm" onclick="endSession('.$s['id'].')"><i class="fa fa-stop"></i> End</button>';
                 }
                 if($s['status']==='ended' || $s['status']==='live'){
@@ -308,7 +318,7 @@ if($action === 'sessions_list'){
                 }
             } else {
                 if($s['status']==='live'){
-                    $html .= '<button class="btn-lc accent sm" onclick="joinAsStudent('.$s['id'].',\''.$s['room_id'].'\')"><i class="fa fa-sign-in"></i> Join</button>';
+                    $html .= '<button class="btn-lc accent sm" onclick="joinAsStudent('.$s['id'].',\''.$roomIdAttr.'\')"><i class="fa fa-sign-in"></i> Join</button>';
                 } elseif($s['status']==='scheduled'){
                     $html .= '<span style="font-size:11px;color:#f59e0b;font-weight:600;"><i class="fa fa-clock-o"></i> Upcoming</span>';
                 } else {

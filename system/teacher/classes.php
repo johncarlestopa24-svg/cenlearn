@@ -682,11 +682,11 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
             <button onclick="toggleSidebarClass(<?php echo $c['id']; ?>, this)" class="crc-btn open-btn toggle-class-btn" data-class-id="<?php echo $c['id']; ?>">
               <i class="fa fa-folder-open"></i> <span class="lbl-text">Open</span>
             </button>
-            <button onclick="leaveClass(<?php echo $c['id']; ?>,'<?php echo htmlspecialchars(addslashes($c['class_name'])); ?>')" class="crc-btn leave-btn icon-only" style="border:1.5px solid #fdba74; background:#fff7ed; color:#ea580c;" title="Leave Class">
-              <i class="fa fa-sign-out"></i>
-            </button>
             <button onclick="openArchiveModal(<?php echo $c['id']; ?>,'<?php echo htmlspecialchars(addslashes($c['class_name'])); ?>')" class="crc-btn archive-btn icon-only" title="Archive">
               <i class="fa fa-archive"></i>
+            </button>
+            <button onclick="confirmDelete(<?php echo $c['id']; ?>,'<?php echo htmlspecialchars(addslashes($c['class_name'])); ?>')" class="crc-btn delete-btn icon-only" title="Delete Class">
+              <i class="fa fa-trash"></i>
             </button>
           </div>
         </div>
@@ -743,6 +743,9 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
             </a>
             <button onclick="unarchiveClass(<?php echo $c['id']; ?>,'<?php echo htmlspecialchars(addslashes($c['class_name'])); ?>')" class="crc-btn archive-btn icon-only" style="border-color:#10b981; background:#f0fdf4; color:#059669;" title="Restore to Active">
               <i class="fa fa-undo"></i>
+            </button>
+            <button onclick="confirmDelete(<?php echo $c['id']; ?>,'<?php echo htmlspecialchars(addslashes($c['class_name'])); ?>')" class="crc-btn delete-btn icon-only" title="Delete Class">
+              <i class="fa fa-trash"></i>
             </button>
           </div>
         </div>
@@ -906,6 +909,33 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
       <div style="padding:14px 22px;border-top:1px solid #f1f5f9;display:flex;justify-content:flex-end;gap:10px;">
         <button type="button" style="padding:9px 18px;background:#f1f5f9;color:#475569;border:none;border-radius:9px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;" data-dismiss="modal">Cancel</button>
         <button type="button" id="btnArchiveConfirm" style="padding:9px 20px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:7px;"><i class="fa fa-archive"></i> Archive</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Class Modal -->
+<div class="modal fade" id="deleteClassModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content" style="border:none;border-radius:16px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.18);">
+      <div style="padding:18px 22px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#ef4444,#dc2626);">
+        <h4 style="color:#fff;font-size:15px;font-weight:700;margin:0;"><i class="fa fa-trash"></i> Delete Class</h4>
+        <button type="button" class="close" data-dismiss="modal" style="color:#fff;opacity:.8;font-size:20px;background:none;border:none;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:22px;">
+        <p style="font-size:13px;color:#374151;margin:0 0 6px;">Are you sure you want to permanently delete this class?</p>
+        <p style="font-size:15px;font-weight:700;color:#dc2626;margin:0 0 12px;" id="deleteClassName"></p>
+        <p style="font-size:11.5px;color:#64748b;margin:0 0 10px;line-height:1.45;">
+          <i class="fa fa-exclamation-triangle" style="color:#ef4444;"></i> This will automatically delete the class and all its records (grades, attendance, quizzes, submissions, learning materials) from the database.
+        </p>
+        <p style="font-size:11.5px;color:#059669;margin:0;line-height:1.45;">
+          <i class="fa fa-check-circle"></i> You can immediately create a new class using the same subject name.
+        </p>
+        <div id="deleteAlert" style="display:none;margin-top:12px;"></div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid #f1f5f9;display:flex;justify-content:flex-end;gap:10px;">
+        <button type="button" style="padding:9px 18px;background:#f1f5f9;color:#475569;border:none;border-radius:9px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;" data-dismiss="modal">Cancel</button>
+        <button type="button" id="btnDeleteConfirm" style="padding:9px 20px;background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:7px;"><i class="fa fa-trash"></i> Delete Class</button>
       </div>
     </div>
   </div>
@@ -1308,16 +1338,7 @@ $('#btnDeleteConfirm').on('click',function(){
   },'json');
 });
 function leaveClass(id, name){
-  if(confirm("Are you sure you want to leave '" + name + "'?")){
-    $.post('../shared/class_save.php', { action: 'leave_class', class_id: id }, function(res){
-      if(res.success){
-        alert(res.msg || 'You have left the class.');
-        location.reload();
-      } else {
-        alert(res.msg || 'Could not leave class.');
-      }
-    }, 'json');
-  }
+  confirmDelete(id, name);
 }
 var activeClassId = null;
 

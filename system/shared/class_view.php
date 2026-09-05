@@ -107,12 +107,16 @@ $qq = $conn->query("
 if($qq) while($q = $qq->fetch_assoc()) $quizzes[] = $q;
 
 // ── Student submission status ──────────────────────────────────────────────
-$myAssignSubs = []; $myQuizSubs = [];
+$myAssignSubs = []; $myQuizSubs = []; $myQuizSubsByTitle = [];
 if(!$isTeacher){
     $as = $conn->query("SELECT assignment_id, grade FROM assignment_submissions WHERE student_code='$uc'");
     if($as) while($r = $as->fetch_assoc()) $myAssignSubs[$r['assignment_id']] = $r;
-    $qs2 = $conn->query("SELECT quiz_id, score, total_points FROM quiz_submissions WHERE student_code='$uc'");
-    if($qs2) while($r = $qs2->fetch_assoc()) $myQuizSubs[$r['quiz_id']] = $r;
+    $qs2 = $conn->query("SELECT qs.quiz_id, qs.score, qs.total_points, q.title FROM quiz_submissions qs JOIN quizzes q ON qs.quiz_id = q.id WHERE qs.student_code='$uc'");
+    if($qs2) while($r = $qs2->fetch_assoc()) {
+        $myQuizSubs[$r['quiz_id']] = $r;
+        $tClean = strtolower(trim($r['title'] ?? ''));
+        if($tClean !== '') $myQuizSubsByTitle[$tClean] = $r;
+    }
 }
 
 function fmtSize($b){ if($b>=1048576) return round($b/1048576,1).' MB'; if($b>=1024) return round($b/1024,1).' KB'; return $b.' B'; }
@@ -120,6 +124,40 @@ function fileIcon($name){
     $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
     $map = ['pdf'=>['fa-file-pdf-o','#ef4444','#fef2f2'],'doc'=>['fa-file-word-o','#2563eb','#eff6ff'],'docx'=>['fa-file-word-o','#2563eb','#eff6ff'],'ppt'=>['fa-file-powerpoint-o','#ea580c','#fff7ed'],'pptx'=>['fa-file-powerpoint-o','#ea580c','#fff7ed'],'xls'=>['fa-file-excel-o','#16a34a','#f0fdf4'],'xlsx'=>['fa-file-excel-o','#16a34a','#f0fdf4'],'zip'=>['fa-file-archive-o','#7c3aed','#f5f3ff'],'png'=>['fa-file-image-o','#0891b2','#ecfeff'],'jpg'=>['fa-file-image-o','#0891b2','#ecfeff'],'jpeg'=>['fa-file-image-o','#0891b2','#ecfeff'],'txt'=>['fa-file-text-o','#64748b','#f8fafc']];
     return $map[$ext] ?? ['fa-file-o','#94a3b8','#f8fafc'];
+}
+
+function renderFolderSvg($width = 54, $height = 43) {
+    return '<svg class="folder-svg" width="'.$width.'" height="'.$height.'" viewBox="0 0 120 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="fldBack" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#f59e0b" />
+          <stop offset="100%" stop-color="#d97706" />
+        </linearGradient>
+        <linearGradient id="fldPaper" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ffffff" />
+          <stop offset="100%" stop-color="#f8fafc" />
+        </linearGradient>
+        <linearGradient id="fldFront" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#fbbf24" />
+          <stop offset="45%" stop-color="#f59e0b" />
+          <stop offset="100%" stop-color="#d97706" />
+        </linearGradient>
+        <linearGradient id="fldHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#fef3c7" stop-opacity="0.85" />
+          <stop offset="100%" stop-color="#fde68a" stop-opacity="0" />
+        </linearGradient>
+        <filter id="fldShadow" x="-10%" y="-10%" width="125%" height="135%" filterUnits="userSpaceOnUse">
+          <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#92400e" flood-opacity="0.2" />
+        </filter>
+      </defs>
+      <path d="M 10 20 C 10 13.4 15.4 8 22 8 L 44 8 C 48 8 51.5 10.2 53.5 13.5 L 58.5 21 C 60 23.5 62.5 25 65.5 25 L 98 25 C 104.6 25 110 30.4 110 37 L 110 78 C 110 84.6 104.6 90 98 90 L 22 90 C 15.4 90 10 84.6 10 78 Z" fill="url(#fldBack)" />
+      <rect class="fld-paper" x="24" y="16" width="72" height="36" rx="4" fill="url(#fldPaper)" style="transition:transform .2s ease;" />
+      <line x1="32" y1="24" x2="62" y2="24" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" />
+      <line x1="32" y1="30" x2="82" y2="30" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" />
+      <line x1="32" y1="36" x2="70" y2="36" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" />
+      <path d="M 8 36 C 8 29.4 13.4 24 20 24 L 100 24 C 106.6 24 112 29.4 112 36 L 112 78 C 112 84.6 106.6 90 100 90 L 20 90 C 13.4 90 8 84.6 8 78 Z" fill="url(#fldFront)" filter="url(#fldShadow)" />
+      <path d="M 10 36 C 10 30.5 14.5 26 20 26 L 100 26 C 105.5 26 110 30.5 110 36 L 110 40 L 10 40 Z" fill="url(#fldHighlight)" />
+    </svg>';
 }
 
 $accent    = $isTeacher ? '#10b981' : '#1792bb';
@@ -216,40 +254,268 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
     .cv-toolbar { background:#fff;border-bottom:1px solid #e2e8f0;padding:6px 16px;height:44px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;gap:8px; }
     .cv-toolbar-left { display:flex;align-items:center;gap:6px; }
     .cv-toolbar-right { display:flex;align-items:center;gap:6px; }
-     /* Compact Responsive Module Cards */
-    .mod-grid { display:flex;flex-direction:column;gap:6px; }
-    .mod-card { background:#fff;border:1px solid #e8edf2;border-radius:8px;display:flex;align-items:center;gap:10px;padding:8px 12px;transition:box-shadow .18s,border-color .18s; }
-    .mod-card:hover { border-color:rgba(<?php echo $accentRgb;?>,.3);box-shadow:0 2px 8px rgba(<?php echo $accentRgb;?>,.08); }
-    .mod-card-icon { width:32px;height:32px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center; }
-    .mod-card-icon i { font-size:14px; }
+    /* ═══════════════ MODERN RESPONSIVE MODULE / FILE CARDS ═══════════════ */
+    .mod-grid { display:flex;flex-direction:column;gap:8px; }
+    .mod-card { background:#fff;border:1px solid #e2e8f0;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.02);transition:all .2s cubic-bezier(.4,0,.2,1); }
+    .mod-card:hover { border-color:rgba(<?php echo $accentRgb;?>,.35);box-shadow:0 4px 14px rgba(<?php echo $accentRgb;?>,.08);transform:translateY(-1px); }
+    .mod-card-main { display:flex;align-items:center;gap:12px;flex:1;min-width:0; }
+    .mod-card-icon { width:42px;height:42px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.06); }
+    .mod-card-icon i { font-size:18px; }
     .mod-card-body { flex:1;min-width:0; }
-    .mod-card-title { font-size:12.5px;font-weight:700;color:#0f172a;margin:0 0 1px;word-break:break-word;line-height:1.3; }
-    .mod-card-meta { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
-    .mod-card-meta span { font-size:10px;color:#64748b;font-weight:500;display:flex;align-items:center;gap:3px; }
-    .mod-card-actions { display:flex;align-items:center;gap:5px;flex-shrink:0; }
-    .btn-view { display:inline-flex;align-items:center;gap:4px;padding:4px 10px;height:28px;border-radius:6px;font-size:11px;font-weight:700;font-family:'Inter',sans-serif;text-decoration:none;border:none;cursor:pointer;background:linear-gradient(135deg,<?php echo $accent;?>,<?php echo $accentDk;?>);color:#fff;box-shadow:0 2px 5px rgba(<?php echo $accentRgb;?>,.2);transition:opacity .15s; }
-    .btn-view:hover { opacity:.9;text-decoration:none;color:#fff; }
-    .btn-download { display:inline-flex;align-items:center;gap:4px;padding:4px 10px;height:28px;border-radius:6px;font-size:11px;font-weight:700;font-family:'Inter',sans-serif;text-decoration:none;border:none;cursor:pointer;background:rgba(<?php echo $accentRgb;?>,.1);color:<?php echo $accentDk;?>;transition:background .15s; }
-    .btn-download:hover { background:rgba(<?php echo $accentRgb;?>,.2);text-decoration:none;color:<?php echo $accentDk;?>; }
-    .btn-icon-del { display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;background:#fef2f2;color:#dc2626;border:none;cursor:pointer;font-size:13px;transition:background .15s;text-decoration:none; }
-    .btn-icon-del:hover { background:#fee2e2;color:#dc2626;text-decoration:none; }
+    .mod-card-title { font-size:13.5px;font-weight:700;color:#0f172a;margin:0 0 3px;word-break:break-word;line-height:1.35; }
+    .mod-card-meta { display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11.5px;color:#64748b;font-weight:500;margin-top:2px; }
+    .mod-card-meta span { display:inline-flex;align-items:center;gap:4px; }
+    .mod-card-meta i { font-size:11px; }
+    .mod-card-actions { display:flex;align-items:center;gap:6px;flex-shrink:0; }
+    .btn-view { display:inline-flex;align-items:center;gap:5px;padding:6px 13px;height:32px;border-radius:8px;font-size:11.5px;font-weight:700;font-family:'Inter',sans-serif;text-decoration:none;border:none;cursor:pointer;background:linear-gradient(135deg,<?php echo $accent;?>,<?php echo $accentDk;?>);color:#fff;box-shadow:0 2px 6px rgba(<?php echo $accentRgb;?>,.25);transition:opacity .15s,transform .1s;white-space:nowrap; }
+    .btn-view:hover { opacity:.92;text-decoration:none;color:#fff;transform:translateY(-1px); }
+    .btn-download { display:inline-flex;align-items:center;gap:5px;padding:6px 12px;height:32px;border-radius:8px;font-size:11.5px;font-weight:700;font-family:'Inter',sans-serif;text-decoration:none;border:1px solid #e2e8f0;cursor:pointer;background:#f8fafc;color:#334155;transition:all .15s;white-space:nowrap; }
+    .btn-download:hover { background:#f1f5f9;color:#0f172a;border-color:#cbd5e1;text-decoration:none; }
+    .btn-icon-del { display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;cursor:pointer;font-size:12px;transition:background .15s;text-decoration:none;flex-shrink:0; }
+    .btn-icon-del:hover { background:#fee2e2;color:#b91c1c;text-decoration:none; }
 
-    /* Compact Responsive Material Folders */
-    .folder-grid { display:grid;grid-template-columns:repeat(auto-fill, minmax(190px, 1fr));gap:8px;margin-bottom:16px; }
-    .folder-card { background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:9px 12px;display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;transition:all .15s ease-in-out;box-shadow:0 1px 2px rgba(0,0,0,0.02);cursor:pointer; }
-    .folder-card:hover { border-color:#f59e0b;background:#fffdfa;transform:translateY(-1px);box-shadow:0 3px 10px rgba(245,158,11,0.12);color:inherit;text-decoration:none; }
-    .folder-card-icon { width:32px;height:32px;border-radius:7px;background:#fffbeb;border:1px solid #fef3c7;display:flex;align-items:center;justify-content:center;font-size:16px;color:#d97706;flex-shrink:0; }
-    .folder-card-info { flex:1;min-width:0; }
-    .folder-title { font-size:12.5px;font-weight:700;color:#0f172a;margin:0 0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-    .folder-meta { display:flex;align-items:center;gap:6px;font-size:10.5px;color:#64748b;font-weight:500; }
-    .folder-meta span { display:inline-flex;align-items:center;gap:3px; }
-    .folder-tag-pill { display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:99px;font-size:9.5px;font-weight:700; }
-    .folder-tag-viewable { background:#dcfce7;color:#166534;border:1px solid #bbf7d0; }
-    .folder-tag-locked { background:#fee2e2;color:#991b1b;border:1px solid #fecaca; }
-    .folder-nav-bar { display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #e2e8f0;border-radius:9px;padding:9px 14px;margin-bottom:12px;gap:10px;flex-wrap:wrap;box-shadow:0 1px 2px rgba(0,0,0,0.02); }
-    .folder-breadcrumb { display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#64748b;flex-wrap:wrap; }
-    .folder-breadcrumb a { color:<?php echo $accent;?>;text-decoration:none;font-weight:700;display:inline-flex;align-items:center;gap:4px; }
+    /* ═══════════════ ICONIC CLEAN FOLDER TILES (NO WHITE CARD BOX) ═══════════════ */
+    .folder-grid { display:grid;grid-template-columns:repeat(auto-fill, minmax(105px, 1fr));gap:12px;margin-bottom:18px; }
+    .folder-card { position:relative;background:transparent;border:none;border-radius:10px;padding:8px 6px;display:flex;flex-direction:column;align-items:center;text-align:center;text-decoration:none;color:inherit;cursor:pointer;transition:all .18s cubic-bezier(.4,0,.2,1);user-select:none; }
+    .folder-card:hover { transform:translateY(-2px);background:rgba(245,158,11,.08);color:inherit;text-decoration:none; }
+    .folder-card:hover .folder-svg .fld-paper { transform:translateY(-4px); }
+    .folder-svg-wrap { display:flex;align-items:center;justify-content:center;margin-bottom:4px; }
+    .folder-card-name { font-size:12px;font-weight:600;color:#1e293b;line-height:1.25;margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;word-break:break-word;max-width:100%; }
+    .folder-card:hover .folder-card-name { color:#0f172a;font-weight:700; }
+    .folder-card-menu { position:absolute;top:2px;right:2px;display:flex;align-items:center;gap:3px;opacity:0;transition:opacity .15s ease-in-out;z-index:2; }
+    .folder-card:hover .folder-card-menu { opacity:1; }
+    .folder-opt-btn { width:20px;height:20px;border-radius:5px;background:#ffffff;border:1px solid #e2e8f0;color:#475569;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;box-shadow:0 1px 3px rgba(0,0,0,.08);transition:all .15s; }
+    .folder-opt-btn:hover { background:#f8fafc;color:#0f172a; }
+    .folder-opt-btn.text-danger:hover { background:#fee2e2;color:#dc2626;border-color:#fca5a5; }
+
+    /* ═══════════════ FOLDER NAVIGATION & RESPONSIVENESS ═══════════════ */
+    .folder-nav-bar { display:flex;align-items:center;justify-content:space-between;background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:10px 16px;margin-bottom:14px;gap:12px;flex-wrap:wrap;box-shadow:0 1px 3px rgba(0,0,0,0.02); }
+    .folder-breadcrumb { display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#64748b;flex-wrap:wrap; }
+    .folder-breadcrumb a { color:<?php echo $accent;?>;text-decoration:none;font-weight:700;display:inline-flex;align-items:center;gap:5px; }
     .folder-breadcrumb a:hover { text-decoration:underline; }
+
+    @media(max-width:768px){
+      .folder-grid { grid-template-columns:repeat(auto-fill, minmax(95px, 1fr));gap:8px; }
+      .folder-card { padding:6px 4px; }
+      .folder-card-menu { opacity:1; }
+      .mod-card { flex-direction:column;align-items:flex-start;padding:12px 14px;gap:10px; }
+      .mod-card-main { width:100%; }
+      .mod-card-actions { width:100%;justify-content:flex-end;padding-top:8px;border-top:1px solid #f1f5f9; }
+      .folder-nav-bar { flex-direction:column;align-items:flex-start; }
+      .folder-nav-bar > div:last-child { width:100%;justify-content:flex-start; }
+    }
+    @media(max-width:480px){
+      .folder-grid { grid-template-columns:repeat(4, 1fr);gap:6px; }
+      .folder-svg { width:44px !important;height:35px !important; }
+      .folder-card-name { font-size:11px; }
+      .mod-card-actions { flex-wrap:wrap;justify-content:stretch; }
+      .mod-card-actions > * { flex:1;text-align:center;justify-content:center; }
+    }
+    @media(max-width:360px){
+      .folder-grid { grid-template-columns:repeat(3, 1fr);gap:6px; }
+    }
+
+    /* ═══════════════ CLASSWORK TAB STYLES ═══════════════ */
+    .cv-section-hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1.5px solid #e2e8f0;
+      margin-bottom: 14px;
+    }
+    .cv-section-hdr h2 {
+      font-size: 15px;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      line-height: 1.2;
+    }
+    .cv-section-hdr span {
+      font-size: 11px;
+      color: #64748b;
+      font-weight: 700;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      padding: 3px 10px;
+      border-radius: 99px;
+      white-space: nowrap;
+    }
+    .cw-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .cw-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 14px 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .cw-card:hover {
+      border-color: #cbd5e1;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+      transform: translateY(-1px);
+    }
+    .cw-card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      width: 100%;
+    }
+    .cw-card-main {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      flex: 1;
+      min-width: 0;
+    }
+    .cw-type-badge {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-size: 17px;
+      flex-shrink: 0;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+      margin-top: 2px;
+    }
+    .cw-card-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .cw-card-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 4px;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .cw-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 11.5px;
+      color: #64748b;
+      font-weight: 500;
+      margin-top: 3px;
+    }
+    .cw-card-meta span {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .cw-card-meta i {
+      font-size: 11.5px;
+    }
+    .cw-card-desc {
+      font-size: 12px;
+      color: #64748b;
+      margin: 6px 0 0;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .cw-card-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      letter-spacing: 0.2px;
+      line-height: 1.4;
+    }
+    .status-pill.status-open {
+      background: #ecfdf5;
+      color: #059669;
+      border: 1px solid #a7f3d0;
+    }
+    .status-pill.status-closed {
+      background: #fef2f2;
+      color: #dc2626;
+      border: 1px solid #fecaca;
+    }
+    .status-pill.status-submitted {
+      background: #eff6ff;
+      color: #2563eb;
+      border: 1px solid #bfdbfe;
+    }
+    .status-pill.status-graded,
+    .status-pill.status-done {
+      background: #f0fdf4;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+      box-shadow: 0 1px 3px rgba(22, 101, 52, 0.08);
+    }
+    @media (max-width: 768px) {
+      .cw-card {
+        padding: 12px 14px;
+      }
+      .cw-card-top {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .cw-card-actions {
+        width: 100%;
+        justify-content: flex-end;
+        padding-top: 10px;
+        border-top: 1px solid #f1f5f9;
+      }
+      .cw-type-badge {
+        width: 36px;
+        height: 36px;
+        font-size: 15px;
+      }
+      .cw-card-title {
+        font-size: 13.5px;
+      }
+      .cw-card-meta {
+        gap: 8px;
+        font-size: 11px;
+      }
+    }
+    @media (max-width: 480px) {
+      .cv-section-hdr h2 {
+        font-size: 14px;
+      }
+      .cw-card-main {
+        gap: 10px;
+      }
+      .cw-card-actions {
+        flex-wrap: wrap;
+        justify-content: stretch;
+        gap: 6px;
+      }
+      .cw-card-actions > * {
+        flex: 1;
+        text-align: center;
+        justify-content: center;
+      }
+      .cw-card-meta span {
+        font-size: 10.5px;
+      }
+    }
 
     @media(max-width:540px){
       .mod-card { padding:8px 10px;gap:8px; }
@@ -1049,6 +1315,8 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
       <?php if($tab === 'materials' && $isTeacher): ?>
       <button class="btn-accent btn-accent-sm" onclick="openCreateFolderModal()"><i class="fa fa-folder"></i> + New Folder</button>
       <button class="btn-accent btn-accent-sm" onclick="openUploadModal(<?php echo $current_folder_id; ?>)"><i class="fa fa-upload"></i> Upload Module</button>
+      <?php elseif($tab === 'materials' && !$isTeacher): ?>
+      <button class="btn-accent btn-accent-sm" onclick="openUploadModal(<?php echo $current_folder_id; ?>)"><i class="fa fa-upload"></i> Upload PPT / File</button>
       <?php endif; ?>
     </div>
   </div>
@@ -1096,7 +1364,7 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
       <!-- Modules inside this folder -->
       <?php if(empty($modules)): ?>
       <div class="cv-empty">
-        <div class="cv-empty-ring"><i class="fa fa-folder-open-o"></i></div>
+        <div class="cv-empty-ring" style="background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(245,158,11,.04));border-color:rgba(245,158,11,.25);"><i class="fa fa-folder-open" style="color:rgba(245,158,11,.6);"></i></div>
         <h3>No files in this folder</h3>
         <p><?php echo $isTeacher ? 'Upload modules or presentations for students into this folder.' : 'No files uploaded into this folder yet.'; ?></p>
       </div>
@@ -1106,24 +1374,26 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
           $isPpt = preg_match('/\.(ppt|pptx)$/i', $m['original_name']);
         ?>
         <div class="mod-card">
-          <div class="mod-card-icon" style="background:<?php echo $bg;?>;"><i class="fa <?php echo $ico;?>" style="color:<?php echo $clr;?>;"></i></div>
-          <div class="mod-card-body">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-              <div class="mod-card-title" title="<?php echo htmlspecialchars($m['title']); ?>"><?php echo htmlspecialchars($m['title']); ?></div>
-              <?php if($isPpt): ?>
-                <span style="font-size:9.5px;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;padding:1px 6px;border-radius:4px;font-weight:700;"><i class="fa fa-file-powerpoint-o"></i> PPT</span>
+          <div class="mod-card-main">
+            <div class="mod-card-icon" style="background:<?php echo $bg;?>;"><i class="fa <?php echo $ico;?>" style="color:<?php echo $clr;?>;"></i></div>
+            <div class="mod-card-body">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <div class="mod-card-title" title="<?php echo htmlspecialchars($m['title']); ?>"><?php echo htmlspecialchars($m['title']); ?></div>
+                <?php if($isPpt): ?>
+                  <span style="font-size:9.5px;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;padding:1px 6px;border-radius:4px;font-weight:700;"><i class="fa fa-file-powerpoint-o"></i> PPT</span>
+                <?php endif; ?>
+              </div>
+              <?php if(!empty($m['topic'])): ?>
+                <div style="font-size:11px;color:#64748b;margin-bottom:4px;"><i class="fa fa-tag" style="margin-right:4px;"></i><?php echo htmlspecialchars($m['topic']); ?></div>
               <?php endif; ?>
-            </div>
-            <?php if(!empty($m['topic'])): ?>
-              <div style="font-size:11px;color:#64748b;margin-bottom:4px;"><i class="fa fa-tag" style="margin-right:4px;"></i><?php echo htmlspecialchars($m['topic']); ?></div>
-            <?php endif; ?>
-            <div class="mod-card-meta">
-              <span><i class="fa fa-file-o"></i><?php echo htmlspecialchars($m['original_name']); ?></span>
-              <span><i class="fa fa-database"></i><?php echo fmtSize($m['file_size']); ?></span>
-              <span><i class="fa fa-clock-o"></i><?php echo date('M d, Y', strtotime($m['uploaded_at'])); ?></span>
-              <?php if(!empty($m['uploaded_by'])): ?>
-                <span><i class="fa fa-user"></i> <?php echo htmlspecialchars($m['uploaded_by']); ?></span>
-              <?php endif; ?>
+              <div class="mod-card-meta">
+                <span><i class="fa fa-file-o"></i><?php echo htmlspecialchars($m['original_name']); ?></span>
+                <span><i class="fa fa-database"></i><?php echo fmtSize($m['file_size']); ?></span>
+                <span><i class="fa fa-clock-o"></i><?php echo date('M d, Y', strtotime($m['uploaded_at'])); ?></span>
+                <?php if(!empty($m['uploaded_by'])): ?>
+                  <span><i class="fa fa-user"></i> <?php echo htmlspecialchars($m['uploaded_by']); ?></span>
+                <?php endif; ?>
+              </div>
             </div>
           </div>
           <div class="mod-card-actions">
@@ -1147,25 +1417,21 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
       <?php if(!empty($classFolders)): ?>
       <div class="cv-section-hdr">
         <h2><i class="fa fa-folder" style="color:#f59e0b;"></i> Folders</h2>
-        <span style="font-size:12px;color:#94a3b8;font-weight:500;"><?php echo count($classFolders); ?> folder<?php echo count($classFolders)!==1?'s':''; ?></span>
+        <span style="font-size:12px;color:#64748b;font-weight:600;"><?php echo count($classFolders); ?> folder<?php echo count($classFolders)!==1?'s':''; ?></span>
       </div>
       <div class="folder-grid">
         <?php foreach($classFolders as $f): ?>
         <div class="folder-card" onclick="window.location.href='class_view.php?id=<?php echo $class_id;?>&tab=materials&folder_id=<?php echo $f['id'];?>'">
-          <div class="folder-card-icon">
-            <i class="fa fa-folder"></i>
+          <?php if($isTeacher): ?>
+          <div class="folder-card-menu" onclick="event.stopPropagation();">
+            <button type="button" class="folder-opt-btn" onclick="openEditFolderModal(<?php echo htmlspecialchars(json_encode($f), ENT_QUOTES, 'UTF-8'); ?>)" title="Edit Folder"><i class="fa fa-pencil"></i></button>
+            <button type="button" class="folder-opt-btn text-danger" onclick="deleteFolder(<?php echo (int)$f['id']; ?>)" title="Delete Folder"><i class="fa fa-trash"></i></button>
           </div>
-          <div class="folder-card-info">
-            <div class="folder-title" title="<?php echo htmlspecialchars($f['name']); ?>"><?php echo htmlspecialchars($f['name']); ?></div>
-            <div class="folder-meta">
-              <span><i class="fa fa-file-o"></i> <?php echo $f['file_count']; ?> file<?php echo $f['file_count']!==1?'s':''; ?></span>
-              <?php if($f['allow_student_view']): ?>
-                <span style="color:#166534;" title="Allowed to view"><i class="fa fa-eye"></i> Viewable</span>
-              <?php else: ?>
-                <span style="color:#991b1b;" title="Teacher only"><i class="fa fa-lock"></i> Locked</span>
-              <?php endif; ?>
-            </div>
+          <?php endif; ?>
+          <div class="folder-svg-wrap">
+            <?php echo renderFolderSvg(54, 43); ?>
           </div>
+          <div class="folder-card-name" title="<?php echo htmlspecialchars($f['name']); ?>"><?php echo htmlspecialchars($f['name']); ?></div>
         </div>
         <?php endforeach; ?>
       </div>
@@ -1174,7 +1440,7 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
       <!-- 2. FILES SECTION -->
       <div class="cv-section-hdr" style="margin-top:<?php echo !empty($classFolders)?'14px':'0'; ?>;">
         <h2><i class="fa fa-file-text-o" style="color:#3b82f6;"></i> <?php echo !empty($classFolders) ? 'Files' : 'Class Materials'; ?></h2>
-        <span style="font-size:12px;color:#94a3b8;font-weight:500;"><?php echo count($modules); ?> file<?php echo count($modules)!==1?'s':''; ?></span>
+        <span style="font-size:12px;color:#64748b;font-weight:600;"><?php echo count($modules); ?> file<?php echo count($modules)!==1?'s':''; ?></span>
       </div>
 
       <?php if(empty($modules) && empty($classFolders)): ?>
@@ -1190,9 +1456,10 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
         <?php endif; ?>
       </div>
       <?php elseif(empty($modules) && !empty($classFolders)): ?>
-      <div style="background:#fff;border:1px dashed #cbd5e1;border-radius:10px;padding:24px;text-align:center;color:#64748b;margin-bottom:14px;">
-        <i class="fa fa-info-circle" style="color:#94a3b8;font-size:18px;margin-bottom:6px;display:block;"></i>
-        All files are organized in the folders above. Click any folder to browse and view presentation slides.
+      <div style="background:#ffffff;border:1.5px dashed #cbd5e1;border-radius:12px;padding:24px 20px;text-align:center;color:#64748b;margin-bottom:14px;">
+        <i class="fa fa-info-circle" style="color:<?php echo $accent;?>;font-size:22px;margin-bottom:8px;display:block;"></i>
+        <strong style="color:#1e293b;font-size:13px;display:block;margin-bottom:2px;">All files are organized in the folders above</strong>
+        <span style="font-size:12px;color:#64748b;">Click any folder above to open and browse presentation slides or learning modules.</span>
       </div>
       <?php else: ?>
       <div class="mod-grid">
@@ -1200,21 +1467,26 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
           $isPpt = preg_match('/\.(ppt|pptx)$/i', $m['original_name']);
         ?>
         <div class="mod-card">
-          <div class="mod-card-icon" style="background:<?php echo $bg;?>;"><i class="fa <?php echo $ico;?>" style="color:<?php echo $clr;?>;"></i></div>
-          <div class="mod-card-body">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-              <div class="mod-card-title" title="<?php echo htmlspecialchars($m['title']); ?>"><?php echo htmlspecialchars($m['title']); ?></div>
-              <?php if($isPpt): ?>
-                <span style="font-size:9.5px;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;padding:1px 6px;border-radius:4px;font-weight:700;"><i class="fa fa-file-powerpoint-o"></i> PPT Presentation</span>
+          <div class="mod-card-main">
+            <div class="mod-card-icon" style="background:<?php echo $bg;?>;"><i class="fa <?php echo $ico;?>" style="color:<?php echo $clr;?>;"></i></div>
+            <div class="mod-card-body">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <div class="mod-card-title" title="<?php echo htmlspecialchars($m['title']); ?>"><?php echo htmlspecialchars($m['title']); ?></div>
+                <?php if($isPpt): ?>
+                  <span style="font-size:9.5px;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;padding:1px 6px;border-radius:4px;font-weight:700;"><i class="fa fa-file-powerpoint-o"></i> PPT Presentation</span>
+                <?php endif; ?>
+              </div>
+              <?php if(!empty($m['topic'])): ?>
+                <div style="font-size:11px;color:#64748b;margin-bottom:4px;"><i class="fa fa-tag" style="margin-right:4px;"></i><?php echo htmlspecialchars($m['topic']); ?></div>
               <?php endif; ?>
-            </div>
-            <?php if(!empty($m['topic'])): ?>
-              <div style="font-size:11px;color:#64748b;margin-bottom:4px;"><i class="fa fa-tag" style="margin-right:4px;"></i><?php echo htmlspecialchars($m['topic']); ?></div>
-            <?php endif; ?>
-            <div class="mod-card-meta">
-              <span><i class="fa fa-file-o"></i><?php echo htmlspecialchars($m['original_name']); ?></span>
-              <span><i class="fa fa-database"></i><?php echo fmtSize($m['file_size']); ?></span>
-              <span><i class="fa fa-clock-o"></i><?php echo date('M d, Y', strtotime($m['uploaded_at'])); ?></span>
+              <div class="mod-card-meta">
+                <span><i class="fa fa-file-o"></i><?php echo htmlspecialchars($m['original_name']); ?></span>
+                <span><i class="fa fa-database"></i><?php echo fmtSize($m['file_size']); ?></span>
+                <span><i class="fa fa-clock-o"></i><?php echo date('M d, Y', strtotime($m['uploaded_at'])); ?></span>
+                <?php if(!empty($m['uploaded_by'])): ?>
+                  <span><i class="fa fa-user"></i> <?php echo htmlspecialchars($m['uploaded_by']); ?></span>
+                <?php endif; ?>
+              </div>
             </div>
           </div>
           <div class="mod-card-actions">
@@ -1256,17 +1528,19 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
       ?>
       <div class="cw-card">
         <div class="cw-card-top">
-          <div class="cw-type-badge" style="background:linear-gradient(135deg,#f59e0b,#d97706);"><i class="fa fa-pencil-square-o"></i></div>
-          <div class="cw-card-info">
-            <div class="cw-card-title"><?php echo htmlspecialchars($a['title']); ?></div>
-            <div class="cw-card-meta">
-              <span><i class="fa fa-star-o"></i><?php echo $a['points']; ?> pts</span>
-              <?php if($a['due_date']): ?>
-              <span style="color:<?php echo $isDue?'#ef4444':'#94a3b8'; ?>;"><i class="fa fa-calendar"></i>Due <?php echo date('M d, Y g:i A', strtotime($a['due_date'])); ?></span>
-              <?php endif; ?>
-              <?php if($isTeacher): ?><span><i class="fa fa-users"></i><?php echo $a['sub_count']; ?> submitted</span><?php endif; ?>
+          <div class="cw-card-main">
+            <div class="cw-type-badge" style="background:linear-gradient(135deg,#f59e0b,#d97706);"><i class="fa fa-pencil-square-o"></i></div>
+            <div class="cw-card-info">
+              <div class="cw-card-title"><?php echo htmlspecialchars($a['title']); ?></div>
+              <div class="cw-card-meta">
+                <span><i class="fa fa-star-o"></i><?php echo $a['points']; ?> pts</span>
+                <?php if($a['due_date']): ?>
+                <span style="color:<?php echo $isDue?'#ef4444':'#64748b'; ?>;"><i class="fa fa-calendar"></i>Due <?php echo date('M d, Y g:i A', strtotime($a['due_date'])); ?></span>
+                <?php endif; ?>
+                <?php if($isTeacher): ?><span><i class="fa fa-users"></i><?php echo $a['sub_count']; ?> submitted</span><?php endif; ?>
+              </div>
+              <?php if($a['instructions']): ?><p class="cw-card-desc"><?php echo nl2br(htmlspecialchars($a['instructions'])); ?></p><?php endif; ?>
             </div>
-            <?php if($a['instructions']): ?><p style="font-size:12px;color:#64748b;margin:6px 0 0;"><?php echo nl2br(htmlspecialchars($a['instructions'])); ?></p><?php endif; ?>
           </div>
           <div class="cw-card-actions">
             <?php if($isTeacher): ?>
@@ -1295,7 +1569,7 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
     <!-- QUIZZES SECTION -->
     <div class="cv-section-hdr" style="margin-bottom:12px;">
       <h2><i class="fa fa-question-circle" style="color:#8b5cf6;"></i> Quizzes</h2>
-      <span style="font-size:12px;color:#94a3b8;font-weight:500;"><?php echo count($quizzes); ?> total</span>
+      <span style="font-size:12px;color:#64748b;font-weight:600;"><?php echo count($quizzes); ?> total</span>
     </div>
 
     <?php if(empty($quizzes)): ?>
@@ -1307,24 +1581,27 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
     <?php else: ?>
     <div class="cw-grid">
       <?php foreach($quizzes as $qz):
-        $mySub = $myQuizSubs[$qz['id']] ?? null;
+        $tClean = strtolower(trim($qz['title'] ?? ''));
+        $mySub = $myQuizSubs[$qz['id']] ?? ($myQuizSubsByTitle[$tClean] ?? null);
         $isDue = $qz['due_date'] && strtotime($qz['due_date']) < time();
         $isUpcoming = !empty($qz['start_date']) && strtotime($qz['start_date']) > time();
       ?>
       <div class="cw-card">
         <div class="cw-card-top">
-          <div class="cw-type-badge" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);"><i class="fa fa-question-circle"></i></div>
-          <div class="cw-card-info">
-            <div class="cw-card-title"><?php echo htmlspecialchars($qz['title']); ?></div>
-            <div class="cw-card-meta">
-              <span><i class="fa fa-list-ol"></i><?php echo $qz['q_count']; ?> questions</span>
-              <?php if($qz['time_limit']): ?><span><i class="fa fa-clock-o"></i><?php echo $qz['time_limit']; ?> min</span><?php endif; ?>
-              <?php if(!empty($qz['start_date'])): ?><span style="color:#0284c7;"><i class="fa fa-clock-o"></i>Starts <?php echo date('M d, Y g:i A', strtotime($qz['start_date'])); ?></span><?php endif; ?>
-              <?php if($qz['due_date']): ?><span style="color:<?php echo $isDue?'#ef4444':'#94a3b8'; ?>;"><i class="fa fa-hourglass-end"></i>Due <?php echo date('M d, Y g:i A', strtotime($qz['due_date'])); ?></span><?php endif; ?>
-              <?php if($isTeacher): ?><span><i class="fa fa-users"></i><?php echo $qz['sub_count']; ?> submitted</span><?php endif; ?>
-              <span class="status-pill <?php echo $qz['is_active']?'status-open':'status-closed'; ?>"><?php echo $qz['is_active']?'Open':'Closed'; ?></span>
+          <div class="cw-card-main">
+            <div class="cw-type-badge" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);"><i class="fa fa-question-circle"></i></div>
+            <div class="cw-card-info">
+              <div class="cw-card-title"><?php echo htmlspecialchars($qz['title']); ?></div>
+              <div class="cw-card-meta">
+                <span><i class="fa fa-list-ol"></i><?php echo $qz['q_count']; ?> questions</span>
+                <?php if($qz['time_limit']): ?><span><i class="fa fa-clock-o"></i><?php echo $qz['time_limit']; ?> min</span><?php endif; ?>
+                <?php if(!empty($qz['start_date'])): ?><span style="color:#0284c7;"><i class="fa fa-clock-o"></i>Starts <?php echo date('M d, Y g:i A', strtotime($qz['start_date'])); ?></span><?php endif; ?>
+                <?php if($qz['due_date']): ?><span style="color:<?php echo $isDue?'#ef4444':'#64748b'; ?>;"><i class="fa fa-hourglass-end"></i>Due <?php echo date('M d, Y g:i A', strtotime($qz['due_date'])); ?></span><?php endif; ?>
+                <?php if($isTeacher): ?><span><i class="fa fa-users"></i><?php echo $qz['sub_count']; ?> submitted</span><?php endif; ?>
+                <span class="status-pill <?php echo $qz['is_active']?'status-open':'status-closed'; ?>"><?php echo $qz['is_active']?'Open':'Closed'; ?></span>
+              </div>
+              <?php if($qz['instructions']): ?><p class="cw-card-desc"><?php echo nl2br(htmlspecialchars($qz['instructions'])); ?></p><?php endif; ?>
             </div>
-            <?php if($qz['instructions']): ?><p style="font-size:12px;color:#64748b;margin:6px 0 0;"><?php echo nl2br(htmlspecialchars($qz['instructions'])); ?></p><?php endif; ?>
           </div>
           <div class="cw-card-actions">
             <?php if($isTeacher): ?>
@@ -1645,8 +1922,8 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
     </div>
     <div class="cv-modal-body">
 
-      <!-- Target Folder (Teachers only) -->
-      <?php if($isTeacher): ?>
+      <!-- Target Folder -->
+      <?php if(!empty($classFolders)): ?>
       <div class="cv-field">
         <label><i class="fa fa-folder-open" style="color:<?php echo $accent;?>;"></i> Target Folder</label>
         <select id="uplFolderId" class="cv-fc">
@@ -1903,20 +2180,20 @@ Essay: (teacher grades)</pre>
 </div>
 
 <!-- ═══════════ STUDENT ANSWERS REVIEW MODAL ═══════════ -->
-<div class="cv-modal-overlay" id="answersModal">
-  <div class="cv-modal" style="max-width:92%;width:880px;border-radius:16px;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.18);">
-    <div class="cv-modal-head" style="background:linear-gradient(135deg,#4f46e5,#4338ca);color:#fff;padding:16px 22px;display:flex;align-items:center;justify-content:space-between;">
+<div class="cv-modal-overlay" id="answersModal" style="padding:16px;z-index:99998;">
+  <div class="cv-modal" id="answersModalDialog" style="max-width:920px;width:95%;max-height:90vh;border-radius:16px;overflow:hidden;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);display:flex;flex-direction:column;background:#fff;margin:auto;" onclick="event.stopPropagation();">
+    <div class="cv-modal-head" style="background:linear-gradient(135deg,#4f46e5,#4338ca);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
       <h4 id="answersModalTitle" style="font-weight:700;display:flex;align-items:center;gap:8px;margin:0;font-size:15px;color:#fff;">
         <i class="fa fa-list-alt" style="color:#a5b4fc;"></i> Student Quiz Answers Review
       </h4>
-      <button class="cv-modal-x" onclick="closeModal('answersModal')" style="color:#fff;opacity:.9;background:none;border:none;font-size:22px;cursor:pointer;">&times;</button>
+      <button class="cv-modal-x" onclick="closeModal('answersModal')" style="color:#fff;opacity:.9;background:none;border:none;font-size:22px;cursor:pointer;line-height:1;padding:0 4px;" title="Close">&times;</button>
     </div>
-    <div class="cv-modal-body" id="answersModalBody" style="padding:22px;background:#f8fafc;max-height:calc(85vh - 120px);overflow-y:auto;">
+    <div class="cv-modal-body" id="answersModalBody" style="padding:18px 20px;background:#f8fafc;flex:1;min-height:0;overflow-y:auto;">
       <div style="text-align:center;padding:32px;color:#94a3b8;"><i class="fa fa-spinner fa-spin fa-2x"></i></div>
     </div>
-    <div class="cv-modal-foot" style="background:#fff;border-top:1px solid #e2e8f0;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;">
-      <button class="btn btn-default" onclick="closeModal('answersModal'); openModal('quizResModal');" style="border-radius:8px;font-weight:600;padding:6px 16px;background:#fff;border:1px solid #d1d5db;cursor:pointer;"><i class="fa fa-arrow-left"></i> Back to Submissions</button>
-      <button class="btn btn-default" onclick="closeModal('answersModal')" style="border-radius:8px;font-weight:600;padding:6px 16px;background:#fff;border:1px solid #d1d5db;cursor:pointer;">Close</button>
+    <div class="cv-modal-foot" style="background:#fff;border-top:1px solid #e2e8f0;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+      <button class="btn btn-default" onclick="closeModal('answersModal'); if(typeof _currentQuizId !== 'undefined' && _currentQuizId){ viewQuizResults(_currentQuizId); } else { openModal('quizResModal'); }" style="border-radius:8px;font-weight:600;padding:7px 16px;background:#fff;border:1px solid #d1d5db;cursor:pointer;"><i class="fa fa-arrow-left"></i> Back to Submissions</button>
+      <button class="btn btn-default" onclick="closeModal('answersModal')" style="border-radius:8px;font-weight:600;padding:7px 18px;background:#fff;border:1px solid #d1d5db;cursor:pointer;">Close</button>
     </div>
   </div>
 </div>
@@ -2629,8 +2906,9 @@ if(_btnCQ) _btnCQ.addEventListener('click', function(){
   if(!questions.length){ showAlert('quizAlert','danger','Could not parse any questions. Check the format.'); return; }
 
   this.disabled=true; this.innerHTML='<i class="fa fa-spinner fa-spin"></i> Saving...';
-  var btn=this;
-  $.post('quiz_handler.php',{ action:'create', class_id:CLASS_ID, title:title, time_limit:$('#qTimeLimit').val(), due_date:$('#qDueDate').val(), shuffle_questions:$('#qShuffleQ').is(':checked')?1:0, shuffle_answers:$('#qShuffleA').is(':checked')?1:0, questions:JSON.stringify(questions), term:$('#qTerm').val() },function(r){
+  var shQ = $('#qShuffleQ').length ? ($('#qShuffleQ').is(':checked') ? 1 : 0) : 1;
+  var shA = $('#qShuffleA').length ? ($('#qShuffleA').is(':checked') ? 1 : 0) : 1;
+  $.post('quiz_handler.php',{ action:'create', class_id:CLASS_ID, title:title, time_limit:$('#qTimeLimit').val(), due_date:$('#qDueDate').val(), shuffle_questions:shQ, shuffle_answers:shA, questions:JSON.stringify(questions), term:$('#qTerm').val() },function(r){
     btn.disabled=false; btn.innerHTML='<i class="fa fa-save"></i> Create Quiz';
     if(r.success){ showAlert('quizAlert','success','Quiz created!'); setTimeout(function(){ location.href='class_view.php?id='+CLASS_ID+'&tab=classwork'; },900); }
     else showAlert('quizAlert','danger',r.msg||'Failed');
@@ -2769,7 +3047,10 @@ function viewQuizResults(quizId, title){
         + '<td style="padding:12px 10px;">' + integrityHtml + '</td>'
         + '<td style="padding:12px 10px;color:#475569;font-size:12px;">' + escapeCqHtml(s.submitted_at) + '</td>'
         + '<td style="padding:12px 10px;text-align:center;">'
-        + '<button type="button" onclick="viewStudentAnswers(' + subQuizId + ',\'' + escapeCqAttr(s.student_code) + '\')" style="border-radius:6px;font-weight:700;padding:6px 14px;background:linear-gradient(135deg,#4f46e5,#4338ca);color:#fff;border:none;box-shadow:0 2px 5px rgba(79,70,229,0.25);display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;"><i class="fa fa-list-alt"></i> View Answers</button>'
+        + '<div style="display:inline-flex;align-items:center;gap:6px;">'
+        + '<button type="button" onclick="viewStudentAnswers(' + subQuizId + ',\'' + escapeCqAttr(s.student_code) + '\')" style="border-radius:6px;font-weight:700;padding:6px 12px;background:linear-gradient(135deg,#4f46e5,#4338ca);color:#fff;border:none;box-shadow:0 2px 5px rgba(79,70,229,0.25);display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;"><i class="fa fa-list-alt"></i> View Answers</button>'
+        + '<button type="button" onclick="allowStudentRetake(' + subQuizId + ',\'' + escapeCqAttr(s.student_code) + '\',\'' + escapeCqAttr(s.student_name) + '\')" style="border-radius:6px;font-weight:700;padding:6px 12px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;box-shadow:0 2px 5px rgba(245,158,11,0.25);display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;" title="Reset attempt and allow student to retake this quiz"><i class="fa fa-refresh"></i> Retake</button>'
+        + '</div>'
         + '</td>'
         + '</tr>';
     });
@@ -2780,7 +3061,104 @@ function viewQuizResults(quizId, title){
   });
 }
 
+function allowStudentRetake(quizId, studentCode, studentName){
+  var displayName = studentName || studentCode;
+  if(!confirm('Are you sure you want to allow ' + displayName + ' (' + studentCode + ') to retake this quiz?\n\nThis will reset their previous submission and attempt records so they can take the quiz again.')){
+    return;
+  }
+
+  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'classwork_data.php' : '../shared/classwork_data.php';
+
+  $.post(postUrl, { action: 'allow_retake', quiz_id: quizId, student_code: studentCode }, function(res){
+    if(typeof res === 'string'){
+      try { res = JSON.parse(res.trim()); } catch(e){}
+    }
+    if(res && res.success){
+      alert(res.msg || 'Quiz attempt has been reset. The student can now retake the quiz!');
+      if(typeof _currentQuizId !== 'undefined' && _currentQuizId){
+        viewQuizResults(_currentQuizId);
+      } else {
+        location.reload();
+      }
+    } else {
+      alert((res && res.msg) ? res.msg : 'Failed to reset quiz attempt.');
+    }
+  }, 'json').fail(function(xhr, status, err){
+    alert('Request failed: ' + (xhr.responseText || err || 'Network error'));
+  });
+}
+
+function escapeCqHtml(str){
+  if(str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function normalizeChoice(val, opts){
+  if(val === undefined || val === null) return { index: -1, letter: '', text: '' };
+  var str = String(val).trim();
+  if(!str) return { index: -1, letter: '', text: '' };
+  var strLower = str.toLowerCase();
+
+  // 1. If single letter A-Z
+  if(str.length === 1 && /^[a-zA-Z]$/.test(str)){
+    var idx = str.toUpperCase().charCodeAt(0) - 65;
+    if(opts && opts[idx] !== undefined){
+      return { index: idx, letter: str.toUpperCase(), text: opts[idx] };
+    }
+  }
+
+  // 2. If starts with letter prefix like "C. Heart", "C) Heart", "C: Heart", "C - Heart"
+  var letterPrefixMatch = str.match(/^([a-zA-Z])[\.\)\:\-\s]+(.*)$/);
+  if(letterPrefixMatch){
+    var letChar = letterPrefixMatch[1].toUpperCase();
+    var letIdx = letChar.charCodeAt(0) - 65;
+    if(opts && opts[letIdx] !== undefined){
+      return { index: letIdx, letter: letChar, text: opts[letIdx] };
+    }
+  }
+
+  // 3. If number 0, 1, 2... or 1, 2, 3...
+  if(/^\d+$/.test(str)){
+    var num = parseInt(str, 10);
+    if(opts && opts[num] !== undefined){
+      return { index: num, letter: String.fromCharCode(65 + num), text: opts[num] };
+    }
+    if(opts && opts[num - 1] !== undefined){
+      return { index: num - 1, letter: String.fromCharCode(65 + num - 1), text: opts[num - 1] };
+    }
+  }
+
+  // 4. Exact, trimmed, or stripped prefix match with option text
+  var cleanVal = strLower.replace(/^[a-zA-Z0-9][\.\)\:\-\s]+/i, '').trim();
+  if(opts && opts.length){
+    for(var i = 0; i < opts.length; i++){
+      var optStr = String(opts[i]).trim().toLowerCase();
+      var cleanOpt = optStr.replace(/^[a-zA-Z0-9][\.\)\:\-\s]+/i, '').trim();
+      if(optStr === strLower || cleanOpt === cleanVal || cleanOpt === strLower || optStr === cleanVal){
+        return { index: i, letter: String.fromCharCode(65 + i), text: opts[i] };
+      }
+    }
+  }
+
+  return { index: -1, letter: '', text: str };
+}
+
+function normalizeBool(val){
+  if(!val) return '';
+  var s = String(val).trim().toLowerCase();
+  if(s === 't' || s === 'true' || s === '1') return 'true';
+  if(s === 'f' || s === 'false' || s === '0') return 'false';
+  return s;
+}
+
 function viewStudentAnswers(quizId, studentCode){
+  if(quizId) _currentQuizId = quizId;
+  closeModal('quizResModal');
   document.getElementById('answersModalTitle').innerHTML = '<i class="fa fa-list-alt" style="color:#a5b4fc;"></i> Student Quiz Answers Review';
   document.getElementById('answersModalBody').innerHTML = '<div style="text-align:center;padding:36px;color:#94a3b8;"><i class="fa fa-spinner fa-spin fa-2x"></i><p style="margin-top:10px;font-size:13px;">Loading student answers...</p></div>';
   openModal('answersModal');
@@ -2812,102 +3190,424 @@ function viewStudentAnswers(quizId, studentCode){
       return;
     }
 
+    var qList = r.questions || [];
+    var correctCount = 0, wrongCount = 0, manualCount = 0;
+    qList.forEach(function(q){
+      if(q.is_correct === true) correctCount++;
+      else if(q.is_correct === false) wrongCount++;
+      else manualCount++;
+    });
+
     var pct = r.total_points > 0 ? ((r.score / r.total_points) * 100).toFixed(1) : '0.0';
     var tabSw = r.tab_switches || 0, fsEx = r.fullscreen_exits || 0, totalV = tabSw + fsEx;
     var intClr = totalV === 0 ? '#166534' : (totalV >= 3 ? '#991b1b' : '#92400e');
     var intBg  = totalV === 0 ? '#dcfce7' : (totalV >= 3 ? '#fee2e2' : '#fef3c7');
     var intTxt = totalV === 0 ? '✅ Clean Attempt' : '⚠ ' + totalV + ' Flag' + (totalV !== 1 ? 's' : '') + ' (Tabs: ' + tabSw + ', Fullscreen: ' + fsEx + ')';
 
-    var html = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;margin-bottom:18px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.03);">'
-      + '<div><div style="font-size:20px;font-weight:800;color:#0f172a;">' + r.score + ' / ' + r.total_points + '</div><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;">Score</div></div>'
-      + '<div><div style="font-size:20px;font-weight:800;color:#4f46e5;">' + pct + '%</div><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;">Percentage</div></div>'
-      + '<div><div style="font-size:12px;font-weight:700;padding:4px 8px;border-radius:8px;background:' + intBg + ';color:' + intClr + ';">' + intTxt + '</div><div style="font-size:11px;color:#64748b;margin-top:4px;text-transform:uppercase;font-weight:600;">Integrity</div></div>'
-      + '<div><div style="font-size:12px;font-weight:600;color:#64748b;">' + r.submitted_at + '</div><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:600;">Submitted</div></div>'
+    var html = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-around;flex-wrap:wrap;gap:8px 12px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,0.02);">'
+      + '<div style="min-width:70px;"><div id="saTopScore" style="font-size:15px;font-weight:800;color:#0f172a;line-height:1.2;">' + r.score + ' / ' + r.total_points + '</div><div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;margin-top:2px;">Score</div></div>'
+      + '<div style="min-width:70px;"><div id="saTopPct" style="font-size:15px;font-weight:800;color:#4f46e5;line-height:1.2;">' + pct + '%</div><div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:700;margin-top:2px;">Percentage</div></div>'
+      + '<div style="min-width:110px;"><div style="display:flex;align-items:center;justify-content:center;gap:4px;">'
+      + '<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:2px 6px;border-radius:5px;font-size:11px;font-weight:800;"><i class="fa fa-check"></i> ' + correctCount + '</span>'
+      + '<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:2px 6px;border-radius:5px;font-size:11px;font-weight:800;"><i class="fa fa-times"></i> ' + wrongCount + '</span>'
+      + '</div><div style="font-size:10px;color:#64748b;margin-top:2px;text-transform:uppercase;font-weight:700;">Correct / Wrong</div></div>'
+      + '<div style="min-width:110px;"><div style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:' + intBg + ';color:' + intClr + ';display:inline-block;">' + intTxt + '</div><div style="font-size:10px;color:#64748b;margin-top:2px;text-transform:uppercase;font-weight:700;">Integrity</div></div>'
+      + '<div style="min-width:110px;"><div style="font-size:11.5px;font-weight:600;color:#475569;line-height:1.2;">' + r.submitted_at + '</div><div style="font-size:10px;color:#64748b;margin-top:2px;text-transform:uppercase;font-weight:700;">Submitted</div></div>'
       + '</div>';
 
-    var qList = r.questions || [];
+
+
+    // Helper functions for formatting answers
+    function formatAnswerText(rawVal, options, type, pairs, optionsData){
+      if(rawVal === undefined || rawVal === null || rawVal === '') return '(No answer submitted)';
+      var optData = optionsData || [];
+
+      if(type === 'multi_select' || type === 'multiple_answers'){
+        var ids = [];
+        if(Array.isArray(rawVal)){
+          ids = rawVal;
+        } else if(rawVal && typeof rawVal === 'object'){
+          ids = Object.values(rawVal);
+        } else if(typeof rawVal === 'string' && rawVal.trim()){
+          try {
+            var p = JSON.parse(rawVal.trim());
+            if(Array.isArray(p)) ids = p;
+            else if(p && typeof p === 'object') ids = Object.values(p);
+            else ids = rawVal.split(',').map(function(s){ return s.trim(); });
+          } catch(e){ ids = rawVal.split(',').map(function(s){ return s.trim(); }); }
+        }
+        if(ids.length === 0) return '(No answer submitted)';
+        return ids.map(function(id){ return resolveOptId(id, options, optData); }).join(', ');
+      }
+
+      if(type === 'matching' || (pairs && pairs.length > 0)){
+        if(typeof rawVal === 'object' && rawVal !== null){
+          var mEntries = [];
+          if(Array.isArray(rawVal)){
+            return rawVal.join(', ');
+          }
+          for(var k in rawVal){
+            if(rawVal.hasOwnProperty(k)){
+              var cleanK = String(k).replace(/^a\-/i, '');
+              var cleanV = String(rawVal[k]).replace(/^b\-/i, '');
+              mEntries.push(cleanK + ' → ' + cleanV);
+            }
+          }
+          if(mEntries.length > 0) return mEntries.join(', ');
+        }
+      }
+
+      if(Array.isArray(rawVal)){
+        if(rawVal.length === 0) return '(No answer submitted)';
+        return rawVal.map(function(item){ return formatSingleAnswer(item, options, optData); }).join(', ');
+      }
+
+      if(typeof rawVal === 'string' && (rawVal.trim().startsWith('[') || rawVal.trim().startsWith('{'))){
+        try {
+          var parsed = JSON.parse(rawVal.trim());
+          if(Array.isArray(parsed)){
+            if(parsed.length === 0) return '(No answer submitted)';
+            return parsed.map(function(item){ return formatSingleAnswer(item, options, optData); }).join(', ');
+          }
+          if(typeof parsed === 'object' && parsed !== null){
+            if(parsed.truth !== undefined || parsed.correction !== undefined){
+              var t = parsed.truth ? String(parsed.truth).toUpperCase() : '';
+              var c = parsed.correction ? (' — ' + parsed.correction) : '';
+              return t + c;
+            }
+            var mParts = [];
+            for(var pk in parsed){
+              if(parsed.hasOwnProperty(pk)){
+                mParts.push(String(pk).replace(/^a\-/i, '') + ' → ' + String(parsed[pk]).replace(/^b\-/i, ''));
+              }
+            }
+            return mParts.length > 0 ? mParts.join(', ') : Object.values(parsed).join(', ');
+          }
+        } catch(e){}
+      }
+
+      if(typeof rawVal === 'object' && rawVal !== null){
+        var vals = [];
+        for(var ok in rawVal){
+          if(rawVal.hasOwnProperty(ok)){
+            vals.push(String(ok).replace(/^a\-/i, '') + ' → ' + String(rawVal[ok]).replace(/^b\-/i, ''));
+          }
+        }
+        return vals.length > 0 ? vals.join(', ') : Object.values(rawVal).join(', ');
+      }
+
+      return formatSingleAnswer(rawVal, options, optData);
+    }
+
+    function resolveOptId(optId, options, optData){
+      var s = String(optId || '').trim();
+      if(!s) return '';
+      if(optData && optData.length){
+        for(var i=0; i<optData.length; i++){
+          if(optData[i] && optData[i].id === s){
+            return String.fromCharCode(65 + i) + '. ' + optData[i].text;
+          }
+        }
+      }
+      return formatSingleAnswer(s, options, optData);
+    }
+
+    function formatSingleAnswer(val, options, optData){
+      if(val === undefined || val === null || val === '') return '';
+      var s = String(val).trim();
+      if(optData && optData.length){
+        for(var di=0; di<optData.length; di++){
+          if(optData[di] && optData[di].id === s){
+            return String.fromCharCode(65 + di) + '. ' + optData[di].text;
+          }
+        }
+      }
+      if(options && options.length){
+        var match = s.match(/^opt-(\d+)$/i);
+        if(match){
+          var idx = parseInt(match[1]);
+          if(options[idx] !== undefined){
+            return String.fromCharCode(65 + idx) + '. ' + options[idx];
+          }
+        }
+        for(var i=0; i<options.length; i++){
+          if(options[i].toLowerCase() === s.toLowerCase()){
+            return String.fromCharCode(65 + i) + '. ' + options[i];
+          }
+        }
+      }
+      return s;
+    }
+
     if(qList.length === 0){
       html += '<div class="alert alert-info">No questions found for this quiz.</div>';
     } else {
       qList.forEach(function(q, i){
-        var typeLabel = {multiple_choice:'Multiple Choice', true_false:'True / False', modified_true_false:'Modified T/F', enumeration:'Enumeration', essay:'Essay', identification:'Identification'}[q.question_type] || (q.question_type || 'Question').toUpperCase();
-        var typeBg    = {multiple_choice:'#dbeafe', true_false:'#dcfce7', modified_true_false:'#fee2e2', enumeration:'#dbeafe', essay:'#f3f4f6', identification:'#fef3c7'}[q.question_type] || '#f3f4f6';
-        var typeClr   = {multiple_choice:'#1d4ed8', true_false:'#166534', modified_true_false:'#991b1b', enumeration:'#1d4ed8', essay:'#374151', identification:'#92400e'}[q.question_type] || '#374151';
+        var typeLabel = {
+          multiple_choice: 'Multiple Choice',
+          multi_select: 'Multi-Select',
+          multiple_answers: 'Multi-Select',
+          matching: 'Matching Type',
+          true_false: 'True / False',
+          modified_true_false: 'Modified T/F',
+          enumeration: 'Enumeration',
+          essay: 'Essay',
+          identification: 'Identification'
+        }[q.question_type] || (q.question_type || 'Question').replace(/_/g, ' ').toUpperCase();
 
-        var given   = q.given_answer || '';
-        var correct = q.correct_answer || '';
+        var typeBg  = {multiple_choice:'#dbeafe', multi_select:'#ede9fe', matching:'#fef3c7', true_false:'#e0e7ff', modified_true_false:'#fef3c7', enumeration:'#dbeafe', essay:'#f3f4f6', identification:'#fef3c7'}[q.question_type] || '#f3f4f6';
+        var typeClr = {multiple_choice:'#1d4ed8', multi_select:'#6d28d9', matching:'#92400e', true_false:'#4338ca', modified_true_false:'#92400e', enumeration:'#1d4ed8', essay:'#374151', identification:'#92400e'}[q.question_type] || '#374151';
 
-        var statusBadge, cardBorder;
-        if(q.is_correct === null){
-          statusBadge = '<span style="background:#fef3c7;color:#92400e;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;"><i class="fa fa-pencil"></i> Manual Grading</span>';
+        var formattedGiven = formatAnswerText(q.given_answer, q.options, q.question_type, q.matching_pairs, q.options_data);
+        var correct = q.correct_answer ? String(q.correct_answer).trim() : '';
+
+        var statusBadge, cardBorder, cardLeftBorder;
+        if(q.question_type === 'essay'){
+          var ePts = q.earned_points !== undefined ? q.earned_points : 0;
+          statusBadge = '<span style="background:#f0fdf4;color:#15803d;border:1px solid #86efac;padding:3px 8px;border-radius:5px;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;gap:4px;"><i class="fa fa-pencil"></i> ' + ePts + ' / ' + q.points + ' pts</span>';
+          cardBorder = '#cbd5e1';
+          cardLeftBorder = '4px solid #7c3aed';
+        } else if(q.is_correct === null){
+          statusBadge = '<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:3px 8px;border-radius:5px;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;gap:4px;"><i class="fa fa-pencil"></i> Manual Grading (' + q.points + ' pts)</span>';
           cardBorder = '#e2e8f0';
+          cardLeftBorder = '4px solid #f59e0b';
         } else if(q.is_correct){
-          statusBadge = '<span style="background:#dcfce7;color:#166534;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;"><i class="fa fa-check"></i> Correct (' + (q.earned_points !== undefined ? q.earned_points : q.points) + '/' + q.points + ' pts)</span>';
+          statusBadge = '<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:3px 8px;border-radius:5px;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;gap:4px;"><i class="fa fa-check-circle" style="color:#16a34a;font-size:12px;"></i> CORRECT (+' + (q.earned_points !== undefined ? q.earned_points : q.points) + '/' + q.points + ' pts)</span>';
           cardBorder = '#86efac';
+          cardLeftBorder = '4px solid #22c55e';
         } else {
-          statusBadge = '<span style="background:#fee2e2;color:#991b1b;padding:3px 9px;border-radius:6px;font-size:11px;font-weight:700;"><i class="fa fa-times"></i> Incorrect (0/' + q.points + ' pts)</span>';
+          var earnedDisplay = (q.earned_points !== undefined && q.earned_points > 0) ? (q.earned_points + '/' + q.points + ' pts') : ('0/' + q.points + ' pts');
+          statusBadge = '<span style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:3px 8px;border-radius:5px;font-size:10.5px;font-weight:800;display:inline-flex;align-items:center;gap:4px;"><i class="fa fa-times-circle" style="color:#dc2626;font-size:12px;"></i> WRONG (' + earnedDisplay + ')</span>';
           cardBorder = '#fca5a5';
+          cardLeftBorder = '4px solid #ef4444';
         }
 
-        var topicTag = (q.topic && q.topic !== 'General') ? '<span style="background:#e0f2fe;color:#0369a1;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700;"><i class="fa fa-tag"></i> ' + escapeCqHtml(q.topic) + '</span>' : '';
+        var topicTag = (q.topic && q.topic !== 'General') ? '<span style="background:#e0f2fe;color:#0369a1;padding:2px 6px;border-radius:4px;font-size:9.5px;font-weight:700;"><i class="fa fa-tag"></i> ' + escapeCqHtml(q.topic) + '</span>' : '';
 
-        html += '<div style="background:#fff;border:1.5px solid ' + cardBorder + ';border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.03);">'
-          + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;">'
-          + '<div style="display:flex;align-items:center;gap:6px;">'
-          + '<span style="background:#f1f5f9;color:#0f172a;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:800;">#' + (i + 1) + '</span>'
-          + '<span style="background:' + typeBg + ';color:' + typeClr + ';padding:2px 8px;border-radius:5px;font-size:10px;font-weight:800;text-transform:uppercase;">' + typeLabel + '</span>'
+        html += '<div style="background:#fff;border:1px solid ' + cardBorder + ';border-left:' + cardLeftBorder + ';border-radius:10px;padding:12px 14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(0,0,0,0.02);">'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap;">'
+          + '<div style="display:flex;align-items:center;gap:5px;">'
+          + '<span style="background:#f1f5f9;color:#0f172a;padding:2px 6px;border-radius:5px;font-size:10.5px;font-weight:800;">#' + (i + 1) + '</span>'
+          + '<span style="background:' + typeBg + ';color:' + typeClr + ';padding:2px 6px;border-radius:4px;font-size:9.5px;font-weight:800;text-transform:uppercase;">' + typeLabel + '</span>'
           + topicTag
           + '</div>'
           + '<div>' + statusBadge + '</div>'
           + '</div>'
-          + '<div style="font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.4;margin-bottom:10px;">' + escapeCqHtml(q.question_text) + '</div>';
+          + '<div style="font-size:13px;font-weight:700;color:#0f172a;line-height:1.35;margin-bottom:8px;">' + escapeCqHtml(q.question_text) + '</div>';
 
-        // Show choices for Multiple Choice
+        // Render answers based on question type
         if(q.question_type === 'multiple_choice' && q.options && q.options.length){
-          html += '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px;">';
+          var resGiven = normalizeChoice(q.given_answer, q.options);
+          var resCorr  = normalizeChoice(correct, q.options);
+
+          html += '<div style="display:flex;flex-direction:column;gap:5px;margin-top:4px;">';
           q.options.forEach(function(opt, optIdx){
             var letter = String.fromCharCode(65 + optIdx);
-            var isGiven   = (given.toLowerCase() === opt.toLowerCase() || given.toLowerCase() === letter.toLowerCase());
-            var isCorrect = (correct.toLowerCase() === opt.toLowerCase() || correct.toLowerCase() === letter.toLowerCase());
-            
-            var bg = '#f8fafc', clr = '#475569', bdr = '1px solid #e2e8f0', tag = '';
-            if(isGiven && isCorrect){
-              bg = '#f0fdf4'; clr = '#166534'; bdr = '1.5px solid #22c55e';
-              tag = '<span style="margin-left:auto;font-size:11px;font-weight:700;color:#166534;"><i class="fa fa-check-circle"></i> Student Selected (Correct)</span>';
-            } else if(isGiven && !isCorrect){
-              bg = '#fef2f2'; clr = '#991b1b'; bdr = '1.5px solid #ef4444';
-              tag = '<span style="margin-left:auto;font-size:11px;font-weight:700;color:#991b1b;"><i class="fa fa-times-circle"></i> Student Selected</span>';
-            } else if(isCorrect){
-              bg = '#f0fdf4'; clr = '#166534'; bdr = '1.5px dashed #22c55e';
-              tag = '<span style="margin-left:auto;font-size:11px;font-weight:700;color:#166534;"><i class="fa fa-check"></i> Correct Answer</span>';
+            var cleanOpt = String(opt).trim().toLowerCase().replace(/^[a-zA-Z0-9][\.\)\:\-\s]+/i, '');
+            var givenStr = (typeof q.given_answer === 'string') ? q.given_answer : '';
+            var cleanGiven = givenStr.toLowerCase().replace(/^[a-zA-Z0-9][\.\)\:\-\s]+/i, '');
+            var cleanCorr = correct.toLowerCase().replace(/^[a-zA-Z0-9][\.\)\:\-\s]+/i, '');
+
+            var isStudentPick = (resGiven.index === optIdx || (resGiven.index === -1 && (cleanGiven === cleanOpt || givenStr.toLowerCase() === opt.toLowerCase())));
+            var isCorrectPick = (resCorr.index === optIdx || (resCorr.index === -1 && (cleanCorr === cleanOpt || correct.toLowerCase() === opt.toLowerCase())));
+
+            var bg = '#f8fafc', clr = '#334155', bdr = '1px solid #e2e8f0', tag = '';
+            if(isStudentPick && isCorrectPick){
+              bg = '#f0fdf4'; clr = '#14532d'; bdr = '1.5px solid #22c55e';
+              tag = '<span style="margin-left:auto;font-size:10px;font-weight:800;color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:2px 6px;border-radius:4px;"><i class="fa fa-check-circle"></i> Student Answer (Correct)</span>';
+            } else if(isStudentPick && !isCorrectPick){
+              bg = '#fef2f2'; clr = '#7f1d1d'; bdr = '1.5px solid #ef4444';
+              tag = '<span style="margin-left:auto;font-size:10px;font-weight:800;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;"><i class="fa fa-times-circle"></i> Student Answer (Wrong)</span>';
+            } else if(isCorrectPick){
+              bg = '#f0fdf4'; clr = '#15803d'; bdr = '1.5px dashed #22c55e';
+              tag = '<span style="margin-left:auto;font-size:10px;font-weight:800;color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:2px 6px;border-radius:4px;"><i class="fa fa-check"></i> Correct Answer</span>';
             }
-            html += '<div style="padding:7px 12px;border-radius:8px;background:' + bg + ';color:' + clr + ';border:' + bdr + ';font-size:12.5px;display:flex;align-items:center;gap:8px;">'
-              + '<strong style="width:20px;">' + letter + '.</strong> <span>' + escapeCqHtml(opt) + '</span>' + tag
+
+            html += '<div style="padding:7px 12px;border-radius:6px;background:' + bg + ';color:' + clr + ';border:' + bdr + ';font-size:12.5px;display:flex;align-items:center;gap:6px;">'
+              + '<strong style="width:20px;color:#0f172a;">' + letter + '.</strong> <span style="flex:1;">' + escapeCqHtml(opt) + '</span>' + tag
               + '</div>';
           });
           html += '</div>';
-        } else {
-          var givenBg = (q.is_correct === false) ? '#fef2f2' : (q.is_correct === true ? '#f0fdf4' : '#fffbeb');
-          var givenClr = (q.is_correct === false) ? '#991b1b' : (q.is_correct === true ? '#166534' : '#92400e');
-          var givenBdr = (q.is_correct === false) ? '#fecaca' : (q.is_correct === true ? '#bbf7d0' : '#fde68a');
-          var givenIco = (q.is_correct === false) ? '<i class="fa fa-times-circle" style="color:#ef4444;"></i>' : (q.is_correct === true ? '<i class="fa fa-check-circle" style="color:#10b981;"></i>' : '<i class="fa fa-pencil"></i>');
+        } else if((q.question_type === 'multi_select' || q.question_type === 'multiple_answers') && q.options && q.options.length > 0){
+          var selArr = [];
+          if(Array.isArray(q.given_answer)){
+            selArr = q.given_answer;
+          } else if(q.given_answer && typeof q.given_answer === 'object'){
+            selArr = Object.values(q.given_answer);
+          } else if(typeof q.given_answer === 'string' && q.given_answer.trim()){
+            try {
+              var parsedG = JSON.parse(q.given_answer.trim());
+              if(Array.isArray(parsedG)) selArr = parsedG;
+              else if(parsedG && typeof parsedG === 'object') selArr = Object.values(parsedG);
+              else selArr = [q.given_answer];
+            } catch(e){ selArr = q.given_answer.split(',').map(function(s){ return s.trim(); }); }
+          }
+          var corrOptIds = q.correct_option_ids || [];
+          var optDataList = q.options_data || [];
 
-          html += '<div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">'
-            + '<div style="background:' + givenBg + ';color:' + givenClr + ';border:1px solid ' + givenBdr + ';padding:8px 12px;border-radius:8px;font-size:12.5px;">'
-            + givenIco + ' <strong>Student Answer:</strong> ' + (given ? escapeCqHtml(given) : '<em style="color:#94a3b8;">(No answer provided)</em>')
+          html += '<div style="display:flex;flex-direction:column;gap:5px;margin-top:4px;">';
+          q.options.forEach(function(opt, optIdx){
+            var realOptId = (optDataList[optIdx] && optDataList[optIdx].id) ? optDataList[optIdx].id : ('opt-' + optIdx);
+            var letter = String.fromCharCode(65 + optIdx);
+            var isStudentPick = (
+              selArr.indexOf(realOptId) !== -1 ||
+              selArr.indexOf('opt-' + optIdx) !== -1 ||
+              selArr.indexOf(String(optIdx)) !== -1 ||
+              selArr.indexOf(opt) !== -1
+            );
+            var isCorrectPick = (
+              corrOptIds.indexOf(realOptId) !== -1 ||
+              corrOptIds.indexOf('opt-' + optIdx) !== -1 ||
+              corrOptIds.indexOf(String(optIdx)) !== -1 ||
+              corrOptIds.indexOf(opt) !== -1
+            );
+
+            var bg = '#f8fafc', clr = '#334155', bdr = '1px solid #e2e8f0', tag = '';
+            if(isStudentPick && isCorrectPick){
+              bg = '#f0fdf4'; clr = '#14532d'; bdr = '1.5px solid #22c55e';
+              tag = '<span style="margin-left:auto;font-size:10px;font-weight:800;color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:2px 6px;border-radius:4px;"><i class="fa fa-check-circle"></i> Student Selected (Correct)</span>';
+            } else if(isStudentPick && !isCorrectPick){
+              bg = '#fef2f2'; clr = '#7f1d1d'; bdr = '1.5px solid #ef4444';
+              tag = '<span style="margin-left:auto;font-size:10px;font-weight:800;color:#991b1b;background:#fee2e2;border:1px solid #fca5a5;padding:2px 6px;border-radius:4px;"><i class="fa fa-times-circle"></i> Student Selected (Wrong)</span>';
+            } else if(isCorrectPick){
+              bg = '#f0fdf4'; clr = '#15803d'; bdr = '1.5px dashed #22c55e';
+              tag = '<span style="margin-left:auto;font-size:10px;font-weight:800;color:#15803d;background:#dcfce7;border:1px solid #86efac;padding:2px 6px;border-radius:4px;"><i class="fa fa-check"></i> Expected Selection</span>';
+            }
+
+            html += '<div style="padding:7px 12px;border-radius:6px;background:' + bg + ';color:' + clr + ';border:' + bdr + ';font-size:12.5px;display:flex;align-items:center;gap:6px;">'
+              + '<strong style="width:20px;color:#0f172a;">' + letter + '.</strong> <span style="flex:1;">' + escapeCqHtml(opt) + '</span>' + tag
+              + '</div>';
+          });
+          html += '</div>';
+        } else if(q.question_type === 'true_false'){
+          var tfOpts = ['True', 'False'];
+          var normG = normalizeBool(q.given_answer);
+          var normC = normalizeBool(correct);
+
+          html += '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px;margin-top:4px;">';
+          tfOpts.forEach(function(opt){
+            var key = opt.toLowerCase();
+            var isStudentPick = (normG === key);
+            var isCorrectPick = (normC === key);
+
+            var bg = '#f8fafc', clr = '#334155', bdr = '1px solid #e2e8f0', tag = '';
+            if(isStudentPick && isCorrectPick){
+              bg = '#f0fdf4'; clr = '#14532d'; bdr = '1.5px solid #22c55e';
+              tag = '<div style="font-size:10px;font-weight:800;color:#15803d;margin-top:2px;"><i class="fa fa-check-circle"></i> Student Answer (Correct)</div>';
+            } else if(isStudentPick && !isCorrectPick){
+              bg = '#fef2f2'; clr = '#7f1d1d'; bdr = '1.5px solid #ef4444';
+              tag = '<div style="font-size:10px;font-weight:800;color:#991b1b;margin-top:2px;"><i class="fa fa-times-circle"></i> Student Answer (Wrong)</div>';
+            } else if(isCorrectPick){
+              bg = '#f0fdf4'; clr = '#15803d'; bdr = '1.5px dashed #22c55e';
+              tag = '<div style="font-size:10px;font-weight:800;color:#15803d;margin-top:2px;"><i class="fa fa-check"></i> Correct Answer</div>';
+            }
+
+            html += '<div style="padding:8px 12px;border-radius:6px;background:' + bg + ';color:' + clr + ';border:' + bdr + ';text-align:center;">'
+              + '<strong style="font-size:13px;display:block;">' + opt + '</strong>' + tag
+              + '</div>';
+          });
+          html += '</div>';
+        } else if(q.question_type === 'essay'){
+          var earnedVal = (q.earned_points !== undefined) ? q.earned_points : 0;
+          var relPct = (q.relevance_pct !== undefined) ? q.relevance_pct : 0;
+          var topicName = q.topic || 'Module Topic';
+          var essayGivenText = (typeof q.given_answer === 'string') ? q.given_answer : (formattedGiven || '');
+
+          html += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-top:6px;">'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:8px;">'
+            + '<div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">'
+            + '<span style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:700;"><i class="fa fa-book"></i> Module Topic: <strong>' + escapeCqHtml(topicName) + '</strong></span>'
+            + '<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:800;"><i class="fa fa-link"></i> Topic Connection: <strong>' + relPct + '%</strong></span>'
             + '</div>'
-            + ((q.is_correct === false && correct) ? ('<div style="background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;padding:8px 12px;border-radius:8px;font-size:12.5px;"><i class="fa fa-check-circle"></i> <strong>Expected Answer:</strong> ' + escapeCqHtml(correct) + '</div>') : '')
+            + '<span style="color:#64748b;font-size:10.5px;font-weight:600;"><i class="fa fa-info-circle"></i> Baseline score from topic connection</span>'
+            + '</div>'
+            + '<div style="font-weight:700;margin-bottom:4px;color:#1e293b;font-size:11.5px;"><i class="fa fa-pencil" style="margin-right:5px;color:#7c3aed;"></i> Student Written Response:</div>'
+            + '<div style="background:#fff;border:1px solid #cbd5e1;padding:8px 12px;border-radius:6px;white-space:pre-wrap;color:#0f172a;font-size:12.5px;line-height:1.5;min-height:42px;">' + (essayGivenText ? escapeCqHtml(essayGivenText) : '<em style="color:#94a3b8;">(No response provided)</em>') + '</div>'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;background:#fff;border:1px solid #cbd5e1;padding:8px 12px;border-radius:6px;margin-top:8px;box-shadow:0 1px 2px rgba(0,0,0,0.02);">'
+            + '<div style="display:flex;align-items:center;gap:6px;">'
+            + '<span style="font-weight:800;font-size:12px;color:#1e293b;"><i class="fa fa-edit" style="color:#7c3aed;"></i> Teacher Essay Score:</span>'
+            + '<input type="number" id="essay_input_' + q.id + '" value="' + earnedVal + '" min="0" max="' + q.points + '" step="0.5" placeholder="0" style="width:65px;padding:4px 6px;border:1.5px solid #7c3aed;border-radius:5px;font-weight:800;font-size:13px;text-align:center;background:#f8fafc;color:#0f172a;">'
+            + '<span style="font-size:12px;font-weight:700;color:#64748b;">/ ' + q.points + ' pts</span>'
+            + '</div>'
+            + '<button type="button" id="btn_save_essay_' + q.id + '" onclick="saveTeacherEssayScore(' + (r.quiz_id || quizId) + ', \'' + escapeCqHtml(studentCode) + '\', ' + q.id + ')" style="border-radius:5px;font-weight:700;padding:5px 14px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;box-shadow:0 2px 4px rgba(124,58,237,0.25);display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:11.5px;">'
+            + '<i class="fa fa-save"></i> Save Score'
+            + '</button>'
+            + '</div>'
             + '</div>';
+        } else {
+          // Matching, Identification, Enumeration, Modified True/False, Multi-select list fallback
+          if(q.is_correct === true){
+            html += '<div style="background:#f0fdf4;border:1px solid #22c55e;color:#15803d;padding:8px 12px;border-radius:6px;font-size:12.5px;margin-top:4px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">'
+              + '<div><i class="fa fa-check-circle" style="color:#16a34a;font-size:14px;margin-right:5px;"></i><strong style="color:#14532d;">Student Answer:</strong> <span style="background:#fff;border:1px solid #86efac;padding:2px 8px;border-radius:5px;color:#15803d;font-weight:700;margin-left:4px;">' + (formattedGiven ? escapeCqHtml(formattedGiven) : '(Blank)') + '</span></div>'
+              + '<span style="background:#22c55e;color:#fff;padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:800;"><i class="fa fa-check"></i> CORRECT</span>'
+              + '</div>';
+          } else {
+            html += '<div style="display:flex;flex-direction:column;gap:5px;margin-top:4px;">'
+              + '<div style="background:#fef2f2;border:1px solid #ef4444;color:#991b1b;padding:8px 12px;border-radius:6px;font-size:12.5px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">'
+              + '<div><i class="fa fa-times-circle" style="color:#dc2626;font-size:14px;margin-right:5px;"></i><strong style="color:#7f1d1d;">Student Answer:</strong> <span style="background:#fff;border:1px solid #fca5a5;padding:2px 8px;border-radius:5px;color:#991b1b;font-weight:700;margin-left:4px;">' + (formattedGiven ? escapeCqHtml(formattedGiven) : '<em style="color:#94a3b8;">(No answer provided)</em>') + '</span></div>'
+              + '<span style="background:#ef4444;color:#fff;padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:800;"><i class="fa fa-times"></i> WRONG</span>'
+              + '</div>'
+              + (correct ? ('<div style="background:#f0fdf4;border:1px solid #22c55e;color:#15803d;padding:8px 12px;border-radius:6px;font-size:12.5px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">'
+              + '<div><i class="fa fa-check-circle" style="color:#16a34a;font-size:14px;margin-right:5px;"></i><strong style="color:#14532d;">Correct / Expected Answer:</strong> <span style="background:#fff;border:1px solid #86efac;padding:2px 8px;border-radius:5px;color:#15803d;font-weight:700;margin-left:4px;">' + escapeCqHtml(correct) + '</span></div>'
+              + '<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:2px 8px;border-radius:5px;font-size:10.5px;font-weight:800;"><i class="fa fa-check"></i> CORRECT ANSWER</span>'
+              + '</div>') : '')
+              + '</div>';
+          }
         }
 
         html += '</div>';
       });
     }
 
-    document.getElementById('answersModalTitle').innerHTML = '<i class="fa fa-list-alt" style="color:#a5b4fc;"></i> ' + escapeCqHtml(r.student_name || 'Student') + ' &bull; Quiz Answers';
+    document.getElementById('answersModalTitle').innerHTML = '<i class="fa fa-list-alt" style="color:#a5b4fc;"></i> ' + escapeCqHtml(r.student_name || 'Student') + ' &bull; Quiz Answers Review';
     document.getElementById('answersModalBody').innerHTML = html;
   }).fail(function(xhr, status, err){
     document.getElementById('answersModalBody').innerHTML = '<div style="padding:30px;text-align:center;color:#ef4444;"><i class="fa fa-exclamation-triangle fa-2x"></i><p style="margin-top:8px;">Failed to load student answers. (' + (err || status) + ')</p></div>';
+  });
+}
+
+function saveTeacherEssayScore(quizId, studentCode, questionId){
+  var input = document.getElementById('essay_input_' + questionId);
+  var btn = document.getElementById('btn_save_essay_' + questionId);
+  var scoreVal = input ? parseFloat(input.value) : 0;
+  if(isNaN(scoreVal) || scoreVal < 0) scoreVal = 0;
+
+  if(btn){
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving...';
+  }
+
+  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'classwork_data.php' : '../shared/classwork_data.php';
+
+  $.post(postUrl, {
+    action: 'save_essay_score',
+    quiz_id: quizId,
+    student_code: studentCode,
+    question_id: questionId,
+    score: scoreVal
+  }, function(res){
+    if(typeof res === 'string'){ try { res = JSON.parse(res.trim()); } catch(e){} }
+    if(btn){
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa fa-check"></i> Saved!';
+      setTimeout(function(){
+        btn.innerHTML = '<i class="fa fa-save"></i> Save Score';
+      }, 1800);
+    }
+    if(res && res.success){
+      var scoreEl = document.getElementById('saTopScore');
+      var pctEl = document.getElementById('saTopPct');
+      if(scoreEl) scoreEl.textContent = res.new_score + ' / ' + res.total_points;
+      if(pctEl) pctEl.textContent = res.percentage + '%';
+    } else {
+      alert(res && res.msg ? res.msg : 'Failed to save essay score.');
+    }
+  }, 'json').fail(function(xhr, status, err){
+    if(btn){
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa fa-save"></i> Save Score';
+    }
+    alert('Error saving score: ' + (err || status));
   });
 }
 <?php endif; ?>

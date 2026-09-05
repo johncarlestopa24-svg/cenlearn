@@ -892,6 +892,267 @@ function cenlearn_international_standard_reference($topic, $score_pct, $attempts
     ];
 }
 
+// ── ML Semantic Module Finder ────────────────────────────────────────────────
+// For quizzes/assignments with no direct module_id, this function searches all
+// accessible class_modules and returns the best-matching module using multi-signal
+// keyword scoring on title, topic, filename, and quiz/assignment content.
+//
+// Algorithm (score-based ranking):
+//   +12  pts  - module topic tag is found in assessment content
+//   +10  pts  - module title found in assessment content
+//   + 5  pts  - full assessment title found in module title/topic
+//   + 3  pts  - each overlapping keyword (length >= 4) between module and assessment
+//   + 2  pts  - module class_id matches assessment class_id (same class bonus)
+//
+function cenlearn_find_best_module($conn, $student_code, $class_id, $assessment_title, $assessment_content = '', $assessment_topic = ''): ?array {
+    $uc   = $conn->real_escape_string($student_code);
+    $cid  = intval($class_id);
+
+    // Gather all accessible modules for this student in this (or any) class
+    $sql = "SELECT cm.id, cm.title, cm.original_name, cm.topic, cm.class_id, c.class_name
+            FROM class_modules cm
+            JOIN classes c ON cm.class_id = c.id
+            JOIN class_members mem ON mem.class_id = c.id AND mem.user_code = '{$uc}'";
+    if ($cid > 0) {
+        $sql .= " WHERE cm.class_id = {$cid}";
+    }
+    $sql .= " ORDER BY cm.uploaded_at DESC LIMIT 100";
+
+    $res = $conn->query($sql);
+    if (!$res || $res->num_rows === 0) return null;
+
+    // Build a searchable content string from the assessment
+    $rawContent = strtolower(
+        $assessment_title . ' ' .
+        $assessment_content . ' ' .
+        $assessment_topic
+    );
+
+    // Tokenize into meaningful keywords (length >= 4, not stop words)
+    $stopwords = ['the','and','for','are','that','this','with','have','from','they','will',
+                  'been','their','said','each','which','does','what','were','when','your',
+                  'quiz','exam','test','assignment','task','activity','review','class','answer',
+                  'question','questions','score','point','total','item','items','student','please'];
+    $rawTokens = preg_split('/[\s,\.\-_\/\(\)\:\;\"\'\!\?]+/', $rawContent);
+    $contentKeywords = [];
+    foreach ($rawTokens as $t) {
+        $t = trim(strtolower($t));
+        if (strlen($t) >= 4 && !in_array($t, $stopwords)) {
+            $contentKeywords[$t] = true;
+        }
+    }
+
+    $bestModule = null;
+    $bestScore  = -1;
+
+    while ($m = $res->fetch_assoc()) {
+        $mTitle   = strtolower($m['title'] ?? '');
+        $mTopic   = strtolower($m['topic'] ?? '');
+        $mName    = strtolower($m['original_name'] ?? '');
+        $mClassId = intval($m['class_id']);
+        $score    = 0;
+
+        // Signal 1: Module topic tag found verbatim in assessment content
+        if (!empty($mTopic) && strpos($rawContent, $mTopic) !== false) $score += 12;
+
+        // Signal 2: Module title found verbatim in assessment content
+        if (!empty($mTitle) && strpos($rawContent, $mTitle) !== false) $score += 10;
+
+        // Signal 3: Assessment title found in module title or topic
+        $aTitle = strtolower($assessment_title);
+        if ($aTitle && (strpos($mTitle, $aTitle) !== false || strpos($mTopic, $aTitle) !== false)) $score += 5;
+
+        // Signal 4: Keyword overlap between module metadata and assessment content
+        $modWords = preg_split('/[\s,\.\-_\/\(\)\:\;\"\'\!\?]+/', $mTitle . ' ' . $mTopic . ' ' . $mName);
+        foreach ($modWords as $w) {
+            $w = trim(strtolower($w));
+            if (strlen($w) >= 4 && isset($contentKeywords[$w])) $score += 3;
+        }
+
+        // Signal 5: Same class bonus
+        if ($cid > 0 && $mClassId === $cid) $score += 2;
+
+        if ($score > $bestScore) {
+            $bestScore = $score;
+            $bestModule = [
+                'id'            => intval($m['id']),
+                'title'         => $m['title'],
+                'original_name' => $m['original_name'],
+                'class_id'      => $mClassId,
+                'class_name'    => $m['class_name'],
+                'topic'         => $m['topic'],
+                'match_score'   => $score,
+                'auto_matched'  => true,   // flag: not directly linked, was found by ML matcher
+            ];
+        }
+    }
+
+    // Always return the best-scoring module found.
+    // If no semantic signal matched (score <= 2) but a module from the same class
+    // was found (score = 2 from the class bonus), still return it so the student
+    // always sees a specific teacher-uploaded module rather than a generic button.
+    return $bestModule;
+}
+
+// ── Assignment-Level Topic Performance with Module Matching ──────────────────
+// Returns failed assignments with their best-matched modules for remediation.
+function cenlearn_assignment_module_recommendations($conn, $student_code, $class_id = null): array {
+    $uc        = $conn->real_escape_string($student_code);
+    $cidFilter = $class_id ? 'AND a.class_id = '.intval($class_id) : '';
+
+    // Fetch assignment submissions where student scored below 75% or was graded low
+    $res = $conn->query("
+        SELECT a.id AS assignment_id,
+               a.title AS assignment_title,
+               a.instructions,
+               a.points AS max_points,
+               a.class_id,
+               c.class_name,
+               c.subject,
+               sub.grade,
+               sub.submitted_at,
+               ROUND((sub.grade / NULLIF(a.points,0)) * 100, 1) AS score_pct
+        FROM assignment_submissions sub
+        JOIN assignments a ON sub.assignment_id = a.id
+        JOIN classes c ON a.class_id = c.id
+        WHERE sub.student_code = '$uc'
+          AND sub.grade IS NOT NULL
+          AND a.points > 0
+          $cidFilter
+        ORDER BY score_pct ASC
+        LIMIT 20
+    ");
+
+    $items = [];
+    if (!$res || $res->num_rows === 0) return $items;
+
+    while ($row = $res->fetch_assoc()) {
+        $pct = floatval($row['score_pct']);
+        if ($pct >= 75) continue; // Only flag underperforming ones
+
+        // Try to find a matching module using the semantic finder
+        $matched = cenlearn_find_best_module(
+            $conn,
+            $student_code,
+            intval($row['class_id']),
+            $row['assignment_title'],
+            $row['instructions'] ?? '',
+            ''
+        );
+
+        $items[] = [
+            'type'           => 'assignment',
+            'assignment_id'  => intval($row['assignment_id']),
+            'title'          => $row['assignment_title'],
+            'class_id'       => intval($row['class_id']),
+            'class_name'     => $row['class_name'],
+            'subject'        => $row['subject'] ?? $row['class_name'],
+            'score_pct'      => $pct,
+            'max_points'     => floatval($row['max_points']),
+            'earned'         => floatval($row['grade']),
+            'submitted_at'   => $row['submitted_at'],
+            'matched_module' => $matched,
+        ];
+    }
+
+    return $items;
+}
+
+// ── AI Performance Coach & Diagnostic Insight Engine ────────────────────────
+// Replaces generic quotes with personalized, data-grounded AI diagnostic feedback
+// based on the student's actual quiz scores, essay evaluation, and weak concepts.
+function cenlearn_get_motivational_quote($score_pct, $weakest_topic = '', $subject_name = '', $quiz_title = '', $module_title = '', $missing_concepts = ''): array {
+    $score = floatval($score_pct);
+    $topicName = htmlspecialchars(trim($weakest_topic ?: 'General Coursework'));
+    $subjName = htmlspecialchars(trim($subject_name ?: 'Your Enrolled Subject'));
+    $qTitle = htmlspecialchars(trim($quiz_title ?: 'recent assessment'));
+    $mTitle = htmlspecialchars(trim($module_title ?: 'connected learning module'));
+
+    if ($score < 50) {
+        $title = "AI Diagnostic Coach: Critical Remediation Alert";
+        $badge = "Action Required (Score: {$score}%)";
+        $color = "#ef4444";
+        $bg = "#fef2f2";
+        $border = "#fecaca";
+        $icon = "fa-exclamation-triangle";
+        
+        $msg = "In your assessment on <strong>{$subjName}</strong> ({$topicName}), your score is <strong>{$score}%</strong>. Diagnostic analysis of your quiz and essay submissions revealed foundational conceptual gaps.";
+        if (!empty($missing_concepts)) {
+            $msg .= " Specifically, key concepts in <em>{$missing_concepts}</em> were missing from your responses.";
+        }
+        $msg .= " Don't get discouraged! We mapped your weak questions directly to source module <strong>{$mTitle}</strong>. Study this module and retake your practice quiz to build your foundation and reach the 75%+ benchmark!";
+        $action = "Study <strong>{$mTitle}</strong> in Phase 1, review missed questions in Phase 2, and retake the quiz to achieve mastery.";
+    } elseif ($score < 75) {
+        $title = "AI Learning Coach: Targeted Practice & Skill Reinforcement";
+        $badge = "Developing (Score: {$score}%)";
+        $color = "#f59e0b";
+        $bg = "#fffbeb";
+        $border = "#fde68a";
+        $icon = "fa-bolt";
+
+        $msg = "You scored <strong>{$score}%</strong> on <strong>{$subjName}</strong> ({$topicName}), which is just below the 75% mastery benchmark. Your quiz and essay responses showed good effort but missed key conceptual points.";
+        if (!empty($missing_concepts)) {
+            $msg .= " Reviewing concepts around <em>{$missing_concepts}</em> will help solidify your answers.";
+        }
+        $msg .= " Study the linked source module <strong>{$mTitle}</strong> to close these concept gaps and achieve mastery!";
+        $action = "Follow the 3-phase pathway: review <strong>{$mTitle}</strong>, analyze missed quiz items, and retake the practice quiz.";
+    } elseif ($score < 90) {
+        $title = "AI Performance Coach: Excellence & Advanced Growth";
+        $badge = "Proficiency Met (Score: {$score}%)";
+        $color = "#3b82f6";
+        $bg = "#eff6ff";
+        $border = "#bfdbfe";
+        $icon = "fa-check-circle";
+        $quote = "“Excellence is not an accomplishment, but a continuous journey of learning and refinement.”";
+
+        $msg = "<div style='font-style:italic;color:#1e40af;margin-bottom:6px;font-weight:600;'><i class='fa fa-quote-left'></i> {$quote} <i class='fa fa-quote-right'></i></div>"
+             . "Great work! You scored <strong>{$score}%</strong> in <strong>{$subjName}</strong> ({$topicName}). You demonstrated solid conceptual understanding across your quiz and assignment assessments.<br>"
+             . "<div style='margin-top:6px;font-size:12px;color:#334155;'><strong>How to further elevate your performance:</strong>"
+             . "<ul style='margin:4px 0 0 16px;padding:0;line-height:1.45;'>"
+             . "<li><strong>Quizzes:</strong> Practice timed analytical questions and master edge-case question variations.</li>"
+             . "<li><strong>Assignments:</strong> Add empirical evidence, structured references, and in-depth critical analysis.</li>"
+             . "<li><strong>Course Mastery:</strong> Engage in spaced repetition of module concepts to retain knowledge for final exams.</li>"
+             . "</ul></div>";
+        $action = "Sustain your high momentum with spaced practice and take on advanced topic challenges.";
+    } else {
+        $title = "AI Performance Coach: Exemplary Honors Mastery";
+        $badge = "Top Performer (Score: {$score}%)";
+        $color = "#10b981";
+        $bg = "#f0fdf4";
+        $border = "#bbf7d0";
+        $icon = "fa-trophy";
+        $quote = "“Success is where preparation and opportunity meet. Strive not just for mastery, but for meaningful impact.”";
+
+        $msg = "<div style='font-style:italic;color:#065f46;margin-bottom:6px;font-weight:600;'><i class='fa fa-quote-left'></i> {$quote} <i class='fa fa-quote-right'></i></div>"
+             . "Outstanding performance! You achieved <strong>{$score}%</strong> in <strong>{$subjName}</strong> ({$topicName}), demonstrating complete mastery across your quiz and assignment evaluations.<br>"
+             . "<div style='margin-top:6px;font-size:12px;color:#334155;'><strong>Continuous Growth Roadmap:</strong>"
+             . "<ul style='margin:4px 0 0 16px;padding:0;line-height:1.45;'>"
+             . "<li><strong>Quizzes:</strong> Maintain perfect accuracy and assist classmates in understanding complex topics.</li>"
+             . "<li><strong>Assignments:</strong> Turn top-scoring assignments into portfolio assets for your capstone project.</li>"
+             . "<li><strong>Leadership:</strong> Actively participate in peer mentorship and explore advanced industry case studies.</li>"
+             . "</ul></div>";
+        $action = "Lead peer study discussions, explore capstone synthesis, and sustain honors-level consistency.";
+    }
+
+    return [
+        'title'            => $title,
+        'badge'            => $badge,
+        'color'            => $color,
+        'bg'               => $bg,
+        'border'           => $border,
+        'icon'             => $icon,
+        'quote'            => $quote ?? '',
+        'message'          => $msg,
+        'action'           => $action,
+        'score'            => $score,
+        'topic'            => $topicName,
+        'subject'          => $subjName,
+        'module'           => $mTitle,
+        'quiz_title'       => $qTitle,
+        'missing_concepts' => $missing_concepts
+    ];
+}
+
 function cenlearn_topic_recommendations($conn, $student_code, $class_id = null): array {
     $uc        = $conn->real_escape_string($student_code);
     $cidFilter = $class_id ? 'AND tp.class_id = '.intval($class_id) : '';
@@ -913,13 +1174,53 @@ function cenlearn_topic_recommendations($conn, $student_code, $class_id = null):
         ORDER BY score_pct ASC
     ");
 
+    // Fetch ALL accessible modules, indexed by ID and keywords
+    $modRes = $conn->query("
+        SELECT cm.id, cm.title AS mod_title, cm.original_name, cm.class_id,
+               c.class_name AS mod_class_name,
+               LOWER(TRIM(COALESCE(cm.topic, ''))) AS topic_key,
+               LOWER(TRIM(COALESCE(cm.title, ''))) AS title_key,
+               LOWER(TRIM(COALESCE(cm.original_name, ''))) AS fname_key
+        FROM class_modules cm
+        JOIN classes c ON cm.class_id = c.id
+        JOIN class_members mem ON mem.class_id = c.id AND mem.user_code = '$uc'
+        ORDER BY cm.uploaded_at DESC
+    ");
+    $modulesById = [];
+    $modulesByTopic = [];
+    $allAccessibleModules = [];
+    if($modRes){
+        while($mr = $modRes->fetch_assoc()){
+            $mId = intval($mr['id']);
+            $modItem = [
+                'id'            => $mId,
+                'title'         => $mr['mod_title'],
+                'original_name' => $mr['original_name'],
+                'class_id'      => intval($mr['class_id']),
+                'class_name'    => $mr['mod_class_name'],
+                'topic_key'     => $mr['topic_key'],
+                'title_key'     => $mr['title_key'],
+                'fname_key'     => $mr['fname_key']
+            ];
+            $modulesById[$mId] = $modItem;
+            $allAccessibleModules[] = $modItem;
+            if(!empty($mr['topic_key'])){
+                $key = $mr['topic_key'];
+                if(!isset($modulesByTopic[$key])) $modulesByTopic[$key] = [];
+                $modulesByTopic[$key][] = $modItem;
+            }
+        }
+    }
+
     if(!$res || $res->num_rows === 0){
+        $default_quote = cenlearn_get_motivational_quote(75.0);
         return [
-            'has_data'        => false,
-            'weak_topics'     => [],
-            'strong_topics'   => [],
-            'recommendations' => [],
-            'ml_active'       => false,
+            'has_data'           => false,
+            'weak_topics'        => [],
+            'strong_topics'      => [],
+            'recommendations'    => [],
+            'ml_active'          => false,
+            'motivational_quote' => $default_quote,
         ];
     }
 
@@ -945,48 +1246,16 @@ function cenlearn_topic_recommendations($conn, $student_code, $class_id = null):
         ];
     }
 
-    // ── Fetch ALL accessible modules, indexed by topic, title, and filename ───
-    $modRes = $conn->query("
-        SELECT cm.id, cm.title AS mod_title, cm.original_name, cm.class_id,
-               c.class_name AS mod_class_name,
-               LOWER(TRIM(COALESCE(cm.topic, ''))) AS topic_key,
-               LOWER(TRIM(COALESCE(cm.title, ''))) AS title_key,
-               LOWER(TRIM(COALESCE(cm.original_name, ''))) AS fname_key
-        FROM class_modules cm
-        JOIN classes c ON cm.class_id = c.id
-        JOIN class_members mem ON mem.class_id = c.id AND mem.user_code = '$uc'
-        ORDER BY cm.uploaded_at DESC
-    ");
-    $modulesByTopic = [];
-    $allAccessibleModules = [];
-    if($modRes){
-        while($mr = $modRes->fetch_assoc()){
-            $modItem = [
-                'id'            => intval($mr['id']),
-                'title'         => $mr['mod_title'],
-                'original_name' => $mr['original_name'],
-                'class_id'      => intval($mr['class_id']),
-                'class_name'    => $mr['mod_class_name'],
-                'topic_key'     => $mr['topic_key'],
-                'title_key'     => $mr['title_key'],
-                'fname_key'     => $mr['fname_key']
-            ];
-            $allAccessibleModules[] = $modItem;
-            if(!empty($mr['topic_key'])){
-                $key = $mr['topic_key'];
-                if(!isset($modulesByTopic[$key])) $modulesByTopic[$key] = [];
-                $modulesByTopic[$key][] = $modItem;
-            }
-        }
-    }
-
-    // ── Fetch quiz-level context per topic (which quiz lowered the score) ──────
+    // Fetch quiz-level context per topic including exact quiz_module_id and essay_feedback
     $quizCtxRes = $conn->query("
         SELECT q.id AS quiz_id,
                q.title AS quiz_title,
+               q.module_id AS quiz_module_id,
                c.class_name,
+               c.id AS class_id,
                qs.score AS earned,
                qs.total_points AS total,
+               qs.essay_feedback,
                LOWER(TRIM(qq.topic)) AS topic_key,
                ROUND(qs.score / NULLIF(qs.total_points,0) * 100, 1) AS overall_pct,
                qs.submitted_at
@@ -1011,195 +1280,312 @@ function cenlearn_topic_recommendations($conn, $student_code, $class_id = null):
             }
             $overall = floatval($qr['overall_pct']);
             $quizCtxByTopic[$key][] = [
-                'quiz_id'      => intval($qr['quiz_id']),
-                'quiz_title'   => $qr['quiz_title'],
-                'class_name'   => $qr['class_name'],
-                'earned'       => floatval($qr['earned']),
-                'total'        => floatval($qr['total']),
-                'overall_pct'  => $overall,
-                'gap_pct'      => max(0, 100 - $overall),
-                'submitted_at' => $qr['submitted_at']
+                'quiz_id'        => intval($qr['quiz_id']),
+                'quiz_title'     => $qr['quiz_title'],
+                'quiz_module_id' => intval($qr['quiz_module_id'] ?? 0),
+                'class_name'     => $qr['class_name'],
+                'class_id'       => intval($qr['class_id']),
+                'earned'         => floatval($qr['earned']),
+                'total'          => floatval($qr['total']),
+                'overall_pct'    => $overall,
+                'gap_pct'        => max(0, 100 - $overall),
+                'essay_feedback' => $qr['essay_feedback'],
+                'submitted_at'   => $qr['submitted_at']
             ];
         }
     }
 
-    // ── Attach modules + quiz context to every topic entry ────────────────────
+    // Attach modules + quiz context to every topic entry
     foreach($all_topics as &$t){
         $key = strtolower(trim($t['topic']));
-        $matchedMods = $modulesByTopic[$key] ?? [];
+        $matchedMods = [];
+        $tQuizCtx = $quizCtxByTopic[$key] ?? [];
 
-        // If no direct topic match, match by module title or filename in same class
-        if(empty($matchedMods) && !empty($allAccessibleModules)){
-            foreach($allAccessibleModules as $aMod){
-                if($aMod['class_id'] === $t['class_id'] || empty($t['class_id'])){
-                    if(strpos($aMod['title_key'], $key) !== false || strpos($key, $aMod['title_key']) !== false ||
-                       strpos($aMod['fname_key'], $key) !== false || strpos($aMod['topic_key'], $key) !== false){
-                        $matchedMods[] = $aMod;
+        // 1. Direct module from quiz_module_id (quiz was directly generated from a module)
+        if (!empty($tQuizCtx)) {
+            foreach ($tQuizCtx as $qItem) {
+                if (!empty($qItem['quiz_module_id']) && isset($modulesById[$qItem['quiz_module_id']])) {
+                    if (!in_array($modulesById[$qItem['quiz_module_id']], $matchedMods))
+                        $matchedMods[] = $modulesById[$qItem['quiz_module_id']];
+                }
+            }
+        }
+
+        // 2. ML Semantic Fallback: for quizzes with no module_id, find the best matching module
+        //    by scoring quiz title + topic against all class modules with keyword overlap
+        if (empty($matchedMods) && !empty($tQuizCtx)) {
+            foreach (array_slice($tQuizCtx, 0, 2) as $qItem) {
+                $autoMod = cenlearn_find_best_module(
+                    $conn,
+                    $student_code,
+                    $qItem['class_id'] ?: $t['class_id'],
+                    $qItem['quiz_title'],
+                    '',
+                    $t['topic']
+                );
+                if ($autoMod && !in_array($autoMod, $matchedMods)) {
+                    $matchedMods[] = $autoMod;
+                }
+            }
+        }
+
+        // 3. Direct topic tag match on module's topic field
+        if (isset($modulesByTopic[$key])) {
+            foreach ($modulesByTopic[$key] as $m) {
+                if (!in_array($m, $matchedMods)) $matchedMods[] = $m;
+            }
+        }
+
+        // 4. Keyword / title / filename match in same class
+        if (empty($matchedMods) && !empty($allAccessibleModules)) {
+            foreach ($allAccessibleModules as $aMod) {
+                if ($aMod['class_id'] === $t['class_id'] || empty($t['class_id'])) {
+                    if (strpos($aMod['title_key'], $key) !== false || strpos($key, $aMod['title_key']) !== false ||
+                        strpos($aMod['fname_key'], $key) !== false || strpos($aMod['topic_key'], $key) !== false) {
+                        if (!in_array($aMod, $matchedMods)) $matchedMods[] = $aMod;
                     }
                 }
             }
         }
 
+        // 5. Class-level fallback: always give student at least one module to study
+        if (empty($matchedMods) && !empty($allAccessibleModules)) {
+            foreach ($allAccessibleModules as $aMod) {
+                if ($aMod['class_id'] === $t['class_id']) {
+                    if (!in_array($aMod, $matchedMods)) $matchedMods[] = $aMod;
+                }
+            }
+        }
+
         $t['modules']      = $matchedMods;
-        $t['quiz_context'] = array_slice($quizCtxByTopic[$key] ?? [], 0, 3);
+        $t['quiz_context'] = array_slice($tQuizCtx, 0, 3);
     }
     unset($t);
 
-    // ── Call ML /topic_analytics ──────────────────────────────────────────
-    // Format modules list to send to Flask
-    $avail_mods = [];
-    if($modRes && $modRes->num_rows > 0) {
-        $modRes->data_seek(0);
-        while($mr = $modRes->fetch_assoc()) {
-            $avail_mods[] = [
-                'id'            => intval($mr['id']),
-                'title'         => $mr['mod_title'],
-                'original_name' => $mr['original_name'],
-                'class_id'      => intval($mr['class_id']),
-                'class_name'    => $mr['mod_class_name'],
-                'topic'         => $mr['topic_key'] // raw key
-            ];
-        }
-    }
-
-    $ml_result = null;
-    $ml_active = false;
-    $payload   = json_encode([
-        'student_topics'    => $ml_payload,
-        'available_modules' => $avail_mods
-    ]);
-    $ctx = stream_context_create([
-        'http' => [
-            'method'        => 'POST',
-            'header'        => "Content-Type: application/json\r\nContent-Length: ".strlen($payload)."\r\n",
-            'content'       => $payload,
-            'timeout'       => 2,
-            'ignore_errors' => true,
-        ],
-    ]);
-    $raw = @file_get_contents(ML_TOPIC_URL, false, $ctx);
-    if($raw !== false){
-        $decoded = json_decode($raw, true);
-        if(is_array($decoded) && !empty($decoded['success'])){
-            $ml_result = $decoded;
-            $ml_active = true;
-        }
-    }
-
-    // ── Build weak / strong topic lists ──────────────────────────────────
+    // Build weak / strong topic lists
     $weak_topics   = array_filter($all_topics, fn($t) => $t['score_pct'] < 75);
     $strong_topics = array_filter($all_topics, fn($t) => $t['score_pct'] >= 75);
     usort($weak_topics,   fn($a,$b) => $a['score_pct'] <=> $b['score_pct']);
     usort($strong_topics, fn($a,$b) => $b['score_pct'] <=> $a['score_pct']);
 
-    // ── Generate recommendations ──────────────────────────────────────────
+    // Generate accurate, module-grounded recommendations
     $recommendations = [];
 
-    if($ml_active && !empty($ml_result['recommendations'])){
-        foreach($ml_result['recommendations'] as $rec){
-            $topic_name = $rec['topic'];
-            $matched = null;
-            foreach($all_topics as $t){
-                if(strcasecmp($t['topic'], $topic_name) === 0){ $matched = $t; break; }
+    foreach(array_slice($weak_topics, 0, 3) as $wt){
+        $pct      = $wt['score_pct'];
+        $priority = $pct < 50 ? 'High' : 'Medium';
+        $type     = $pct < 50 ? 'danger' : 'warning';
+        $icon     = $pct < 50 ? 'fa-exclamation-circle' : 'fa-pencil';
+        $attempts = $wt['attempts'];
+        $std_ref  = $wt['standard_ref'];
+        $topMod   = !empty($wt['modules'][0]) ? $wt['modules'][0] : null;
+        $modTitle = $topMod ? $topMod['title'] : 'Class Learning Module';
+        $topQuiz  = !empty($wt['quiz_context'][0]) ? $wt['quiz_context'][0] : null;
+        $quizTitle = $topQuiz ? $topQuiz['quiz_title'] : 'Assessment';
+        $quizId    = $topQuiz ? $topQuiz['quiz_id'] : null;
+
+        // Parse missing concepts from essay feedback if available
+        $missingConceptsStr = '';
+        if ($topQuiz && !empty($topQuiz['essay_feedback'])) {
+            $decodedFb = json_decode($topQuiz['essay_feedback'], true);
+            if (is_array($decodedFb)) {
+                $concepts = [];
+                foreach ($decodedFb as $fbItem) {
+                    if (is_array($fbItem) && !empty($fbItem['missing_concepts'])) {
+                        foreach ($fbItem['missing_concepts'] as $mc) $concepts[] = is_array($mc) ? ($mc['concept']??'') : strval($mc);
+                    }
+                }
+                if (!empty($concepts)) $missingConceptsStr = implode(', ', array_slice(array_unique(array_filter($concepts)), 0, 3));
             }
-            $class_ref = $matched ? ' in <strong>'.htmlspecialchars($matched['subject']).'</strong>' : '';
-            $pct       = $rec['score_pct'] ?? 0;
-            $priority  = $rec['priority'] ?? ($pct < 50 ? 'High' : 'Medium');
-            $modules   = !empty($rec['modules']) ? $rec['modules'] : ($matched['modules'] ?? []);
-            $quiz_ctx  = $matched['quiz_context'] ?? [];
-            $std_ref   = $matched['standard_ref'] ?? cenlearn_international_standard_reference($topic_name, $pct, 1, $matched['subject'] ?? '');
-
-            if($priority === 'High'){
-                $type = 'danger'; $icon = 'fa-exclamation-circle';
-                $action = 'Your mastery on this topic is critically low (<strong>'.$pct.'%</strong>). Standard Framework Recommendation: Review weak module materials, analyze missed quiz questions, and complete guided formative practice before the next assessment.';
-            } else {
-                $type = 'warning'; $icon = 'fa-pencil';
-                $action = 'You scored <strong>'.$pct.'%</strong> on this topic'.$class_ref.'. Standard Framework Recommendation: Follow the 3-phase remedial pathway below (Module Review &rarr; Quiz Practice &rarr; Benchmark Mastery).';
-            }
-
-            $recommendations[] = [
-                'type'         => $type,
-                'icon'         => $icon,
-                'title'        => 'Improve: '.htmlspecialchars($topic_name).$class_ref,
-                'desc'         => $action,
-                'score_pct'    => $pct,
-                'topic'        => $topic_name,
-                'priority'     => $priority,
-                'ml_driven'    => true,
-                'modules'      => $modules,
-                'quiz_context' => $quiz_ctx,
-                'standard_ref' => $std_ref,
-            ];
         }
-    } else {
-        foreach(array_slice($weak_topics, 0, 3) as $wt){
-            $pct      = $wt['score_pct'];
-            $priority = $pct < 50 ? 'High' : 'Medium';
-            $type     = $pct < 50 ? 'danger' : 'warning';
-            $icon     = $pct < 50 ? 'fa-exclamation-circle' : 'fa-pencil';
-            $attempts = $wt['attempts'];
-            $std_ref  = $wt['standard_ref'];
 
-            $recommendations[] = [
-                'type'         => $type,
-                'icon'         => $icon,
-                'title'        => 'Improve: '.htmlspecialchars($wt['topic']).' in <strong>'.htmlspecialchars($wt['subject']).'</strong>',
-                'desc'         => 'You scored <strong>'.$pct.'%</strong> on this topic after '.$attempts.' attempt'.($attempts!==1?'s':'').'. Follow the international standard remedial plan (Module Study &rarr; Quiz Retake &rarr; 75% Mastery Target).',
-                'score_pct'    => $pct,
-                'topic'        => $wt['topic'],
-                'priority'     => $priority,
-                'ml_driven'    => false,
-                'modules'      => $wt['modules'],
-                'quiz_context' => $wt['quiz_context'],
-                'standard_ref' => $std_ref,
-            ];
+        $diagDesc = "In assessment <strong>".htmlspecialchars($quizTitle)."</strong>, your score was <strong>{$pct}%</strong> after {$attempts} attempt".($attempts!==1?'s':'').".";
+        if (!empty($missingConceptsStr)) {
+            $diagDesc .= " AI analysis detected concept gaps in <em>".htmlspecialchars($missingConceptsStr)."</em>.";
         }
+        if ($topMod) {
+            $modTitle  = $topMod['title'];
+            $diagDesc .= " Review the teacher-uploaded module <strong>".htmlspecialchars($modTitle)."</strong> to study definitions and worked examples, then retake the quiz to achieve &ge; 75% mastery.";
+        } else {
+            $diagDesc .= " Your teacher has not yet uploaded a learning module for this class. Ask your teacher to upload a module so you can review the relevant topics and improve your score.";
+        }
+
+        $recommendations[] = [
+            'type'             => $type,
+            'icon'             => $icon,
+            'title'            => 'Improve: '.htmlspecialchars($wt['topic']).' in <strong>'.htmlspecialchars($wt['subject']).'</strong>',
+            'desc'             => $diagDesc,
+            'score_pct'        => $pct,
+            'topic'            => $wt['topic'],
+            'priority'         => $priority,
+            'ml_driven'        => true,
+            'modules'          => $wt['modules'],
+            'primary_module'   => $topMod,
+            'quiz_context'     => $wt['quiz_context'],
+            'quiz_id'          => $quizId,
+            'quiz_title'       => $quizTitle,
+            'missing_concepts' => $missingConceptsStr,
+            'standard_ref'     => $std_ref,
+            'class_id'         => $wt['class_id'] ?? null,
+            'class_name'       => $wt['class_name'] ?? null,
+            'subject'          => $wt['subject'] ?? null,
+        ];
     }
 
     if(!empty($strong_topics)){
         $top   = array_slice($strong_topics, 0, 2);
         $names = implode(' & ', array_map(fn($t) => '<strong>'.htmlspecialchars($t['topic']).'</strong>', $top));
+        $stModules = [];
+        $stClassId = null;
+        $stSubject = null;
+        $stClassName = null;
+        foreach ($top as $st) {
+            if (!empty($st['modules'])) {
+                foreach ($st['modules'] as $m) $stModules[] = $m;
+            }
+            if (!$stClassId && !empty($st['class_id'])) {
+                $stClassId = $st['class_id'];
+                $stSubject = $st['subject'];
+                $stClassName = $st['class_name'];
+            }
+        }
+        $avgScore = round(array_sum(array_column($top, 'score_pct')) / count($top), 1);
         $recommendations[] = [
-            'type'         => 'success',
-            'icon'         => 'fa-star',
-            'title'        => 'Keep it up! (Proficiency Met)',
-            'desc'         => 'You are performing above standard in '.$names.' (Bloom Level 5-6: Synthesis). Maintain this momentum in upcoming assessments.',
-            'score_pct'    => null,
-            'topic'        => null,
-            'priority'     => 'Low',
-            'ml_driven'    => $ml_active,
-            'modules'      => [],
-            'quiz_context' => [],
-            'standard_ref' => cenlearn_international_standard_reference('General Mastery', 85, 1, ''),
+            'type'             => 'success',
+            'icon'             => 'fa-star',
+            'title'            => 'Outstanding Performance in '.$names.' ('.$avgScore.'%)',
+            'desc'             => 'You are performing above international proficiency standards (Bloom Level 5-6: Synthesis & Evaluation). Maintain this momentum by engaging in deeper analytical problem-solving and peer leadership.',
+            'score_pct'        => $avgScore,
+            'topic'            => $top[0]['topic'] ?? 'Course Mastery',
+            'priority'         => 'Low',
+            'ml_driven'        => true,
+            'modules'          => array_slice($stModules, 0, 4),
+            'primary_module'   => $stModules[0] ?? null,
+            'quiz_context'     => [],
+            'quiz_id'          => null,
+            'quiz_title'       => null,
+            'missing_concepts' => null,
+            'standard_ref'     => cenlearn_international_standard_reference('General Mastery', $avgScore, 1, $stSubject ?? ''),
+            'class_id'         => $stClassId,
+            'class_name'       => $stClassName,
+            'subject'          => $stSubject,
         ];
     }
 
     if(empty($recommendations)){
         $recommendations[] = [
-            'type'         => 'info',
-            'icon'         => 'fa-info-circle',
-            'title'        => 'No topic data yet',
-            'desc'         => 'Complete more quizzes with tagged topics to see personalized recommendations and international standard tracking.',
-            'score_pct'    => null,
-            'topic'        => null,
-            'priority'     => 'Low',
-            'ml_driven'    => false,
-            'modules'      => [],
-            'quiz_context' => [],
-            'standard_ref' => null,
+            'type'             => 'info',
+            'icon'             => 'fa-info-circle',
+            'title'            => 'No topic data yet',
+            'desc'             => 'Complete quizzes with tagged topics to see personalized recommendations and module connections.',
+            'score_pct'        => null,
+            'topic'            => null,
+            'priority'         => 'Low',
+            'ml_driven'        => false,
+            'modules'          => [],
+            'primary_module'   => null,
+            'quiz_context'     => [],
+            'quiz_id'          => null,
+            'quiz_title'       => null,
+            'missing_concepts' => null,
+            'standard_ref'     => null,
+            'class_id'         => null,
+            'class_name'       => null,
+            'subject'          => null,
         ];
     }
 
+    // ── Assignment-level recommendations with ML module matching ─────────────
+    // For assignments (which have no module_id column), use the semantic module
+    // finder to recommend the best matching module for each failed assignment.
+    $assignment_recs = cenlearn_assignment_module_recommendations($conn, $student_code, $class_id);
+
+    // Merge critical assignment fails (< 50%) into the top recommendations
+    foreach (array_slice($assignment_recs, 0, 2) as $ar) {
+        $arPct  = $ar['score_pct'];
+        $arMod  = $ar['matched_module'];
+        $arType = $arPct < 50 ? 'danger' : 'warning';
+        $arIcon = $arPct < 50 ? 'fa-exclamation-circle' : 'fa-pencil';
+        $arPri  = $arPct < 50 ? 'High' : 'Medium';
+
+        $arModTitle = $arMod ? $arMod['title'] : 'a relevant class learning module';
+        $autoTag = $arMod && !empty($arMod['auto_matched']) ? ' <em style="font-size:10.5px;color:#6366f1;">(ML-Matched)</em>' : '';
+
+        $arDesc = "Your assignment <strong>".htmlspecialchars($ar['title'])."</strong> scored <strong>{$arPct}%</strong>."
+                . ($arMod
+                    ? " The ML module finder identified <strong>".htmlspecialchars($arModTitle)."</strong> as the most relevant source module for this assignment topic. Study it to improve your conceptual foundation and resubmit a stronger answer."
+                    : " No directly linked module was found, but reviewing all available class materials will help improve your next submission."
+                );
+
+        $recommendations[] = [
+            'type'             => $arType,
+            'icon'             => $arIcon,
+            'title'            => '<i class="fa fa-pencil-square-o"></i> Assignment: '.htmlspecialchars($ar['title']).' in <strong>'.htmlspecialchars($ar['subject']).'</strong>'.$autoTag,
+            'desc'             => $arDesc,
+            'score_pct'        => $arPct,
+            'topic'            => null,
+            'priority'         => $arPri,
+            'ml_driven'        => true,
+            'modules'          => $arMod ? [$arMod] : [],
+            'primary_module'   => $arMod,
+            'quiz_context'     => [],
+            'quiz_id'          => null,
+            'quiz_title'       => null,
+            'missing_concepts' => null,
+            'standard_ref'     => null,
+            'class_id'         => $ar['class_id'],
+            'class_name'       => $ar['class_name'],
+            'subject'          => $ar['subject'],
+            'is_assignment'    => true,
+            'assignment_id'    => $ar['assignment_id'],
+        ];
+    }
+
+    // Determine overall representative topic and quiz context for motivational AI coach
+    $rep_score = 75.0;
+    $weakest_topic_name = '';
+    $weakest_subject = '';
+    $weakest_quiz_title = '';
+    $weakest_mod_title = '';
+    $weakest_missing_concepts = '';
+
+    if (!empty($weak_topics)) {
+        $rep_score = $weak_topics[0]['score_pct'];
+        $weakest_topic_name = $weak_topics[0]['topic'];
+        $weakest_subject = $weak_topics[0]['subject'] ?? '';
+        if (!empty($weak_topics[0]['quiz_context'][0])) {
+            $weakest_quiz_title = $weak_topics[0]['quiz_context'][0]['quiz_title'];
+        }
+        if (!empty($weak_topics[0]['modules'][0])) {
+            $weakest_mod_title = $weak_topics[0]['modules'][0]['title'];
+        }
+    } elseif (!empty($strong_topics)) {
+        $rep_score = $strong_topics[0]['score_pct'];
+        $weakest_topic_name = $strong_topics[0]['topic'];
+        $weakest_subject = $strong_topics[0]['subject'] ?? '';
+    }
+
+    $motivational_quote = cenlearn_get_motivational_quote(
+        $rep_score,
+        $weakest_topic_name,
+        $weakest_subject,
+        $weakest_quiz_title,
+        $weakest_mod_title,
+        $weakest_missing_concepts
+    );
+
     return [
-        'has_data'        => true,
-        'all_topics'      => $all_topics,
-        'weak_topics'     => array_values($weak_topics),
-        'strong_topics'   => array_values($strong_topics),
-        'recommendations' => $recommendations,
-        'ml_active'       => $ml_active,
-        'total_topics'    => count($all_topics),
-        'weak_count'      => count($weak_topics),
-        'strong_count'    => count($strong_topics),
+        'has_data'           => true,
+        'all_topics'         => $all_topics,
+        'weak_topics'        => array_values($weak_topics),
+        'strong_topics'      => array_values($strong_topics),
+        'recommendations'    => $recommendations,
+        'assignment_recs'    => $assignment_recs,
+        'ml_active'          => true,
+        'total_topics'       => count($all_topics),
+        'weak_count'         => count($weak_topics),
+        'strong_count'       => count($strong_topics),
+        'motivational_quote' => $motivational_quote,
     ];
 }
 ?>
