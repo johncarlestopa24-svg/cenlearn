@@ -3,7 +3,7 @@ session_start();
 include '../includes/conn.php';
 
 if (empty($_SESSION['user'])) {
-    header('location: ../index.php');
+    header('location: /cenlearn/login');
     exit;
 }
 
@@ -119,9 +119,9 @@ if ($raw) {
 $isTeacher = (in_array($role, ['TEACHER', 'ADMIN', 'SUPERADMIN']));
 $accent    = $isTeacher ? '#10b981' : '#1792bb';
 $accentDk  = $isTeacher ? '#059669' : '#0f5f80';
-$dashLink  = isset($cid) ? "class_view.php?id=$cid&tab=materials" : ($isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php');
-$rawUrl    = "module_view.php?" . ($id ? "id=$id" : "repo_id=$repo_id") . "&raw=1";
-$dlUrl     = "module_download.php?" . ($id ? "id=$id" : "repo_id=$repo_id");
+$dashLink  = isset($cid) ? "class_view?id=$cid&tab=materials" : ($isTeacher ? '/cenlearn/teacher/dashboard' : '/cenlearn/student/dashboard');
+$rawUrl    = "module_view?" . ($id ? "id=$id" : "repo_id=$repo_id") . "&raw=1";
+$dlUrl     = "module_download?" . ($id ? "id=$id" : "repo_id=$repo_id");
 
 // Icon & Color mapping
 $fileIcons = [
@@ -157,39 +157,39 @@ $iconInfo = $fileIcons[$ext] ?? [
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars($mod['title'] ?? $filename); ?> — Module Viewer</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+    <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
     
     <!-- Document Viewers: JSZip, Docx-Preview, Mammoth, SheetJS, Marked -->
-    <script src="../plugins/doc_viewer/jszip.min.js"></script>
-    <script src="../plugins/doc_viewer/docx-preview.min.js"></script>
-    <script src="../plugins/doc_viewer/mammoth.browser.min.js"></script>
-    <script src="../plugins/doc_viewer/xlsx.full.min.js"></script>
-    <script src="../plugins/doc_viewer/marked.min.js"></script>
+    <script src="/cenlearn/system/plugins/doc_viewer/jszip.min.js"></script>
+    <script src="/cenlearn/system/plugins/doc_viewer/docx-preview.min.js"></script>
+    <script src="/cenlearn/system/plugins/doc_viewer/mammoth.browser.min.js"></script>
+    <script src="/cenlearn/system/plugins/doc_viewer/xlsx.full.min.js"></script>
+    <script src="/cenlearn/system/plugins/doc_viewer/marked.min.js"></script>
     
     <!-- CDN Fallback in case local files are missing -->
     <script>
         if (typeof JSZip === 'undefined') {
-            document.write('<script src="../plugins/doc_viewer/jszip.min.js"><\/script>');
+            document.write('<script src="/cenlearn/system/plugins/doc_viewer/jszip.min.js"><\/script>');
         }
     </script>
     <script>
         if (typeof docx === 'undefined') {
-            document.write('<script src="../plugins/doc_viewer/docx-preview.min.js"><\/script>');
+            document.write('<script src="/cenlearn/system/plugins/doc_viewer/docx-preview.min.js"><\/script>');
         }
     </script>
     <script>
         if (typeof mammoth === 'undefined') {
-            document.write('<script src="../plugins/doc_viewer/mammoth.browser.min.js"><\/script>');
+            document.write('<script src="/cenlearn/system/plugins/doc_viewer/mammoth.browser.min.js"><\/script>');
         }
     </script>
     <script>
         if (typeof XLSX === 'undefined') {
-            document.write('<script src="../plugins/doc_viewer/xlsx.full.min.js"><\/script>');
+            document.write('<script src="/cenlearn/system/plugins/doc_viewer/xlsx.full.min.js"><\/script>');
         }
     </script>
     <script>
         if (typeof marked === 'undefined') {
-            document.write('<script src="../plugins/doc_viewer/marked.min.js"><\/script>');
+            document.write('<script src="/cenlearn/system/plugins/doc_viewer/marked.min.js"><\/script>');
         }
     </script>
 

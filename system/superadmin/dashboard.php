@@ -3,7 +3,7 @@ include '../includes/session.php';
 include '../includes/conn.php';
 
 $role = strtoupper($user['user_group']);
-if($role !== 'SUPERADMIN'){ header('location: index.php'); exit; }
+if($role !== 'SUPERADMIN'){ header('location: /cenlearn/login'); exit; }
 
 $users = $conn->query("SELECT * FROM users ORDER BY user_group, user_code");
 $userRows = [];
@@ -35,11 +35,11 @@ foreach($userRows as $u){
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn — Super Admin</title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
-  <link rel="stylesheet" href="../bower_components/datatables.net-bs/css/dataTables.bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/datatables.net-bs/css/dataTables.bootstrap.min.css">
   <style>
     .dataTables_wrapper .dataTables_filter input { border:1.5px solid #e2e8f0;border-radius:8px;padding:6px 12px;font-family:'Inter',sans-serif;font-size:13px; }
     .dataTables_wrapper .dataTables_filter input:focus { outline:none;border-color:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.12); }
@@ -74,10 +74,10 @@ foreach($userRows as $u){
     <div class="nav-section">Admin Menu</div>
     <ul style="list-style:none;margin:0;padding:0;">
       <li class="nav-item active">
-        <a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a>
+        <a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a>
       </li>
-      <li class="nav-item">
-        <a href="students.php"><i class="fa fa-graduation-cap"></i> Student Management</a>
+      <li class="<?php echo $page==='students'?'active':''; ?>">
+        <a href="students"><i class="fa fa-graduation-cap"></i> Student Management</a>
       </li>
     </ul>
   </nav>
@@ -91,7 +91,7 @@ foreach($userRows as $u){
         <span>Super Admin</span>
       </div>
     </div>
-    <a href="../logout.php" class="btn-signout"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="btn-signout"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -200,7 +200,7 @@ foreach($userRows as $u){
           <button class="btn-cl btn-amber sm" id="btnRefreshAll" onclick="refreshAllStudents()">
             <i class="fa fa-refresh"></i> Refresh All from TechnoPal
           </button>
-          <a href="students.php" class="btn-cl btn-red sm">
+          <a href="students" class="btn-cl btn-red sm">
             <i class="fa fa-users"></i> Manage Students
           </a>
         </div>
@@ -377,10 +377,10 @@ foreach($userRows as $u){
   </div>
 </div>
 
-<script src="../bower_components/jquery/dist/jquery.min.js"></script>
-<script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
-<script src="../bower_components/datatables.net/js/jquery.dataTables.min.js"></script>
-<script src="../bower_components/datatables.net-bs/js/dataTables.bootstrap.min.js"></script>
+<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
+<script src="/cenlearn/system/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="/cenlearn/system/bower_components/datatables.net/js/jquery.dataTables.min.js"></script>
+<script src="/cenlearn/system/bower_components/datatables.net-bs/js/dataTables.bootstrap.min.js"></script>
 <script>
 $(document).ready(function(){
   $('#usersTable').DataTable({ autoWidth:false, scrollX:true });

@@ -1,9 +1,5 @@
 <?php
-$callerDir = str_replace('\\', '/', realpath(dirname($_SERVER['SCRIPT_FILENAME'] ?? __FILE__)));
-$systemDir = str_replace('\\', '/', realpath(__DIR__ . '/..'));
-$rel = ltrim(str_replace($systemDir, '', $callerDir), '/');
-$depth = ($rel === '') ? 0 : (substr_count($rel, '/') + 1);
-$assetPrefix = str_repeat('../', $depth);
+$assetPrefix = '/cenlearn/system/';
 ?>
 <!DOCTYPE html>
 <html lang="en">

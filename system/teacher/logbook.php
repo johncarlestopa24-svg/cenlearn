@@ -77,10 +77,10 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn — <?php echo $class_id > 0 ? htmlspecialchars(($active_class['subject'] ?: $active_class['class_name']) . ' - ' . $active_class['class_code']) : 'Subject Log Book'; ?></title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
   <style>
     *{box-sizing:border-box;}
     html,body{margin:0;padding:0;overflow-x:hidden;}
@@ -300,14 +300,14 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
   <nav class="sb-nav">
     <div class="sb-section">Teacher Menu</div>
     <ul>
-      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes.php"><i class="fa fa-book"></i> Classes</a></li>
-      <li><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li class="active"><a href="logbook.php"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
-      <li><a href="subject_repository.php"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
+      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="classes"><i class="fa fa-book"></i> Classes</a></li>
+      <li><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li class="active"><a href="logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
+      <li><a href="class_record"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="subject_repository"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -318,7 +318,7 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
         <span>Teacher</span>
       </div>
     </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -326,7 +326,6 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
   <header class="td-topbar" style="display:flex; align-items:center; justify-content:space-between; padding:0 28px; height:62px; background:#fff; border-bottom:1px solid #e2e8f0; position:sticky; top:0; z-index:50;">
     <div style="display:flex; align-items:center; gap:12px;">
       <button class="cl-hamburger" onclick="openSidebar()" aria-label="Menu"><i class="fa fa-bars"></i></button>
-      <h3 style="font-size:17px; font-weight:800; color:#0f172a; margin:0;">Subject Log Book</h3>
     </div>
   </header>
 
@@ -437,7 +436,7 @@ function closeSidebar(){
 
 function deleteSubject(id, name) {
   if (!confirm('Are you sure you want to delete the subject "' + name + '"?')) return;
-  $.post('../shared/class_delete.php', {class_id: id}, function(res) {
+  $.post('/cenlearn/shared/class_delete', {class_id: id}, function(res) {
     if (res.success) {
       location.reload();
     } else {
@@ -475,7 +474,7 @@ $('#createSubjectForm').on('submit', function(e) {
   $('#btnCreateSubject').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Creating...');
   
   $.ajax({
-    url: '../shared/logbook_handler.php',
+    url: '/cenlearn/shared/logbook_handler',
     type: 'POST',
     data: $(this).serialize(),
     dataType: 'json',

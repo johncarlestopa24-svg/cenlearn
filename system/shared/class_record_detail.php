@@ -7,10 +7,10 @@ $tc       = $conn->real_escape_string($user['user_code']);
 $role     = strtoupper($user['user_group']);
 
 if($role !== 'TEACHER'){
-    // Bug 11 fix: was incorrectly redirecting to teacher dashboard for non-teachers
-    header('location: ../student/dashboard.php'); exit;
+    if(empty($user)){ header('location: /cenlearn/login'); exit; }
+    header('location: /cenlearn/dashboard'); exit;
 }
-if(!$class_id){ header('location: ../teacher/dashboard.php'); exit; }
+if(!$class_id){ header('location: /cenlearn/teacher/dashboard'); exit; }
 
 $cq = $conn->query("SELECT c.*, u.first_name AS tf, u.last_name AS tl FROM classes c LEFT JOIN users u ON c.teacher_code=u.user_code WHERE c.id=$class_id AND c.teacher_code='$tc'");
 if($cq->num_rows === 0){ die('Access denied.'); }
@@ -558,10 +558,10 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Class Record — <?php echo htmlspecialchars($class['class_name']); ?></title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
   <style>
     *{box-sizing:border-box;}
     .t-sidebar{position:fixed;top:0;left:0;width:260px;height:100vh;background:linear-gradient(180deg,#0f2027 0%,#203a43 55%,#2c5364 100%);display:flex;flex-direction:column;z-index:200;transition:transform .3s cubic-bezier(.4,0,.2,1);transform:translateX(-260px);}
@@ -773,22 +773,22 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
   <nav class="sb-nav">
     <div class="sb-nav-sec">Main</div>
     <ul>
-      <li><a href="../teacher/dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="/cenlearn/teacher/dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
       <li class="active">
-        <a href="../teacher/classes.php"><i class="fa fa-book"></i> Classes</a>
+        <a href="/cenlearn/teacher/classes"><i class="fa fa-book"></i> Classes</a>
         <ul class="sb-submenu" id="classSubmenu" style="display: block;">
-          <li><a href="class_view.php?id=<?php echo $class_id;?>&tab=materials" id="subMaterials"><i class="fa fa-folder-open"></i> Materials</a></li>
-          <li><a href="class_view.php?id=<?php echo $class_id;?>&tab=classwork" id="subClasswork"><i class="fa fa-tasks"></i> Classwork</a></li>
-          <li><a href="live_class.php?id=<?php echo $class_id;?>" id="subLiveClass"><i class="fa fa-video-camera"></i> Live Class</a></li>
-          <li><a href="class_view.php?id=<?php echo $class_id;?>&tab=performance" id="subPerformance"><i class="fa fa-line-chart"></i> Performance &amp; Analytics</a></li>
-          <li class="active"><a href="class_record_detail.php?id=<?php echo $class_id;?>" id="subRecord"><i class="fa fa-book"></i> Subject Class Record</a></li>
+          <li><a href="class_view?id=<?php echo $class_id;?>&tab=materials" id="subMaterials"><i class="fa fa-folder-open"></i> Materials</a></li>
+          <li><a href="class_view?id=<?php echo $class_id;?>&tab=classwork" id="subClasswork"><i class="fa fa-tasks"></i> Classwork</a></li>
+          <li><a href="live_class?id=<?php echo $class_id;?>" id="subLiveClass"><i class="fa fa-video-camera"></i> Online Class</a></li>
+          <li><a href="class_view?id=<?php echo $class_id;?>&tab=performance" id="subPerformance"><i class="fa fa-line-chart"></i> Performance &amp; Analytics</a></li>
+          <li class="active"><a href="class_record_detail?id=<?php echo $class_id;?>" id="subRecord"><i class="fa fa-book"></i> Subject Class Record</a></li>
         </ul>
       </li>
-      <li><a href="../teacher/quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="../teacher/assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="../teacher/attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="../teacher/logbook.php"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="../teacher/class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="/cenlearn/teacher/quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="/cenlearn/teacher/assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="/cenlearn/teacher/attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="/cenlearn/teacher/logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
+      <li><a href="/cenlearn/teacher/class_record"><i class="fa fa-table"></i> Class Record</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -799,7 +799,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
         <span>Teacher</span>
       </div>
     </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -1645,8 +1645,8 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
   </div>
 </div>
 
-<script src="../bower_components/jquery/dist/jquery.min.js"></script>
-<script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
+<script src="/cenlearn/system/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
 <script>
 var CLASS_ID     = <?php echo $class_id; ?>;
 var CURRENT_TERM = '<?php echo $term; ?>';

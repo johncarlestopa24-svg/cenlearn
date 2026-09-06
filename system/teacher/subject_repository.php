@@ -4,7 +4,7 @@ include '../includes/conn.php';
 include '../includes/programs.php';
 
 if (strtoupper($user['user_group']) !== 'TEACHER') {
-    header('location: ../index.php');
+    header('location: /cenlearn/login');
     exit;
 }
 
@@ -17,10 +17,10 @@ $initials = strtoupper(substr($user['first_name'] ?? 'T', 0, 1) . substr($user['
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn — Subject &amp; Past Quiz Repository</title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
   <style>
     *,*::before,*::after{box-sizing:border-box;}
     body{font-family:'Inter',sans-serif;background:#f0f4f8;margin:0;color:#1e293b;-webkit-font-smoothing:antialiased;}
@@ -143,14 +143,14 @@ $initials = strtoupper(substr($user['first_name'] ?? 'T', 0, 1) . substr($user['
   <nav class="sb-nav">
     <div class="sb-section">Teacher Menu</div>
     <ul>
-      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes.php"><i class="fa fa-book"></i> Classes</a></li>
-      <li><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="logbook.php"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
-      <li class="active"><a href="subject_repository.php"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
+      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="classes"><i class="fa fa-book"></i> Classes</a></li>
+      <li><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
+      <li><a href="class_record"><i class="fa fa-table"></i> Class Record</a></li>
+      <li class="active"><a href="subject_repository"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -161,7 +161,7 @@ $initials = strtoupper(substr($user['first_name'] ?? 'T', 0, 1) . substr($user['
         <span>Teacher</span>
       </div>
     </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -340,8 +340,8 @@ $initials = strtoupper(substr($user['first_name'] ?? 'T', 0, 1) . substr($user['
   </div>
 </div>
 
-<script src="../bower_components/jquery/dist/jquery.min.js"></script>
-<script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
+<script src="/cenlearn/system/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
 <script>
 var rawSubjects = [];
 var myActiveClasses = [];
@@ -357,7 +357,7 @@ $(document).ready(function(){
 });
 
 function loadMyClasses(){
-  $.get('../shared/repository_handler.php', { action:'get_my_active_classes' }, function(r){
+  $.get('/cenlearn/shared/repository_handler', { action:'get_my_active_classes' }, function(r){
     if(r.success){
       myActiveClasses = r.classes || [];
       var sel = $('#clone_target_class');
@@ -386,7 +386,7 @@ function loadSubjects(){
     search: $('#searchInput').val().trim()
   };
 
-  $.get('../shared/repository_handler.php', params, function(r){
+  $.get('/cenlearn/shared/repository_handler', params, function(r){
     if(!r.success){
       $('#subjectsContainer').html('<div class="an-empty"><p style="color:#ef4444;">'+escapeHtml(r.msg||'Failed to load subjects')+'</p></div>');
       return;
@@ -482,7 +482,7 @@ function openSubjectDetails(classId){
   $('#sdModalBody').html('<div style="text-align:center;padding:24px;"><i class="fa fa-spinner fa-spin fa-2x"></i></div>');
   $('#subjectDetailModal').modal('show');
 
-  $.get('../shared/repository_handler.php', { action:'get_subject_details', class_id:classId }, function(r){
+  $.get('/cenlearn/shared/repository_handler', { action:'get_subject_details', class_id:classId }, function(r){
     if(!r.success){
       $('#sdModalBody').html('<p style="color:#ef4444;">'+escapeHtml(r.msg||'Failed to load subject details')+'</p>');
       return;
@@ -502,7 +502,7 @@ function openSubjectDetails(classId){
       r.modules.forEach(function(m){
         var topicTag = m.topic ? '<span style="background:#eff6ff;color:#1d4ed8;padding:1px 5px;border-radius:3px;font-size:9.5px;font-weight:600;margin-left:4px;"><i class="fa fa-tag"></i> '+escapeHtml(m.topic)+'</span>' : '';
         var fname = m.filename || m.file_name || '';
-        var dlUrl  = '../shared/module_download.php?id='+encodeURIComponent(m.id);
+        var dlUrl  = '../shared/module_download?id='+encodeURIComponent(m.id);
         var ext    = fname.split('.').pop().toLowerCase();
         var canView = ['pdf','jpg','jpeg','png','gif','webp'].indexOf(ext) !== -1;
         var viewBtn = canView
@@ -525,7 +525,7 @@ function openSubjectQuizzes(classId){
   $('#pqModalBody').html('<div style="text-align:center;padding:24px;"><i class="fa fa-spinner fa-spin fa-2x"></i></div>');
   $('#pastQuizzesModal').modal('show');
 
-  $.get('../shared/repository_handler.php', { action:'get_subject_details', class_id:classId }, function(r){
+  $.get('/cenlearn/shared/repository_handler', { action:'get_subject_details', class_id:classId }, function(r){
     if(!r.success){
       $('#pqModalBody').html('<p style="color:#ef4444;">'+escapeHtml(r.msg||'Failed to load quizzes')+'</p>');
       return;
@@ -569,7 +569,7 @@ function previewQuizQuestions(quizId){
   $('#prevQuizBody').html('<div style="text-align:center;padding:24px;"><i class="fa fa-spinner fa-spin fa-2x"></i></div>');
   $('#previewQuizModal').modal('show');
 
-  $.get('../shared/repository_handler.php', { action:'preview_quiz', quiz_id:quizId }, function(r){
+  $.get('/cenlearn/shared/repository_handler', { action:'preview_quiz', quiz_id:quizId }, function(r){
     if(!r.success){
       $('#prevQuizBody').html('<p style="color:#ef4444;">'+escapeHtml(r.msg||'Failed to preview quiz')+'</p>');
       return;
@@ -645,7 +645,7 @@ function submitCloneQuiz(){
 
   $('#btnSubmitClone').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Cloning...');
 
-  $.post('../shared/repository_handler.php', {
+  $.post('/cenlearn/shared/repository_handler', {
     action: 'clone_quiz',
     source_quiz_id: srcId,
     target_class_id: trgId,

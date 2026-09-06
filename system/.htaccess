@@ -1,19 +1,36 @@
-# CenLearn Online Production Apache Handler — Pretty Extensionless URLs
+# CenLearn System Subfolder Clean URL Routing
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    DirectoryIndex index.php
+    RewriteBase /cenlearn/
 
-    # 1. Strip .php extension safely
-    RewriteCond %{THE_REQUEST} \s/([^\s?]+)\.php[\s?] [NC]
-    RewriteRule ^ /%1 [R=301,L]
+    # 1. Redirect direct browser access to /system/student/file.php -> /file
+    RewriteCond %{ENV:REDIRECT_STATUS} ^$
+    RewriteCond %{REQUEST_METHOD} ^(GET|HEAD)
+    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?system/student/([a-zA-Z0-9_\-]+)\.php[\s?] [NC]
+    RewriteRule ^ %1 [R=301,L,NE]
 
-    # 2. Allow existing static assets and directories to load directly
-    RewriteCond %{REQUEST_FILENAME} -f [OR]
-    RewriteCond %{REQUEST_FILENAME} -d
-    RewriteRule ^ - [L]
+    # 2. Redirect direct browser access to /system/teacher/file.php -> /teacher/file
+    RewriteCond %{ENV:REDIRECT_STATUS} ^$
+    RewriteCond %{REQUEST_METHOD} ^(GET|HEAD)
+    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?system/teacher/([a-zA-Z0-9_\-]+)\.php[\s?] [NC]
+    RewriteRule ^ teacher/%1 [R=301,L,NE]
 
-    # 3. Internal rewrite extensionless requests to .php file
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME}.php -f
-    RewriteRule ^(.*)$ $1.php [QSA,L]
+    # 3. Redirect direct browser access to /system/superadmin/file.php -> /superadmin/file
+    RewriteCond %{ENV:REDIRECT_STATUS} ^$
+    RewriteCond %{REQUEST_METHOD} ^(GET|HEAD)
+    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?system/superadmin/([a-zA-Z0-9_\-]+)\.php[\s?] [NC]
+    RewriteRule ^ superadmin/%1 [R=301,L,NE]
+
+    # 4. Redirect direct browser access to /system/shared/file.php -> /shared/file
+    RewriteCond %{ENV:REDIRECT_STATUS} ^$
+    RewriteCond %{REQUEST_METHOD} ^(GET|HEAD)
+    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?system/shared/([a-zA-Z0-9_\-]+)\.php[\s?] [NC]
+    RewriteRule ^ shared/%1 [R=301,L,NE]
+
+    # 5. Redirect direct browser access to /system/file.php -> /file
+    RewriteCond %{ENV:REDIRECT_STATUS} ^$
+    RewriteCond %{REQUEST_METHOD} ^(GET|HEAD)
+    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?system/([a-zA-Z0-9_\-]+)\.php[\s?] [NC]
+    RewriteRule ^ %1 [R=301,L,NE]
+
 </IfModule>

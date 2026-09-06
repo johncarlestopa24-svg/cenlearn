@@ -50,7 +50,6 @@ function autoEnrollStudent($conn, $user_code, $program_code, $year_level, $secti
     if($res) while($cl=$res->fetch_assoc()){
         $cid = intval($cl['id']);
         $conn->query("INSERT IGNORE INTO class_members (class_id,user_code) VALUES ($cid,'$uc')");
-        $conn->query("INSERT INTO class_confirmations (class_id, student_code, status, responded_at) VALUES ($cid, '$uc', 'accepted', NOW()) ON DUPLICATE KEY UPDATE status='accepted', responded_at=NOW()");
     }
 }
 
@@ -234,20 +233,6 @@ if($api_ok){
     exit;
 }
 
-// ── Step 4: API down/failed — use cached credentials ─────────────────────
-if($use_cache && $cached_row){
-    if(!$cached_row['is_active']){
-        echo json_encode(['is_valid'=>false,'err_msg'=>'ACCOUNT_DISABLED']); exit;
-    }
-    $conn->query("UPDATE users SET last_login=NOW() WHERE user_code='$u_esc'");
-    $ug      = normalizeRole($cached_row['user_group'] ?? 'STUDENT');
-    $session = buildSession($conn, $cached_row['user_code'], $ug, buildDataFromRow($cached_row));
-    if($session['user_group'] === 'STUDENT' && empty($session['graduated_at']))
-        autoEnrollStudent($conn, $session['user_code'], $session['program_code'], $session['year_level'], $session['section']);
-    $_SESSION['user'] = $session;
-    echo json_encode($session);
-    exit;
-}
 
 // ── Step 5: Placeholder hash — accept any password when API is down ───────
 define('PLACEHOLDER_HASH', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi');

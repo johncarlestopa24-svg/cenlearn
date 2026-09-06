@@ -1,8 +1,9 @@
 <?php
 /**
  * CenLearn Root Entry Point & Environment Router
- * Serves system application seamlessly at root without changing the browser URL.
+ * Redirects to the clean login endpoint while preserving query strings.
  */
-chdir(__DIR__ . '/system');
-require __DIR__ . '/system/index.php';
+$queryString = !empty($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : '';
+header('Location: login' . $queryString);
+exit;
 

@@ -4,13 +4,13 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 
 if(empty($_SESSION['user']) || !$_SESSION['user']['is_valid']){
-    header('location: ../index.php'); exit;
+    header('location: /cenlearn/login'); exit;
 }
 $user = $_SESSION['user'];
 
 $isGrad = !empty($user['graduated_at']);
 // Only redirect away if NOT actually graduated — never infer graduation from missing fields
-if(!$isGrad){ header('location: dashboard.php'); exit; }
+if(!$isGrad){ header('location: dashboard'); exit; }
 
 include '../includes/conn.php';
 $uc2     = $conn->real_escape_string($user['user_code']);
@@ -43,7 +43,7 @@ $q = $quotes[array_rand($quotes)];
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn — Congratulations, <?php echo htmlspecialchars($user['first_name']??''); ?>!</title>
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -290,7 +290,7 @@ $q = $quotes[array_rand($quotes)];
   </div>
 
   <!-- Sign out -->
-  <a href="../logout.php" class="btn-signout">
+  <a href="/cenlearn/logout" class="btn-signout">
     <i class="fa fa-sign-out"></i> Sign Out
   </a>
 
@@ -298,5 +298,6 @@ $q = $quotes[array_rand($quotes)];
 
 <div class="page-footer">CenLearn &mdash; Powered by TechnoPal</div>
 
+<?php include '../includes/student_profile_modal.php'; ?>
 </body>
 </html>

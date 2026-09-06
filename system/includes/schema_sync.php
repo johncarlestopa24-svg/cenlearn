@@ -191,17 +191,6 @@ if (!function_exists('cenlearn_sync_schema')) {
                     UNIQUE KEY `session_user` (`session_id`,`user_code`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
-                // Class Confirmations
-                "CREATE TABLE IF NOT EXISTS `class_confirmations` (
-                    `id` int(11) NOT NULL AUTO_INCREMENT,
-                    `class_id` int(11) NOT NULL,
-                    `student_code` varchar(50) NOT NULL,
-                    `status` enum('pending','accepted','declined') NOT NULL DEFAULT 'pending',
-                    `responded_at` datetime DEFAULT NULL,
-                    `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (`id`),
-                    UNIQUE KEY `class_student` (`class_id`,`student_code`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
                 // Class Record Columns
                 "CREATE TABLE IF NOT EXISTS `class_record_columns` (
@@ -380,6 +369,20 @@ if (!function_exists('cenlearn_sync_schema')) {
                     `last_updated` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     PRIMARY KEY (`id`),
                     UNIQUE KEY `class_topic` (`class_id`,`topic`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+                // Student Study Plan History
+                "CREATE TABLE IF NOT EXISTS `student_study_plan_history` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `student_code` varchar(50) NOT NULL,
+                    `overall_risk` varchar(30) NOT NULL DEFAULT 'on_track',
+                    `risk_score` int(11) NOT NULL DEFAULT 0,
+                    `recommendations_json` text DEFAULT NULL,
+                    `topic_plans_json` text DEFAULT NULL,
+                    `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    KEY `student_code` (`student_code`),
+                    KEY `created_at` (`created_at`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
                 // Subject Logbook

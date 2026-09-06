@@ -2,7 +2,7 @@
 session_start();
 include '../includes/conn.php';
 
-if(empty($_SESSION['user'])){ header('location: index.php'); exit; }
+if(empty($_SESSION['user'])){ header('location: ../login'); exit; }
 $user = $_SESSION['user'];
 $uc   = $conn->real_escape_string($user['user_code']);
 

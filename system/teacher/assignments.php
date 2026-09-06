@@ -3,7 +3,7 @@ include '../includes/session.php';
 include '../includes/conn.php';
 
 if(strtoupper($user['user_group']) !== 'TEACHER'){
-    header('location: ../index.php'); exit;
+    header('location: /cenlearn/login'); exit;
 }
 
 $tc = $conn->real_escape_string($user['user_code']);
@@ -143,10 +143,10 @@ $overallAvgPct = $assignmentsWithSubmissions > 0 ? round($sumAvgPct / $assignmen
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn &mdash; Assignment Dashboard</title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; overflow-x: hidden; }
@@ -391,14 +391,14 @@ $overallAvgPct = $assignmentsWithSubmissions > 0 ? round($sumAvgPct / $assignmen
   <nav class="sb-nav">
     <div class="sb-section">Teacher Menu</div>
     <ul>
-      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes.php"><i class="fa fa-book"></i> Classes</a></li>
-      <li><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li class="active"><a href="assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="logbook.php"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
-      <li><a href="subject_repository.php"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
+      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="classes"><i class="fa fa-book"></i> Classes</a></li>
+      <li><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li class="active"><a href="assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
+      <li><a href="class_record"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="subject_repository"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -409,7 +409,7 @@ $overallAvgPct = $assignmentsWithSubmissions > 0 ? round($sumAvgPct / $assignmen
         <span>Teacher</span>
       </div>
     </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -801,8 +801,8 @@ $overallAvgPct = $assignmentsWithSubmissions > 0 ? round($sumAvgPct / $assignmen
   </div>
 </div>
 
-<script src="../bower_components/jquery/dist/jquery.min.js"></script>
-<script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
+<script src="/cenlearn/system/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
 <script>
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
@@ -879,7 +879,7 @@ function submitCreateAssignment() {
 
   $('#btnSaveAssignment').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Saving...');
 
-  $.post('../shared/assignment_handler.php', {
+  $.post('/cenlearn/shared/assignment_handler', {
     action: 'create',
     class_ids: selectedClasses,
     title: title,
@@ -909,7 +909,7 @@ function submitCreateAssignment() {
 
 function toggleActive(ids, isChecked) {
   var activeVal = isChecked ? 1 : 0;
-  $.post('../shared/assignment_handler.php', {
+  $.post('/cenlearn/shared/assignment_handler', {
     action: 'toggle_active',
     ids: ids,
     is_active: activeVal
@@ -931,7 +931,7 @@ function viewAssignedClasses(title, subjects) {
     html += '<div style="text-align:center;padding:24px 16px;color:#64748b;"><i class="fa fa-info-circle" style="font-size:24px;color:#94a3b8;margin-bottom:8px;display:block;"></i><p style="margin:0;font-size:13.5px;font-weight:500;">No classes assigned to this assignment yet.<br><span style="font-size:12px;color:#94a3b8;">Use the green <strong>+ (Add Class)</strong> button on the card to assign it to a class section.</span></p></div>';
   } else {
     realSubjects.forEach(function(s){
-      var classUrl = `../shared/class_view.php?id=${s.class_id}&tab=classwork`;
+      var classUrl = `../shared/class_view?id=${s.class_id}&tab=classwork`;
       html += '<div class="list-group-item" style="border-radius:10px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;border:1px solid #e2e8f0;padding:12px 16px;">';
       html += '<div>';
       html += '<h6 style="margin:0 0 3px 0;font-weight:700;color:#0f172a;font-size:13px;">' + escapeHtml(s.name) + '</h6>';
@@ -964,7 +964,7 @@ function submitCopyAssignment() {
 
   $('#btnSubmitCopy').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Assigning...');
 
-  $.post('../shared/assignment_handler.php', {
+  $.post('/cenlearn/shared/assignment_handler', {
     action: 'assign_to_class',
     assignment_id: assignmentId,
     target_class_id: targetClassId
@@ -981,7 +981,7 @@ function submitCopyAssignment() {
 
 function deleteAssignment(ids) {
   if(!confirm('Are you sure you want to delete this assignment and all associated student submissions?')) return;
-  $.post('../shared/assignment_handler.php', { action: 'delete', ids: ids }, function(res){
+  $.post('/cenlearn/shared/assignment_handler', { action: 'delete', ids: ids }, function(res){
     if(res.success){
       location.reload();
     } else {
@@ -999,7 +999,7 @@ function viewSubmissions(assignmentIds, title) {
   var idList = assignmentIds.toString().split(',');
   var firstId = idList[0];
 
-  $.get('../shared/assignment_handler.php', { action: 'get_submissions', assignment_id: firstId }, function(res){
+  $.get('/cenlearn/shared/assignment_handler', { action: 'get_submissions', assignment_id: firstId }, function(res){
     $('#submissionsLoading').hide();
     if(res.success) {
       renderSubmissionsList(res.submissions);
@@ -1023,7 +1023,7 @@ function renderSubmissionsList(subs) {
 
   subs.forEach(function(s){
     var studentName = s.first_name + ' ' + s.last_name + ' (' + s.student_code + ')';
-    var fileLink = s.file_name ? '<a href="../shared/submission_download.php?id='+s.id+'" class="btn btn-xs btn-outline-info" style="font-size:11px;font-weight:600;"><i class="fa fa-download"></i> '+ escapeHtml(s.original_name || 'Download File') +'</a>' : '<span class="text-muted" style="font-size:11px;">No File</span>';
+    var fileLink = s.file_name ? '<a href="../shared/submission_download?id='+s.id+'" class="btn btn-xs btn-outline-info" style="font-size:11px;font-weight:600;"><i class="fa fa-download"></i> '+ escapeHtml(s.original_name || 'Download File') +'</a>' : '<span class="text-muted" style="font-size:11px;">No File</span>';
     var gradeVal = s.grade !== null ? s.grade : '';
 
     html += '<tr>';
@@ -1050,7 +1050,7 @@ function saveGrade(subId) {
   var gradeVal = $('#grade_input_' + subId).val();
   if(gradeVal === '') { alert('Please enter a grade score.'); return; }
 
-  $.post('../shared/assignment_handler.php', { action: 'grade', sub_id: subId, grade: gradeVal }, function(res){
+  $.post('/cenlearn/shared/assignment_handler', { action: 'grade', sub_id: subId, grade: gradeVal }, function(res){
     if(res.success){
       alert('Grade saved successfully!');
     } else {
@@ -1063,7 +1063,7 @@ function analyzeAssignmentRelevance(assignmentId) {
   $('#relevanceModalBody').html('<div class="text-center py-4"><i class="fa fa-spinner fa-spin fa-2x text-info"></i><p class="mt-2 text-muted">Analyzing assignment structure & quality metrics...</p></div>');
   $('#relevanceModal').modal('show');
 
-  $.get('../shared/assignment_handler.php', { action: 'analyze_relevance', assignment_id: assignmentId }, function(res){
+  $.get('/cenlearn/shared/assignment_handler', { action: 'analyze_relevance', assignment_id: assignmentId }, function(res){
     if(res.success && res.analysis){
       var a = res.analysis;
       var html = '<div style="margin-bottom:20px; background:#fff; padding:16px; border-radius:12px; border:1px solid #e2e8f0; display:flex; align-items:center; justify-content:space-between;">';

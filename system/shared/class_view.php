@@ -1,7 +1,7 @@
 <?php
 include '../includes/session.php';
 include '../includes/conn.php';
-include '../shared/analytics_engine.php';
+include 'analytics_engine.php';
 
 $class_id = intval($_GET['id'] ?? 0);
 $tab      = $_GET['tab'] ?? 'materials';
@@ -11,7 +11,7 @@ if($tab === 'topic_analytics') {
 $uc       = $conn->real_escape_string($user['user_code']);
 $role     = strtoupper($user['user_group']);
 
-if(!$class_id){ header('location: '.($role==='TEACHER'?'../teacher/dashboard.php':'../student/dashboard.php')); exit; }
+if(!$class_id){ header('location: '.($role==='TEACHER'?'/cenlearn/teacher/dashboard':'/cenlearn/dashboard')); exit; }
 
 $cq = $conn->query("SELECT c.*, u.first_name AS tf, u.last_name AS tl FROM classes c LEFT JOIN users u ON c.teacher_code=u.user_code WHERE c.id=$class_id AND (c.teacher_code='$uc' OR EXISTS (SELECT 1 FROM class_members WHERE class_id=$class_id AND user_code='$uc'))");
 if($cq->num_rows === 0){ die('Access denied.'); }
@@ -164,21 +164,31 @@ $accent    = $isTeacher ? '#10b981' : '#1792bb';
 $accentDk  = $isTeacher ? '#059669' : '#0f5f80';
 $accentRgb = $isTeacher ? '16,185,129' : '23,146,187';
 $theme     = $isTeacher ? 'theme-green' : 'theme-blue';
-$dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php';
+$dashLink  = $isTeacher ? '/cenlearn/teacher/dashboard' : '/cenlearn/dashboard';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+  (function() {
+    const savedTheme = localStorage.getItem('cenlearn_theme');
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+      document.documentElement.classList.add('dark-mode');
+    }
+  })();
+</script>
+
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn — <?php echo htmlspecialchars($class['class_name']); ?></title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
-  <script src="../plugins/chart.umd.min.js"></script>
-  <script src="../bower_components/jquery/dist/jquery.min.js"></script>
-  <script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
+  <script src="/cenlearn/system/plugins/chart.umd.min.js"></script>
+  <script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
+  <script src="/cenlearn/system/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
   <script>
     var CLASS_ID = <?php echo $class_id; ?>;
     
@@ -238,6 +248,120 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
     .sb-submenu li a:hover{color:#fff !important;background:rgba(255,255,255,0.05) !important;}
     .sb-submenu li.active a{color:#fff !important;background:rgba(16,185,129,0.15) !important;font-weight:700;}
     @media(min-width: 901px) { .cl-main{margin-left:240px !important;} }
+    <?php else: ?>
+    /* ── STUDENT APP SIDEBAR & TOP HEADER (MATCHING DASHBOARD) ── */
+    .app-sidebar {
+      position: fixed; top: 0; left: 0; width: 250px; height: 100vh;
+      background: #0b1727; display: flex; flex-direction: column; z-index: 300;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transform: translateX(-250px);
+    }
+    .app-sidebar.open { transform: translateX(0); }
+    @media (min-width: 901px) { .app-sidebar { transform: translateX(0); } }
+
+    .sb-brand { padding: 24px 22px 18px; display: flex; align-items: center; gap: 12px; }
+    .sb-brand-icon {
+      width: 38px; height: 38px; border-radius: 10px;
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 18px; box-shadow: 0 4px 12px rgba(37,99,235,0.4);
+    }
+    .sb-brand-text h2 { margin: 0; font-size: 19px; font-weight: 800; color: #ffffff; letter-spacing: -0.3px; }
+    .sb-brand-text p { margin: 2px 0 0; font-size: 10px; color: #64748b; font-weight: 500; }
+
+    .sb-nav { flex: 1; padding: 12px 14px; overflow-y: auto; }
+    .sb-nav ul { list-style: none; margin: 0; padding: 0; }
+    .sb-nav li { margin-bottom: 4px; }
+    .sb-nav li a {
+      display: flex; align-items: center; gap: 12px; padding: 11px 16px;
+      color: #94a3b8; text-decoration: none; font-size: 13.5px; font-weight: 500;
+      border-radius: 12px; transition: all 0.18s ease;
+    }
+    .sb-nav li a:hover { background: rgba(255,255,255,0.06); color: #ffffff; }
+    .sb-nav li.active a {
+      background: #2563eb; color: #ffffff; font-weight: 600;
+      box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+    }
+    .sb-nav li a i { width: 18px; text-align: center; font-size: 15px; }
+
+    .sb-promo-card {
+      margin: 14px; padding: 16px; border-radius: 16px;
+      background: linear-gradient(180deg, rgba(30,58,138,0.4) 0%, rgba(15,23,42,0.6) 100%);
+      border: 1px solid rgba(255,255,255,0.08); position: relative; overflow: hidden;
+    }
+    .sb-promo-icon {
+      width: 32px; height: 32px; border-radius: 8px; background: rgba(56,189,248,0.15);
+      color: #38bdf8; display: flex; align-items: center; justify-content: center;
+      font-size: 16px; margin-bottom: 10px;
+    }
+    .sb-promo-card p {
+      margin: 0; font-size: 11.5px; color: rgba(255,255,255,0.8); line-height: 1.45; font-weight: 500;
+    }
+
+    .app-main { margin-left: 0; min-height: 100vh; display: flex; flex-direction: column; transition: margin-left 0.3s; }
+    @media (min-width: 901px) { .app-main { margin-left: 250px; } }
+
+    .top-header {
+      background: #ffffff; height: 68px; padding: 0 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100;
+    }
+    .header-search { position: relative; width: 360px; max-width: 100%; }
+    .header-search input {
+      width: 100%; height: 42px; padding: 0 16px 0 42px; border-radius: 99px;
+      border: 1px solid #f1f5f9; background: #f8fafc; font-size: 13px; color: #1e293b;
+      outline: none; transition: all 0.2s; font-family: 'Inter', sans-serif;
+    }
+    .header-search input:focus { background: #ffffff; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+    .header-search i { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 14px; }
+
+    .header-user { display: flex; align-items: center; gap: 12px; position: relative; }
+    .user-profile-wrap { position: relative; }
+    .user-profile-btn {
+      display: flex; align-items: center; justify-content: center; padding: 2px;
+      border-radius: 50%; background: #ffffff; border: 2px solid #e2e8f0;
+      cursor: pointer; transition: all 0.2s ease; user-select: none;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+    .user-profile-btn:hover { background: #f8fafc; border-color: #2563eb; transform: scale(1.05); box-shadow: 0 4px 12px rgba(37,99,235,0.18); }
+    .user-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: linear-gradient(135deg, #0284c7, #2563eb); color: #ffffff;
+      font-weight: 700; font-size: 13.5px; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 6px rgba(37,99,235,0.3); flex-shrink: 0;
+    }
+    .user-info strong { display: block; font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.2; }
+    .user-info span { font-size: 11px; color: #64748b; font-weight: 500; }
+
+    .header-logout-btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+      border-radius: 99px; background: #fee2e2; color: #dc2626; font-size: 12.5px;
+      font-weight: 700; text-decoration: none; border: 1px solid #fca5a5; transition: all 0.2s ease;
+    }
+    .header-logout-btn:hover { background: #dc2626; color: #ffffff; border-color: #dc2626; text-decoration: none; box-shadow: 0 4px 12px rgba(220,38,38,0.25); }
+
+    .profile-dropdown-menu {
+      position: absolute; top: calc(100% + 8px); right: 0; width: 230px;
+      background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.12); padding: 8px; z-index: 1000;
+      display: none; animation: pdmFade 0.2s ease-out;
+    }
+    .profile-dropdown-menu.show { display: block; }
+    @keyframes pdmFade {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .pdm-header { padding: 12px 14px 10px; border-bottom: 1px solid #f1f5f9; margin-bottom: 6px; }
+    .pdm-header strong { display: block; font-size: 13px; font-weight: 700; color: #0f172a; }
+    .pdm-header span { font-size: 11px; color: #64748b; }
+    .pdm-item {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      border-radius: 10px; color: #334155; font-size: 13px; font-weight: 600;
+      text-decoration: none; transition: all 0.15s ease;
+    }
+    .pdm-item:hover { background: #f8fafc; color: #2563eb; text-decoration: none; }
+    .pdm-item.danger { color: #dc2626; }
+    .pdm-item.danger:hover { background: #fef2f2; color: #b91c1c; text-decoration: none; }
     <?php endif; ?>
     html,body{margin:0;padding:0;overflow-x:hidden;}
     .cv-cover { min-height:65px;position:relative;overflow:hidden;background:linear-gradient(135deg,<?php echo $accent;?> 0%,<?php echo $accentDk;?> 100%); display:flex; align-items:flex-end; padding:12px 18px 10px; }
@@ -1225,22 +1349,22 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
   <nav class="sb-nav">
     <div class="sb-nav-sec">Main</div>
     <ul>
-      <li><a href="../teacher/dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="/cenlearn/teacher/dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
       <li class="active">
-        <a href="../teacher/classes.php"><i class="fa fa-book"></i> Classes</a>
+        <a href="/cenlearn/teacher/classes"><i class="fa fa-book"></i> Classes</a>
         <ul class="sb-submenu" id="classSubmenu" style="display: block;">
-          <li class="<?php echo $tab==='materials'?'active':''; ?>"><a href="class_view.php?id=<?php echo $class_id;?>&tab=materials" id="subMaterials"><i class="fa fa-folder-open"></i> Materials</a></li>
-          <li class="<?php echo $tab==='classwork'?'active':''; ?>"><a href="class_view.php?id=<?php echo $class_id;?>&tab=classwork" id="subClasswork"><i class="fa fa-tasks"></i> Classwork</a></li>
-          <li><a href="live_class.php?id=<?php echo $class_id;?>" id="subLiveClass"><i class="fa fa-video-camera"></i> Live Class</a></li>
-          <li class="<?php echo $tab==='performance'?'active':''; ?>"><a href="class_view.php?id=<?php echo $class_id;?>&tab=performance" id="subPerformance"><i class="fa fa-line-chart"></i> Performance &amp; Analytics</a></li>
-          <li><a href="class_record_detail.php?id=<?php echo $class_id;?>" id="subRecord"><i class="fa fa-book"></i> Subject Class Record</a></li>
+          <li class="<?php echo $tab==='materials'?'active':''; ?>"><a href="class_view?id=<?php echo $class_id;?>&tab=materials" id="subMaterials"><i class="fa fa-folder-open"></i> Materials</a></li>
+          <li class="<?php echo $tab==='classwork'?'active':''; ?>"><a href="class_view?id=<?php echo $class_id;?>&tab=classwork" id="subClasswork"><i class="fa fa-tasks"></i> Classwork</a></li>
+          <li><a href="live_class?id=<?php echo $class_id;?>" id="subLiveClass"><i class="fa fa-video-camera"></i> Online Class</a></li>
+          <li class="<?php echo $tab==='performance'?'active':''; ?>"><a href="class_view?id=<?php echo $class_id;?>&tab=performance" id="subPerformance"><i class="fa fa-line-chart"></i> Performance &amp; Analytics</a></li>
+          <li><a href="class_record_detail?id=<?php echo $class_id;?>" id="subRecord"><i class="fa fa-book"></i> Subject Class Record</a></li>
         </ul>
       </li>
-      <li><a href="../teacher/quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="../teacher/assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="../teacher/attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="../teacher/logbook.php"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="../teacher/class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="/cenlearn/teacher/quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="/cenlearn/teacher/assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="/cenlearn/teacher/attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="/cenlearn/teacher/logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
+      <li><a href="/cenlearn/teacher/class_record"><i class="fa fa-table"></i> Class Record</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -1251,60 +1375,93 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
         <span>Teacher</span>
       </div>
     </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 <?php else: ?>
-<aside class="cl-sidebar <?php echo $theme; ?>" id="sidebar">
-  <div class="sidebar-brand">
-    <div class="logo-icon" style="background:linear-gradient(135deg,<?php echo $accent;?>,<?php echo $accentDk;?>);box-shadow:0 4px 12px rgba(<?php echo $accentRgb;?>,.4);"><i class="fa fa-graduation-cap"></i></div>
-    <h2>Cen<span style="color:<?php echo $accent;?>">Learn</span></h2>
-    <p>Learning Management System</p>
-  </div>
-  <nav class="sidebar-nav">
-    <div class="nav-section">Navigation</div>
-    <ul style="list-style:none;margin:0;padding:0;">
-      <li class="nav-item"><a href="<?php echo $dashLink;?>"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li class="nav-item <?php echo $tab==='materials'?'active':''; ?>"><a href="class_view.php?id=<?php echo $class_id;?>&tab=materials"><i class="fa fa-folder-open"></i> Materials</a></li>
-      <li class="nav-item <?php echo $tab==='classwork'?'active':''; ?>"><a href="class_view.php?id=<?php echo $class_id;?>&tab=classwork"><i class="fa fa-tasks"></i> Classwork</a></li>
-      <li class="nav-item"><a href="live_class.php?id=<?php echo $class_id;?>"><i class="fa fa-video-camera"></i> Live Class</a></li>
-      <?php if($isTeacher): ?>
-      <li class="nav-item <?php echo $tab==='performance'?'active':''; ?>"><a href="class_view.php?id=<?php echo $class_id;?>&tab=performance"><i class="fa fa-line-chart"></i> Performance &amp; Analytics</a></li>
-      <li class="nav-item"><a href="class_record_detail.php?id=<?php echo $class_id;?>"><i class="fa fa-book"></i> Class Record</a></li>
-      <?php endif; ?>    </ul>
-  </nav>
-  <div class="sidebar-footer">
-    <div class="user-info">
-      <div class="user-avatar" style="background:linear-gradient(135deg,<?php echo $accent;?>,<?php echo $accentDk;?>);"><i class="fa fa-user"></i></div>
-      <div class="user-meta">
-        <strong><?php echo htmlspecialchars($user['first_name'].' '.$user['last_name']); ?></strong>
-        <span><?php echo $isTeacher ? 'Teacher' : 'Student'; ?></span>
-      </div>
+<?php
+$fullName = trim(($user['first_name'] ?? 'Student') . ' ' . ($user['last_name'] ?? 'User'));
+$initials = strtoupper(substr($user['first_name'] ?? 'S', 0, 1) . substr($user['last_name'] ?? 'U', 0, 1));
+?>
+<aside class="app-sidebar" id="sidebar">
+  <div class="sb-brand">
+    <div class="sb-brand-icon"><i class="fa fa-graduation-cap"></i></div>
+    <div class="sb-brand-text">
+      <h2>CenLearn</h2>
+      <p>Learn &bull; Grow &bull; Succeed</p>
     </div>
-    <a href="../logout.php" class="btn-signout"><i class="fa fa-sign-out"></i> Sign Out</a>
+  </div>
+
+  <nav class="sb-nav">
+    <ul>
+      <li><a href="/cenlearn/dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li class="active"><a href="/cenlearn/classes"><i class="fa fa-book"></i> My Classes</a></li>
+      <li><a href="/cenlearn/quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="/cenlearn/assignments"><i class="fa fa-clipboard"></i> Assignments</a></li>
+      <li><a href="/cenlearn/grades"><i class="fa fa-bar-chart"></i> Grades</a></li>
+      <li><a href="/cenlearn/attendance"><i class="fa fa-calendar"></i> Attendance</a></li>
+    </ul>
+  </nav>
+
+  <div class="sb-promo-card">
+    <div class="sb-promo-icon"><i class="fa fa-leaf"></i></div>
+    <p>Small steps every day lead to big results.</p>
   </div>
 </aside>
 <?php endif; ?>
 
 <!-- MAIN -->
-<div class="cl-main" style="background:#f1f5f9;">
+<div class="<?php echo $isTeacher ? 'cl-main' : 'app-main'; ?>" style="background:#f4f7fa;">
 
-  <!-- Cover -->
+  <!-- Cover Banner Header (Unified Header without Search Bar) -->
   <div class="cv-cover">
     <div class="cv-cover-dots"></div>
     <div class="cv-cover-fade"></div>
     <div class="cv-cover-inner">
-      <div class="cv-cover-left">
-        <h1><?php echo htmlspecialchars($class['class_name']); ?></h1>
-        <div class="cv-cover-meta">
-          <?php if($class['subject']): ?><span class="cv-meta-pill"><i class="fa fa-book"></i><?php echo htmlspecialchars($class['subject']); ?></span><?php endif; ?>
-          <?php if($class['section']): ?><span class="cv-meta-pill"><i class="fa fa-tag"></i>Section <?php echo htmlspecialchars($class['section']); ?></span><?php endif; ?>
-          <?php if($class['year_level']): ?><span class="cv-meta-pill"><i class="fa fa-calendar"></i>Year <?php echo htmlspecialchars($class['year_level']); ?></span><?php endif; ?>
-          <?php if($class['program_code']): ?><span class="cv-meta-pill"><i class="fa fa-university"></i><?php echo htmlspecialchars($class['program_code']); ?></span><?php endif; ?>
-          <span class="cv-meta-pill"><i class="fa fa-user"></i><?php echo htmlspecialchars($class['tf'].' '.$class['tl']); ?></span>
+      <div class="cv-cover-left" style="display:flex; align-items:center; gap:16px;">
+        <button class="cl-hamburger" onclick="openSidebar()" aria-label="Menu" style="background:none; border:none; font-size:18px; color:#ffffff; cursor:pointer; padding:0;">
+          <i class="fa fa-bars"></i>
+        </button>
+        <div>
+          <h1><?php echo htmlspecialchars($class['class_name']); ?></h1>
+          <div class="cv-cover-meta">
+            <?php if($class['subject']): ?><span class="cv-meta-pill"><i class="fa fa-book"></i><?php echo htmlspecialchars($class['subject']); ?></span><?php endif; ?>
+            <?php if($class['section']): ?><span class="cv-meta-pill"><i class="fa fa-tag"></i>Section <?php echo htmlspecialchars($class['section']); ?></span><?php endif; ?>
+            <?php if($class['year_level']): ?><span class="cv-meta-pill"><i class="fa fa-calendar"></i>Year <?php echo htmlspecialchars($class['year_level']); ?></span><?php endif; ?>
+            <?php if($class['program_code']): ?><span class="cv-meta-pill"><i class="fa fa-university"></i><?php echo htmlspecialchars($class['program_code']); ?></span><?php endif; ?>
+            <span class="cv-meta-pill"><i class="fa fa-user"></i><?php echo htmlspecialchars($class['tf'].' '.$class['tl']); ?></span>
+          </div>
         </div>
       </div>
-      <div class="cv-cover-right"></div>
+      <div class="cv-cover-right">
+        <?php if(!$isTeacher): ?>
+        <div class="user-profile-wrap">
+          <div class="user-profile-btn" onclick="toggleProfileMenu(event)" title="<?php echo htmlspecialchars($fullName); ?>" style="background:rgba(255,255,255,0.18); border:1.5px solid rgba(255,255,255,0.35); padding:2px;">
+            <div class="user-avatar" style="background:linear-gradient(135deg, #0284c7, #2563eb);"><?php echo $initials; ?></div>
+          </div>
+
+          <div class="profile-dropdown-menu" id="profileMenu">
+            <div class="pdm-header">
+              <strong><?php echo htmlspecialchars($fullName); ?></strong>
+              <span>Student &bull; <?php echo htmlspecialchars($user['program_code'] ?? 'Regular'); ?></span>
+            </div>
+          <div class="pdm-theme-item" onclick="toggleDarkMode(event)">
+            <div class="pdm-theme-left">
+              <i class="fa fa-moon-o" id="pdmThemeIcon"></i>
+              <span>Dark Mode</span>
+            </div>
+            <div class="pdm-switch">
+              <input type="checkbox" id="pdmThemeCheck" onclick="event.stopPropagation(); toggleDarkMode(event);">
+              <span class="pdm-slider"></span>
+            </div>
+          </div>
+          <div class="pdm-divider"></div>
+            <a href="/cenlearn/program" class="pdm-item"><i class="fa fa-user"></i> My Profile</a>
+            <a href="/cenlearn/logout" class="pdm-item danger"><i class="fa fa-sign-out"></i> Log Out</a>
+          </div>
+        </div>
+        <?php endif; ?>
+      </div>
     </div>
   </div>
 
@@ -1312,6 +1469,7 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
   <div class="cv-toolbar">
     <div class="cv-toolbar-left"></div>
     <div class="cv-toolbar-right">
+      <a href="/cenlearn/shared/live_class?id=<?php echo $class_id; ?>" class="btn-accent btn-accent-sm" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-weight:700;box-shadow:0 3px 10px rgba(16,185,129,0.3);text-decoration:none;"><i class="fa fa-video-camera"></i> Online Class</a>
       <?php if($tab === 'materials' && $isTeacher): ?>
       <button class="btn-accent btn-accent-sm" onclick="openCreateFolderModal()"><i class="fa fa-folder"></i> + New Folder</button>
       <button class="btn-accent btn-accent-sm" onclick="openUploadModal(<?php echo $current_folder_id; ?>)"><i class="fa fa-upload"></i> Upload Module</button>
@@ -1331,7 +1489,7 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
       <!-- INSIDE A FOLDER -->
       <div class="folder-nav-bar">
         <div class="folder-breadcrumb">
-          <a href="class_view.php?id=<?php echo $class_id;?>&tab=materials"><i class="fa fa-folder-open-o"></i> Class Materials</a>
+          <a href="class_view?id=<?php echo $class_id;?>&tab=materials"><i class="fa fa-folder-open-o"></i> Class Materials</a>
           <i class="fa fa-angle-right" style="color:#cbd5e1;"></i>
           <span><i class="fa fa-folder-open" style="color:#f59e0b;"></i> <?php echo htmlspecialchars($currentFolder['name']); ?></span>
           <?php if($currentFolder['allow_student_view']): ?>
@@ -1355,7 +1513,7 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
           <?php else: ?>
           <button class="btn-accent btn-accent-sm" onclick="openUploadModal(<?php echo $current_folder_id; ?>)"><i class="fa fa-upload"></i> Upload PPT / File</button>
           <?php endif; ?>
-          <a href="class_view.php?id=<?php echo $class_id;?>&tab=materials" class="btn btn-default btn-xs" style="border-radius:6px;font-size:11px;font-weight:700;padding:4px 10px;background:#f8fafc;border:1px solid #e2e8f0;text-decoration:none;color:#475569;display:inline-flex;align-items:center;gap:4px;">
+          <a href="class_view?id=<?php echo $class_id;?>&tab=materials" class="btn btn-default btn-xs" style="border-radius:6px;font-size:11px;font-weight:700;padding:4px 10px;background:#f8fafc;border:1px solid #e2e8f0;text-decoration:none;color:#475569;display:inline-flex;align-items:center;gap:4px;">
             <i class="fa fa-arrow-left"></i> All Materials
           </a>
         </div>
@@ -1397,10 +1555,10 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
             </div>
           </div>
           <div class="mod-card-actions">
-            <a href="module_view.php?id=<?php echo $m['id']; ?>" target="_blank" class="btn-view" style="<?php echo $isPpt ? 'background:linear-gradient(135deg,#f97316,#ea580c);' : ''; ?>">
+            <a href="module_view?id=<?php echo $m['id']; ?>" target="_blank" class="btn-view" style="<?php echo $isPpt ? 'background:linear-gradient(135deg,#f97316,#ea580c);' : ''; ?>">
               <i class="fa <?php echo $isPpt ? 'fa-play-circle' : 'fa-eye'; ?>"></i> <?php echo $isPpt ? 'View Presentation' : 'View Module'; ?>
             </a>
-            <a href="module_download.php?id=<?php echo $m['id']; ?>" class="btn-download"><i class="fa fa-download"></i> Download</a>
+            <a href="module_download?id=<?php echo $m['id']; ?>" class="btn-download"><i class="fa fa-download"></i> Download</a>
             <?php if($isTeacher || ($m['uploaded_by'] === $user['user_code'])): ?>
             <button type="button" class="btn-icon-del" onclick="deleteModule(<?php echo (int)$m['id']; ?>)" title="Delete"><i class="fa fa-trash"></i></button>
             <?php endif; ?>
@@ -1421,7 +1579,7 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
       </div>
       <div class="folder-grid">
         <?php foreach($classFolders as $f): ?>
-        <div class="folder-card" onclick="window.location.href='class_view.php?id=<?php echo $class_id;?>&tab=materials&folder_id=<?php echo $f['id'];?>'">
+        <div class="folder-card" onclick="window.location.href='class_view?id=<?php echo $class_id;?>&tab=materials&folder_id=<?php echo $f['id'];?>'">
           <?php if($isTeacher): ?>
           <div class="folder-card-menu" onclick="event.stopPropagation();">
             <button type="button" class="folder-opt-btn" onclick="openEditFolderModal(<?php echo htmlspecialchars(json_encode($f), ENT_QUOTES, 'UTF-8'); ?>)" title="Edit Folder"><i class="fa fa-pencil"></i></button>
@@ -1490,10 +1648,10 @@ $dashLink  = $isTeacher ? '../teacher/dashboard.php' : '../student/dashboard.php
             </div>
           </div>
           <div class="mod-card-actions">
-            <a href="module_view.php?id=<?php echo $m['id']; ?>" target="_blank" class="btn-view" style="<?php echo $isPpt ? 'background:linear-gradient(135deg,#f97316,#ea580c);' : ''; ?>">
+            <a href="module_view?id=<?php echo $m['id']; ?>" target="_blank" class="btn-view" style="<?php echo $isPpt ? 'background:linear-gradient(135deg,#f97316,#ea580c);' : ''; ?>">
               <i class="fa <?php echo $isPpt ? 'fa-play-circle' : 'fa-eye'; ?>"></i> <?php echo $isPpt ? 'View Presentation' : 'View Module'; ?>
             </a>
-            <a href="module_download.php?id=<?php echo $m['id']; ?>" class="btn-download"><i class="fa fa-download"></i> Download</a>
+            <a href="module_download?id=<?php echo $m['id']; ?>" class="btn-download"><i class="fa fa-download"></i> Download</a>
             <?php if($isTeacher || ($m['uploaded_by'] === $user['user_code'])): ?>
             <button type="button" class="btn-icon-del" onclick="deleteModule(<?php echo (int)$m['id']; ?>)" title="Delete"><i class="fa fa-trash"></i></button>
             <?php endif; ?>
@@ -2302,9 +2460,9 @@ function openUploadModal(folderId){
           showAlert('uplAlert','success','Uploaded successfully!'); 
           setTimeout(function(){ 
             if(parseInt(folderId) > 0) {
-              location.href = 'class_view.php?id=' + CLASS_ID + '&tab=materials&folder_id=' + folderId;
+              location.href = 'class_view?id=' + CLASS_ID + '&tab=materials&folder_id=' + folderId;
             } else {
-              location.href = 'class_view.php?id=' + CLASS_ID + '&tab=materials';
+              location.href = 'class_view?id=' + CLASS_ID + '&tab=materials';
             }
           }, 900); 
         } else {
@@ -2346,7 +2504,7 @@ if(btnSaveF){
       if(r.success){
         showAlert('createFolderAlert', 'success', 'Folder created!');
         setTimeout(function(){
-          location.href = 'class_view.php?id=' + CLASS_ID + '&tab=materials&folder_id=' + r.folder_id;
+          location.href = 'class_view?id=' + CLASS_ID + '&tab=materials&folder_id=' + r.folder_id;
         }, 800);
       } else {
         showAlert('createFolderAlert', 'danger', r.msg || 'Failed');
@@ -2408,7 +2566,7 @@ function deleteFolder(fid){
   if(!confirm('Are you sure you want to delete this folder? Files inside will be kept in general class materials.')) return;
   $.post('folder_handler.php', { action: 'delete_folder', folder_id: fid, delete_files: 0 }, function(r){
     if(r.success){
-      location.href = 'class_view.php?id=' + CLASS_ID + '&tab=materials';
+      location.href = 'class_view?id=' + CLASS_ID + '&tab=materials';
     } else {
       alert(r.msg || 'Failed to delete folder');
     }
@@ -2437,7 +2595,7 @@ document.getElementById('btnCreateAssign').addEventListener('click', function(){
   var btn = this;
   $.post('assignment_handler.php',{ action:'create', class_id:CLASS_ID, title:title, instructions:$('#aInstructions').val(), points:$('#aPoints').val(), due_date:$('#aDueDate').val(), term:$('#aTerm').val() },function(r){
     btn.disabled=false; btn.innerHTML='<i class="fa fa-save"></i> Create';
-    if(r.success){ showAlert('assignAlert','success','Assignment created!'); setTimeout(function(){ location.href='class_view.php?id='+CLASS_ID+'&tab=classwork'; },900); }
+    if(r.success){ showAlert('assignAlert','success','Assignment created!'); setTimeout(function(){ location.href='class_view?id='+CLASS_ID+'&tab=classwork'; },900); }
     else showAlert('assignAlert','danger',r.msg||'Failed');
   },'json');
 });
@@ -2459,7 +2617,7 @@ function viewSubmissions(assignId, title){
     var html='<table class="sub-table"><thead><tr><th>Student</th><th>File</th><th>Remarks</th><th>Grade</th><th></th></tr></thead><tbody>';
     subs.forEach(function(s){
       html+='<tr><td><strong>'+s.student_name+'</strong></td>';
-      html+='<td>'+(s.file_name?'<a href="submission_download.php?id='+s.id+'" style="color:#1792bb;font-size:12px;"><i class="fa fa-download"></i> '+s.original_name+'</a>':'<span style="color:#94a3b8;font-size:12px;">No file</span>')+'</td>';
+      html+='<td>'+(s.file_name?'<a href="submission_download?id='+s.id+'" style="color:#1792bb;font-size:12px;"><i class="fa fa-download"></i> '+s.original_name+'</a>':'<span style="color:#94a3b8;font-size:12px;">No file</span>')+'</td>';
       html+='<td style="font-size:12px;color:#64748b;">'+(s.remarks||'—')+'</td>';
       html+='<td><input type="number" class="grade-input" id="grade_'+s.id+'" value="'+(s.grade!==null?s.grade:'')+'" min="0" placeholder="—"></td>';
       html+='<td><button onclick="saveGrade('+s.id+')" style="padding:5px 10px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;">Save</button></td></tr>';
@@ -2910,7 +3068,7 @@ if(_btnCQ) _btnCQ.addEventListener('click', function(){
   var shA = $('#qShuffleA').length ? ($('#qShuffleA').is(':checked') ? 1 : 0) : 1;
   $.post('quiz_handler.php',{ action:'create', class_id:CLASS_ID, title:title, time_limit:$('#qTimeLimit').val(), due_date:$('#qDueDate').val(), shuffle_questions:shQ, shuffle_answers:shA, questions:JSON.stringify(questions), term:$('#qTerm').val() },function(r){
     btn.disabled=false; btn.innerHTML='<i class="fa fa-save"></i> Create Quiz';
-    if(r.success){ showAlert('quizAlert','success','Quiz created!'); setTimeout(function(){ location.href='class_view.php?id='+CLASS_ID+'&tab=classwork'; },900); }
+    if(r.success){ showAlert('quizAlert','success','Quiz created!'); setTimeout(function(){ location.href='class_view?id='+CLASS_ID+'&tab=classwork'; },900); }
     else showAlert('quizAlert','danger',r.msg||'Failed');
   },'json');
 });
@@ -2931,7 +3089,7 @@ function viewQuizResults(quizId, title){
   if(bodyEl) bodyEl.innerHTML = '<div style="text-align:center;padding:36px;color:#94a3b8;"><i class="fa fa-spinner fa-spin fa-2x"></i><p style="margin-top:10px;font-size:13px;">Loading student submissions...</p></div>';
   openModal('quizResModal');
 
-  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'classwork_data.php' : '../shared/classwork_data.php';
+  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'classwork_data.php' : '/cenlearn/shared/classwork_data';
   
   $.ajax({
     url: postUrl,
@@ -3067,7 +3225,7 @@ function allowStudentRetake(quizId, studentCode, studentName){
     return;
   }
 
-  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'classwork_data.php' : '../shared/classwork_data.php';
+  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'classwork_data.php' : '/cenlearn/shared/classwork_data';
 
   $.post(postUrl, { action: 'allow_retake', quiz_id: quizId, student_code: studentCode }, function(res){
     if(typeof res === 'string'){
@@ -3163,7 +3321,7 @@ function viewStudentAnswers(quizId, studentCode){
   document.getElementById('answersModalBody').innerHTML = '<div style="text-align:center;padding:36px;color:#94a3b8;"><i class="fa fa-spinner fa-spin fa-2x"></i><p style="margin-top:10px;font-size:13px;">Loading student answers...</p></div>';
   openModal('answersModal');
 
-  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'classwork_data.php' : '../shared/classwork_data.php';
+  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'classwork_data.php' : '/cenlearn/shared/classwork_data';
   
   $.ajax({
     url: postUrl,
@@ -3577,7 +3735,7 @@ function saveTeacherEssayScore(quizId, studentCode, questionId){
     btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Saving...';
   }
 
-  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'classwork_data.php' : '../shared/classwork_data.php';
+  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'classwork_data.php' : '/cenlearn/shared/classwork_data';
 
   $.post(postUrl, {
     action: 'save_essay_score',
@@ -3645,26 +3803,30 @@ document.getElementById('btnSubmitAssign').addEventListener('click', function(){
 var _quizId=null, _timerInterval=null, _quizAnswers={}, _quizTotal=0;
 var _tabSwitches=0, _fsExits=0, _proctoringActive=false;
 
-// ── Proctoring ─────────────────────────────────────────────────────────────
+// ── Anti-Cheat Proctoring ───────────────────────────────────────────────────
+var _procCooldown = false;
+
 function _onVisibilityChange(){
-  if(!_proctoringActive) return;
-  if(document.hidden){
+  if(!_proctoringActive || _isSubmitting) return;
+  if(document.hidden || document.visibilityState === 'hidden'){
     _tabSwitches++;
-    _showViolation('Warning: Tab switch or page reload detected! <span class="violation-count">'+_tabSwitches+' of 3 allowed violations</span>');
-    var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'quiz_handler.php' : '../shared/quiz_handler.php';
-    $.post(postUrl, { action: 'log_violation', quiz_id: _quizId }, function(res){
-      if(res && res.limit_reached){
-        alert('Maximum 3 violations reached! Your quiz is automatically being submitted.');
-        if(document.getElementById('btnSubmitQuiz')) document.getElementById('btnSubmitQuiz').click();
-      }
-    }, 'json');
+    _handleProctorViolation('Tab switch / browser window minimize detected!');
   }
 }
+
+function _onWindowBlur(){
+  if(!_proctoringActive || _isSubmitting) return;
+  if(!_procCooldown){
+    _tabSwitches++;
+    _handleProctorViolation('Window focus lost (Alt+Tab / application switch detected)!');
+  }
+}
+
 function _onFsChange(){
-  if(!_proctoringActive) return;
-  if(!document.fullscreenElement && !document.webkitFullscreenElement){
+  if(!_proctoringActive || _isSubmitting) return;
+  if(!document.fullscreenElement && !document.webkitFullscreenElement && !document.mozFullScreenElement && !document.msFullscreenElement){
     _fsExits++;
-    _showViolation('Fullscreen exited! <span class="violation-count">'+_fsExits+'x</span> — returning to fullscreen...');
+    _handleProctorViolation('Full-screen mode exited (ESC key / window resize detected)!');
     setTimeout(function(){
       var el = document.documentElement;
       if(el && _proctoringActive){
@@ -3674,19 +3836,87 @@ function _onFsChange(){
     }, 800);
   }
 }
+
+function _onProctorKeydown(e){
+  if(!_proctoringActive) return;
+  var code = e.keyCode || e.which;
+  var key = e.key ? e.key.toLowerCase() : '';
+
+  if (code === 27 || key === 'escape') {
+    e.preventDefault();
+    _fsExits++;
+    _handleProctorViolation('ESC key pressed during active quiz!');
+    return false;
+  }
+  if (code === 123 || (e.ctrlKey && e.shiftKey && (code === 73 || code === 74 || code === 67 || key === 'i' || key === 'j' || key === 'c'))) {
+    e.preventDefault(); e.stopPropagation(); return false;
+  }
+  if (e.ctrlKey && (code === 85 || code === 67 || code === 86 || code === 83 || code === 80 || key === 'u' || key === 'c' || key === 'v' || key === 's' || key === 'p')) {
+    var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+    if (code === 85 || (e.ctrlKey && key === 'u')) { e.preventDefault(); e.stopPropagation(); return false; }
+    if (tag !== 'input' && tag !== 'textarea') {
+      e.preventDefault(); e.stopPropagation(); return false;
+    }
+  }
+}
+
+function _onProctorPrevent(e){
+  if(!_proctoringActive) return;
+  var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+  if (e.type === 'selectstart' && (tag === 'input' || tag === 'textarea')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  return false;
+}
+
+function _handleProctorViolation(reason){
+  if(_procCooldown || _isSubmitting) return;
+  _procCooldown = true;
+
+  var totalV = _tabSwitches + _fsExits;
+  _showViolation('<strong>ANTI-CHEAT ALERT:</strong> ' + reason + ' <span class="violation-count">(' + totalV + ' of 3 allowed violations)</span>');
+
+  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'quiz_handler.php' : '/cenlearn/shared/quiz_handler';
+  $.post(postUrl, { action: 'log_violation', quiz_id: _quizId, tab_switches: _tabSwitches, fullscreen_exits: _fsExits }, function(res){
+    if (res && res.tab_switches) totalV = parseInt(res.tab_switches) || totalV;
+    if ((res && res.limit_reached) || totalV >= 3) {
+      setTimeout(function(){
+        alert('SECURITY ALERT: Maximum 3 anti-cheat violations reached! Your quiz is automatically being submitted now.');
+        var subBtn = document.getElementById('btnSubmitQuiz');
+        if(subBtn) subBtn.click();
+      }, 300);
+    }
+  }, 'json');
+
+  setTimeout(function(){ _procCooldown = false; }, 1500);
+}
+
 function _showViolation(msg){
   var bar = document.getElementById('quizViolationBar');
   var txt = document.getElementById('quizViolationMsg');
   if(bar && txt){ txt.innerHTML = msg; bar.classList.add('show'); }
 }
+
 function startProctoring(initSwitches){
-  _tabSwitches = initSwitches || 0; _fsExits=0; _proctoringActive=true;
+  _tabSwitches = initSwitches || 0; _fsExits=0; _proctoringActive=true; _procCooldown=false;
   if (_tabSwitches > 0) {
     _showViolation('Warning: ' + _tabSwitches + ' of 3 allowed violations (tab switches / page reloads) recorded!');
   }
   document.addEventListener('visibilitychange', _onVisibilityChange);
   document.addEventListener('fullscreenchange', _onFsChange);
   document.addEventListener('webkitfullscreenchange', _onFsChange);
+  document.addEventListener('mozfullscreenchange', _onFsChange);
+  document.addEventListener('MSFullscreenChange', _onFsChange);
+  window.addEventListener('blur', _onWindowBlur);
+  window.addEventListener('pagehide', _onWindowBlur);
+
+  document.addEventListener('contextmenu', _onProctorPrevent, true);
+  document.addEventListener('copy', _onProctorPrevent, true);
+  document.addEventListener('cut', _onProctorPrevent, true);
+  document.addEventListener('paste', _onProctorPrevent, true);
+  document.addEventListener('selectstart', _onProctorPrevent, true);
+  window.addEventListener('keydown', _onProctorKeydown, true);
+
   var el = document.documentElement;
   if(el && el.requestFullscreen) {
     el.requestFullscreen().catch(function(){});
@@ -3698,10 +3928,23 @@ var _timerInterval = null, _heartbeatInt = null;
 
 function stopProctoring(){
   _proctoringActive=false;
+  _procCooldown=false;
   if(_heartbeatInt) clearInterval(_heartbeatInt);
   document.removeEventListener('visibilitychange', _onVisibilityChange);
   document.removeEventListener('fullscreenchange', _onFsChange);
   document.removeEventListener('webkitfullscreenchange', _onFsChange);
+  document.removeEventListener('mozfullscreenchange', _onFsChange);
+  document.removeEventListener('MSFullscreenChange', _onFsChange);
+  window.removeEventListener('blur', _onWindowBlur);
+  window.removeEventListener('pagehide', _onWindowBlur);
+
+  document.removeEventListener('contextmenu', _onProctorPrevent, true);
+  document.removeEventListener('copy', _onProctorPrevent, true);
+  document.removeEventListener('cut', _onProctorPrevent, true);
+  document.removeEventListener('paste', _onProctorPrevent, true);
+  document.removeEventListener('selectstart', _onProctorPrevent, true);
+  window.removeEventListener('keydown', _onProctorKeydown, true);
+
   if(document.exitFullscreen) document.exitFullscreen().catch(function(){});
   else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
   var bar = document.getElementById('quizViolationBar');
@@ -3753,7 +3996,7 @@ function takeQuiz(id){
   if(violEl) violEl.classList.remove('show');
   openModal('takeQuizModal');
 
-  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'quiz_handler.php' : '../shared/quiz_handler.php';
+  var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'quiz_handler.php' : '/cenlearn/shared/quiz_handler';
 
   if(_heartbeatInt) clearInterval(_heartbeatInt);
   _heartbeatInt = setInterval(function(){
@@ -3968,7 +4211,7 @@ function updateIdAnswer(qid, val){
 
 function saveDraftAnswers(){
   if(_quizId && _quizAnswers){
-    var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'quiz_handler.php' : '../shared/quiz_handler.php';
+    var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'quiz_handler.php' : '/cenlearn/shared/quiz_handler';
     $.post(postUrl, {
       action: 'save_draft',
       quiz_id: _quizId,
@@ -3987,7 +4230,7 @@ if(btnSubmitQuizEl){
     stopProctoring();
     this.disabled=true; this.innerHTML='<i class="fa fa-spinner fa-spin"></i> Submitting...';
     var btn=this;
-    var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'quiz_handler.php' : '../shared/quiz_handler.php';
+    var postUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'quiz_handler.php' : '/cenlearn/shared/quiz_handler';
     $.post(postUrl,{action:'submit',quiz_id:_quizId,answers:JSON.stringify(_quizAnswers),tab_switches:_tabSwitches,fullscreen_exits:_fsExits},function(r){
     btn.disabled=false; btn.innerHTML='<i class="fa fa-check"></i> Submit Quiz';
     if(r.success){
@@ -4126,7 +4369,7 @@ function toggleBreakdown(idx){
 }
 
 $(document).ready(function(){
-  var handlerUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'topic_analytics_handler.php' : '../shared/topic_analytics_handler.php';
+  var handlerUrl = (window.location.pathname.indexOf('/shared/') !== -1) ? 'topic_analytics_handler.php' : '/cenlearn/shared/topic_analytics_handler';
   $.get(handlerUrl, { action:'get_class_analytics', class_id:<?php echo $class_id; ?> }, function(r){
     if(!r.success) {
       $('#classTopicsArea').html('<p style="color:#ef4444;font-size:12px;">'+r.msg+'</p>');
@@ -4157,7 +4400,7 @@ $(document).ready(function(){
         
         var modBadge = '';
         if(t.matched_modules && t.matched_modules.length > 0) {
-          modBadge = '<div style="margin-top:3px;"><a href="module_view.php?id=' + t.matched_modules[0].id + '" target="_blank" style="background:#eff6ff;color:#1d4ed8;padding:2px 6px;border-radius:5px;font-size:10px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:3px;"><i class="fa fa-book"></i> Module: ' + t.matched_modules[0].title + '</a></div>';
+          modBadge = '<div style="margin-top:3px;"><a href="module_view?id=' + t.matched_modules[0].id + '" target="_blank" style="background:#eff6ff;color:#1d4ed8;padding:2px 6px;border-radius:5px;font-size:10px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:3px;"><i class="fa fa-book"></i> Module: ' + t.matched_modules[0].title + '</a></div>';
         }
 
         var quizBadge = '';
@@ -4172,7 +4415,7 @@ $(document).ready(function(){
         }
 
         html += '<tr>' +
-                '<td><strong>'+t.student_name+'</strong><div class="stu-id">'+t.student_code+'</div></td>' +
+                '<td><a href="javascript:void(0)" onclick="openStudentProfileModal(\''+t.student_code+'\')" style="color:#2563eb;font-weight:700;text-decoration:none;">'+t.student_name+'</a><div class="stu-id">'+t.student_code+'</div></td>' +
                 '<td><strong>'+t.topic+'</strong>' + modBadge + quizBadge + '</td>' +
                 '<td><span style="font-size:12.5px;font-weight:800;color:'+color+';">'+(t.mastery_score !== undefined ? t.mastery_score : (100 - t.weakness_score))+'%</span><br>' + badge + stdBadge + '</td>' +
                 '<td style="font-size:11px;color:#334155;line-height:1.4;">'+ (t.recommendation || 'Assign practice exercises') +'</td>' +
@@ -4188,8 +4431,53 @@ $(document).ready(function(){
 });
 <?php endif; ?>
 function takeQuiz(quizId) {
-  window.location.href = '../student/quizzes.php?take=' + quizId;
+  window.location.href = 'quizzes?take=' + quizId;
 }
 </script>
+
+<!-- Floating Dark Mode Bubble -->
+<button type="button" class="floating-theme-bubble" id="floatingThemeBubble" onclick="toggleDarkMode(event)" title="Toggle Dark/Light Mode" aria-label="Toggle Theme">
+  <i class="fa fa-moon-o" id="floatingThemeIcon"></i>
+</button>
+
+<script>
+function toggleDarkMode(e) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  const isDark = document.body.classList.toggle('dark-mode');
+  if (isDark) {
+    document.documentElement.classList.add('dark-mode');
+    localStorage.setItem('cenlearn_theme', 'dark');
+  } else {
+    document.documentElement.classList.remove('dark-mode');
+    localStorage.setItem('cenlearn_theme', 'light');
+  }
+  syncThemeUI(isDark);
+}
+
+function syncThemeUI(isDark) {
+  const chk = document.getElementById('pdmThemeCheck');
+  if (chk) chk.checked = isDark;
+  
+  const pdmIcon = document.getElementById('pdmThemeIcon');
+  if (pdmIcon) {
+    pdmIcon.className = isDark ? 'fa fa-sun-o' : 'fa fa-moon-o';
+  }
+  
+  const floatIcon = document.getElementById('floatingThemeIcon');
+  if (floatIcon) {
+    floatIcon.className = isDark ? 'fa fa-sun-o' : 'fa fa-moon-o';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const isDark = document.documentElement.classList.contains('dark-mode') || document.body.classList.contains('dark-mode');
+  if (isDark) {
+    document.body.classList.add('dark-mode');
+  }
+  syncThemeUI(isDark);
+});
+</script>
+
+<?php include '../includes/student_profile_modal.php'; ?>
 </body>
 </html>

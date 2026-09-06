@@ -4,7 +4,7 @@ include '../includes/conn.php';
 include '../includes/programs.php';
 
 if(strtoupper($user['user_group']) !== 'TEACHER'){
-    header('location: dashboard.php'); exit;
+    header('location: dashboard'); exit;
 }
 
 $tc = $conn->real_escape_string($user['user_code']);
@@ -48,15 +48,7 @@ $palette = [
 ];
 $icons = ['fa-table','fa-calculator','fa-book','fa-pencil','fa-flask','fa-globe','fa-code'];
 
-// Pending inbox badge
-$pendingQ = $conn->query("
-    SELECT COUNT(*) AS c FROM class_confirmations cc
-    JOIN classes c ON cc.class_id = c.id
-    WHERE c.teacher_code = '$tc' AND cc.status = 'pending'
-      AND (c.is_archived = 0 OR c.is_archived IS NULL)
-      AND (c.is_subject_only = 0 OR c.is_subject_only IS NULL)
-");
-$pendingCount = $pendingQ ? (int)$pendingQ->fetch_assoc()['c'] : 0;
+$pendingCount = 0;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -64,10 +56,10 @@ $pendingCount = $pendingQ ? (int)$pendingQ->fetch_assoc()['c'] : 0;
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn — Class Record</title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: 'Inter', sans-serif; background: #f0f4f8; margin: 0; color: #1e293b; }
@@ -269,14 +261,14 @@ $pendingCount = $pendingQ ? (int)$pendingQ->fetch_assoc()['c'] : 0;
   <nav class="sb-nav">
     <div class="sb-section">Teacher Menu</div>
     <ul>
-      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes.php"><i class="fa fa-book"></i> Classes</a></li>
-      <li><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="logbook.php"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li class="active"><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
-      <li><a href="subject_repository.php"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
+      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="classes"><i class="fa fa-book"></i> Classes</a></li>
+      <li><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
+      <li class="active"><a href="class_record"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="subject_repository"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -287,7 +279,7 @@ $pendingCount = $pendingQ ? (int)$pendingQ->fetch_assoc()['c'] : 0;
         <span>Teacher</span>
       </div>
     </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -364,10 +356,10 @@ $pendingCount = $pendingQ ? (int)$pendingQ->fetch_assoc()['c'] : 0;
         </div>
 
         <div class="crc-actions">
-          <a href="../shared/class_record_detail.php?id=<?php echo $cid; ?>" class="crc-btn open-btn">
+          <a href="../shared/class_record_detail?id=<?php echo $cid; ?>" class="crc-btn open-btn">
             <i class="fa fa-table"></i> Open Record
           </a>
-          <a href="../shared/class_view.php?id=<?php echo $cid; ?>" class="crc-btn view-btn">
+          <a href="../shared/class_view?id=<?php echo $cid; ?>" class="crc-btn view-btn">
             <i class="fa fa-folder-open"></i> Class
           </a>
         </div>
@@ -380,7 +372,7 @@ $pendingCount = $pendingQ ? (int)$pendingQ->fetch_assoc()['c'] : 0;
       <div class="empty-icon"><i class="fa fa-table"></i></div>
       <h5>No active classes</h5>
       <p>Create a class first before accessing class records.</p>
-      <a href="classes.php" style="display:inline-flex;align-items:center;gap:7px;padding:10px 20px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-radius:10px;font-size:13px;font-weight:600;text-decoration:none;">
+      <a href="classes" style="display:inline-flex;align-items:center;gap:7px;padding:10px 20px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border-radius:10px;font-size:13px;font-weight:600;text-decoration:none;">
         <i class="fa fa-book"></i> Go to My Classes
       </a>
     </div>

@@ -84,7 +84,7 @@ if($_SERVER['REQUEST_METHOD'] === 'POST'){
       <strong>✓ Password Updated!</strong>
       You can now log in with your new password.
     </div>
-    <a href="index.php" class="btn" style="display:block;text-align:center;text-decoration:none;">Go to Login</a>
+    <a href="login" class="btn" style="display:block;text-align:center;text-decoration:none;">Go to Login</a>
 
   <?php else: ?>
     <h2>Set Your Password</h2>
@@ -117,7 +117,7 @@ if($_SERVER['REQUEST_METHOD'] === 'POST'){
       </div>
       <button type="submit" class="btn">Set Password</button>
     </form>
-    <a href="index.php" class="back">← Back to Login</a>
+    <a href="login" class="back">← Back to Login</a>
   <?php endif; ?>
 </div>
 </body>

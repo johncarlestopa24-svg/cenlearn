@@ -78,10 +78,10 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>CenLearn - Classes</title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
   <style>
     *,*::before,*::after{box-sizing:border-box;}
     html,body{margin:0;padding:0;overflow-x:hidden;}
@@ -550,23 +550,23 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
   <nav class="sb-nav">
     <div class="sb-nav-sec">Main</div>
     <ul>
-      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
       <li class="active">
-        <a href="classes.php"><i class="fa fa-book"></i> Classes</a>
+        <a href="classes"><i class="fa fa-book"></i> Classes</a>
         <ul class="sb-submenu" id="classSubmenu" style="display: none;">
           <li><a href="#" id="subMaterials"><i class="fa fa-folder-open"></i> Materials</a></li>
           <li><a href="#" id="subClasswork"><i class="fa fa-tasks"></i> Classwork</a></li>
-          <li><a href="#" id="subLiveClass"><i class="fa fa-video-camera"></i> Live Class</a></li>
+          <li><a href="#" id="subLiveClass"><i class="fa fa-video-camera"></i> Online Class</a></li>
           <li><a href="#" id="subPerformance"><i class="fa fa-line-chart"></i> Performance &amp; Analytics</a></li>
           <li><a href="#" id="subRecord"><i class="fa fa-book"></i> Subject Class Record</a></li>
         </ul>
       </li>
-      <li><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="logbook.php"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
-      <li><a href="subject_repository.php"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
+      <li><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
+      <li><a href="class_record"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="subject_repository"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -577,7 +577,7 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
         <span>Teacher</span>
       </div>
     </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 <div class="t-main">
@@ -590,7 +590,6 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
-      <a href="subject_repository.php" class="btn-primary-t" style="background:#f8fafc;border:1px solid #cbd5e1;color:#334155;box-shadow:none;text-decoration:none;"><i class="fa fa-archive" style="color:#0ea5e9;"></i> Subject Repository</a>
       <button class="btn-primary-t" data-toggle="modal" data-target="#createClassModal"><i class="fa fa-plus"></i> Create Class</button>
     </div>
   </header>
@@ -738,7 +737,7 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
           </div>
 
           <div class="crc-actions">
-            <a href="../shared/class_view.php?id=<?php echo $c['id']; ?>" class="crc-btn open-btn">
+            <a href="../shared/class_view?id=<?php echo $c['id']; ?>" class="crc-btn open-btn">
               <i class="fa fa-eye"></i> View
             </a>
             <button onclick="unarchiveClass(<?php echo $c['id']; ?>,'<?php echo htmlspecialchars(addslashes($c['class_name'])); ?>')" class="crc-btn archive-btn icon-only" style="border-color:#10b981; background:#f0fdf4; color:#059669;" title="Restore to Active">
@@ -808,7 +807,7 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
           </select>
           <?php if (empty($managed_subjects)): ?>
             <small style="display:block;color:#ef4444;margin-top:5px;font-size:11px;">
-              <i class="fa fa-exclamation-circle"></i> No subjects found. Please create one in <b><a href="logbook.php" style="color:#059669;font-weight:600;text-decoration:underline;">Manage Subject</a></b> first.
+              <i class="fa fa-exclamation-circle"></i> No subjects found. Please create one in <b><a href="logbook" style="color:#059669;font-weight:600;text-decoration:underline;">Manage Subject</a></b> first.
             </small>
           <?php endif; ?>
         </div>
@@ -941,7 +940,7 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
   </div>
 </div>
 <?php include '../includes/scripts.php'; ?>
-<script src="../plugins/doc_viewer/xlsx.full.min.js"></script>
+<script src="/cenlearn/system/plugins/doc_viewer/xlsx.full.min.js"></script>
 <script>
 // ── Tab switching ──────────────────────────────────────────────────────────
 function switchTab(tabId, btn){
@@ -982,7 +981,7 @@ $('#btnArchiveConfirm').on('click', function(){
   if(!_archiveId) return;
   var sy = $('#archiveYear').val().trim();
   $(this).prop('disabled',true).html('<i class="fa fa-spinner fa-spin"></i>');
-  $.post('../shared/class_archive.php',{action:'archive',class_id:_archiveId,school_year:sy},function(res){
+  $.post('/cenlearn/shared/class_archive',{action:'archive',class_id:_archiveId,school_year:sy},function(res){
     $('#btnArchiveConfirm').prop('disabled',false).html('<i class="fa fa-archive"></i> Archive');
     if(res.success){ $('#archiveModal').modal('hide'); location.reload(); }
     else alert(res.msg||'Failed to archive.');
@@ -992,7 +991,7 @@ $('#btnArchiveConfirm').on('click', function(){
 // ── Unarchive ──────────────────────────────────────────────────────────────
 function unarchiveClass(id, name){
   if(!confirm('Restore "'+name+'" to active classes?')) return;
-  $.post('../shared/class_archive.php',{action:'unarchive',class_id:id},function(res){
+  $.post('/cenlearn/shared/class_archive',{action:'unarchive',class_id:id},function(res){
     if(res.success) location.reload();
     else alert(res.msg||'Failed to restore.');
   },'json');
@@ -1197,7 +1196,7 @@ $('#btnCreate').on('click',function(){
   $('#btnCreate').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Creating...');
 
   $.ajax({
-    url: '../shared/class_save.php',
+    url: '/cenlearn/shared/class_save',
     type: 'POST',
     data: fd,
     processData: false,
@@ -1332,7 +1331,7 @@ function confirmDelete(id,name){_deleteId=id;$('#deleteClassName').text(name);$(
 $('#btnDeleteConfirm').on('click',function(){
   if(!_deleteId)return;
   $(this).prop('disabled',true).html('<i class="fa fa-spinner fa-spin"></i> Deleting...');
-  $.post('../shared/class_delete.php',{class_id:_deleteId},function(res){
+  $.post('/cenlearn/shared/class_delete',{class_id:_deleteId},function(res){
     if(res.success){$('#deleteClassModal').modal('hide');setTimeout(function(){location.reload();},400);}
     else{$('#btnDeleteConfirm').prop('disabled',false).html('<i class="fa fa-trash"></i> Delete');showAlert('#deleteAlert','danger',res.msg);}
   },'json');
@@ -1365,11 +1364,11 @@ function toggleSidebarClass(classId, btn) {
   }
 
   // Update submenu URLs dynamically
-  $('#subMaterials').attr('href', '../shared/class_view.php?id=' + classId + '&tab=materials');
-  $('#subClasswork').attr('href', '../shared/class_view.php?id=' + classId + '&tab=classwork');
-  $('#subLiveClass').attr('href', '../shared/live_class.php?id=' + classId);
-  $('#subPerformance').attr('href', '../shared/class_view.php?id=' + classId + '&tab=performance');
-  $('#subRecord').attr('href', '../shared/class_record_detail.php?id=' + classId);
+  $('#subMaterials').attr('href', '../shared/class_view?id=' + classId + '&tab=materials');
+  $('#subClasswork').attr('href', '../shared/class_view?id=' + classId + '&tab=classwork');
+  $('#subLiveClass').attr('href', '../shared/live_class?id=' + classId);
+  $('#subPerformance').attr('href', '../shared/class_view?id=' + classId + '&tab=performance');
+  $('#subRecord').attr('href', '../shared/class_record_detail?id=' + classId);
 
   // Expand submenu
   submenu.slideDown(200);

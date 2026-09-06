@@ -602,6 +602,176 @@ if (($action === 'copy' || $action === 'assign_to_class') && in_array($role, ['T
     exit;
 }
 
+// ── Teacher: Duplicate Entire Quiz ──────────────────────────────────────────
+if ($action === 'duplicate_quiz' && in_array($role, ['TEACHER', 'ADMIN', 'SUPERADMIN'])) {
+    $quiz_id         = intval($_POST['quiz_id'] ?? 0);
+    $target_class_id = intval($_POST['target_class_id'] ?? 0);
+
+    if (!$quiz_id) {
+        echo json_encode(['success' => false, 'msg' => 'Quiz ID is required.']);
+        exit;
+    }
+
+    $qzQ = $conn->query("SELECT * FROM quizzes WHERE id=$quiz_id");
+    if (!$qzQ || $qzQ->num_rows === 0) {
+        echo json_encode(['success' => false, 'msg' => 'Quiz not found.']);
+        exit;
+    }
+    $srcQuiz = $qzQ->fetch_assoc();
+
+    $classId = $target_class_id > 0 ? $target_class_id : intval($srcQuiz['class_id']);
+    
+    // If target class is the same class, append (Copy) to title
+    $titleStr = $srcQuiz['title'];
+    if ($classId === intval($srcQuiz['class_id']) || $target_class_id <= 0) {
+        $titleStr .= ' (Copy)';
+    }
+    $t   = $conn->real_escape_string($titleStr);
+    $ins = $conn->real_escape_string($srcQuiz['instructions'] ?? '');
+    $tl  = intval($srcQuiz['time_limit'] ?? 0) > 0 ? intval($srcQuiz['time_limit']) : 'NULL';
+    $sd  = $srcQuiz['start_date'] ? "'" . $conn->real_escape_string($srcQuiz['start_date']) . "'" : 'NULL';
+    $dd  = $srcQuiz['due_date'] ? "'" . $conn->real_escape_string($srcQuiz['due_date']) . "'" : 'NULL';
+    $modIdVal = !empty($srcQuiz['module_id']) ? intval($srcQuiz['module_id']) : 'NULL';
+    $modVerVal = $conn->real_escape_string($srcQuiz['module_version'] ?? '1.0');
+    $sq = intval($srcQuiz['shuffle_questions'] ?? 0);
+    $sa = intval($srcQuiz['shuffle_answers'] ?? 0);
+    $sm = intval($srcQuiz['shuffle_matching'] ?? 0);
+    $stf = intval($srcQuiz['shuffle_tf'] ?? 0);
+    $randStudent = intval($srcQuiz['randomize_student'] ?? 0);
+    $grading_mode = $conn->real_escape_string($srcQuiz['grading_mode'] ?? 'exact');
+    $ms_scoring_mode = $conn->real_escape_string($srcQuiz['multi_select_scoring_mode'] ?? 'partial_credit');
+    $term = $conn->real_escape_string($srcQuiz['term'] ?? 'midterm');
+
+    $insRes = $conn->query("INSERT INTO quizzes (
+        class_id, teacher_code, title, instructions, time_limit, start_date, due_date,
+        shuffle_questions, shuffle_answers, shuffle_matching, shuffle_tf, randomize_student,
+        module_id, module_version, grading_mode, multi_select_scoring_mode, term, is_active
+    ) VALUES (
+        $classId, '$uc', '$t', '$ins', $tl, $sd, $dd,
+        $sq, $sa, $sm, $stf, $randStudent,
+        $modIdVal, '$modVerVal', '$grading_mode', '$ms_scoring_mode', '$term', 1
+    )");
+
+    if (!$insRes) {
+        echo json_encode(['success' => false, 'msg' => 'Failed to duplicate quiz: ' . $conn->error]);
+        exit;
+    }
+    $new_quiz_id = $conn->insert_id;
+
+    // Copy all questions
+    $srcQuestionsQ = $conn->query("SELECT * FROM quiz_questions WHERE quiz_id=$quiz_id ORDER BY id ASC");
+    $copiedCount = 0;
+    if ($srcQuestionsQ) {
+        while ($qRow = $srcQuestionsQ->fetch_assoc()) {
+            $quid = $conn->real_escape_string($qRow['question_uid']);
+            $qt = $conn->real_escape_string($qRow['question_text']);
+            $qtopic = $conn->real_escape_string($qRow['topic'] ?? 'General');
+            $qtype = $conn->real_escape_string($qRow['question_type']);
+            $optsData = $conn->real_escape_string($qRow['options_data'] ?? '[]');
+            $corrIds = $conn->real_escape_string($qRow['correct_option_ids'] ?? '[]');
+            $accept = $conn->real_escape_string($qRow['acceptable_answers'] ?? '[]');
+            $matchPairs = $conn->real_escape_string($qRow['matching_pairs'] ?? '[]');
+            $rubric = $conn->real_escape_string($qRow['rubric_json'] ?? '[]');
+            $reqConc = $conn->real_escape_string($qRow['required_concepts'] ?? '[]');
+            $truthVal = isset($qRow['truth_value']) && $qRow['truth_value'] !== null ? ($qRow['truth_value'] ? '1' : '0') : 'NULL';
+            $incPhr = $conn->real_escape_string($qRow['incorrect_phrase'] ?? '');
+            $corrRep = $conn->real_escape_string($qRow['correct_replacement'] ?? '');
+            $legacyOpts = $conn->real_escape_string($qRow['options'] ?? '[]');
+            $legacyCorr = $conn->real_escape_string($qRow['correct_answer'] ?? '');
+            $pts = floatval($qRow['points'] ?? 1);
+            $qModId = !empty($qRow['module_id']) ? intval($qRow['module_id']) : 'NULL';
+            $qModVer = $conn->real_escape_string($qRow['module_version'] ?? '1.0');
+            $expl = $conn->real_escape_string($qRow['explanation'] ?? '');
+
+            $conn->query("INSERT INTO quiz_questions (
+                quiz_id, question_uid, question_text, topic, question_type,
+                options_data, correct_option_ids, acceptable_answers, matching_pairs,
+                rubric_json, required_concepts, truth_value, incorrect_phrase, correct_replacement,
+                options, correct_answer, points, module_id, module_version, explanation
+            ) VALUES (
+                $new_quiz_id, '$quid', '$qt', '$qtopic', '$qtype',
+                '$optsData', '$corrIds', '$accept', '$matchPairs',
+                '$rubric', '$reqConc', $truthVal, '$incPhr', '$corrRep',
+                '$legacyOpts', '$legacyCorr', $pts, $qModId, '$qModVer', '$expl'
+            )");
+            $copiedCount++;
+        }
+    }
+
+    echo json_encode([
+        'success' => true,
+        'msg' => "Quiz duplicated successfully! ($copiedCount questions copied)",
+        'new_quiz_id' => $new_quiz_id
+    ]);
+    exit;
+}
+
+// ── Teacher: Duplicate Individual Question ──────────────────────────────────
+if ($action === 'duplicate_question' && in_array($role, ['TEACHER', 'ADMIN', 'SUPERADMIN'])) {
+    $quiz_id     = intval($_POST['quiz_id'] ?? 0);
+    $question_id = intval($_POST['question_id'] ?? 0);
+
+    if (!$quiz_id || !$question_id) {
+        echo json_encode(['success' => false, 'msg' => 'Quiz ID and Question ID are required.']);
+        exit;
+    }
+
+    $qRowQ = $conn->query("SELECT * FROM quiz_questions WHERE id=$question_id AND quiz_id=$quiz_id");
+    if (!$qRowQ || $qRowQ->num_rows === 0) {
+        $qRowQ = $conn->query("SELECT * FROM quiz_questions WHERE id=$question_id");
+        if (!$qRowQ || $qRowQ->num_rows === 0) {
+            echo json_encode(['success' => false, 'msg' => 'Question not found.']);
+            exit;
+        }
+    }
+    $qRow = $qRowQ->fetch_assoc();
+
+    $quid = $conn->real_escape_string($qRow['question_uid'] . '-COPY');
+    $qt = $conn->real_escape_string($qRow['question_text'] . ' (Copy)');
+    $qtopic = $conn->real_escape_string($qRow['topic'] ?? 'General');
+    $qtype = $conn->real_escape_string($qRow['question_type']);
+    $optsData = $conn->real_escape_string($qRow['options_data'] ?? '[]');
+    $corrIds = $conn->real_escape_string($qRow['correct_option_ids'] ?? '[]');
+    $accept = $conn->real_escape_string($qRow['acceptable_answers'] ?? '[]');
+    $matchPairs = $conn->real_escape_string($qRow['matching_pairs'] ?? '[]');
+    $rubric = $conn->real_escape_string($qRow['rubric_json'] ?? '[]');
+    $reqConc = $conn->real_escape_string($qRow['required_concepts'] ?? '[]');
+    $truthVal = isset($qRow['truth_value']) && $qRow['truth_value'] !== null ? ($qRow['truth_value'] ? '1' : '0') : 'NULL';
+    $incPhr = $conn->real_escape_string($qRow['incorrect_phrase'] ?? '');
+    $corrRep = $conn->real_escape_string($qRow['correct_replacement'] ?? '');
+    $legacyOpts = $conn->real_escape_string($qRow['options'] ?? '[]');
+    $legacyCorr = $conn->real_escape_string($qRow['correct_answer'] ?? '');
+    $pts = floatval($qRow['points'] ?? 1);
+    $qModId = !empty($qRow['module_id']) ? intval($qRow['module_id']) : 'NULL';
+    $qModVer = $conn->real_escape_string($qRow['module_version'] ?? '1.0');
+    $expl = $conn->real_escape_string($qRow['explanation'] ?? '');
+
+    $insRes = $conn->query("INSERT INTO quiz_questions (
+        quiz_id, question_uid, question_text, topic, question_type,
+        options_data, correct_option_ids, acceptable_answers, matching_pairs,
+        rubric_json, required_concepts, truth_value, incorrect_phrase, correct_replacement,
+        options, correct_answer, points, module_id, module_version, explanation
+    ) VALUES (
+        $quiz_id, '$quid', '$qt', '$qtopic', '$qtype',
+        '$optsData', '$corrIds', '$accept', '$matchPairs',
+        '$rubric', '$reqConc', $truthVal, '$incPhr', '$corrRep',
+        '$legacyOpts', '$legacyCorr', $pts, $qModId, '$qModVer', '$expl'
+    )");
+
+    if (!$insRes) {
+        echo json_encode(['success' => false, 'msg' => 'Failed to duplicate question: ' . $conn->error]);
+        exit;
+    }
+
+    echo json_encode([
+        'success' => true,
+        'msg' => 'Question duplicated successfully!',
+        'new_question_id' => $conn->insert_id
+    ]);
+    exit;
+}
+
+
 // ── Teacher: Regrade Module Essays ──────────────────────────────────────────
 if ($action === 'regrade_module_essays' && $role === 'TEACHER') {
     $quiz_id = intval($_POST['quiz_id'] ?? 0);

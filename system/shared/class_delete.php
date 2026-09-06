@@ -88,8 +88,7 @@ $conn->query("DELETE FROM student_weak_topics WHERE class_id=$class_id");
 $conn->query("DELETE FROM topic_performance WHERE class_id=$class_id");
 $conn->query("DELETE FROM teacher_violations WHERE class_id=$class_id");
 
-// Confirmations, Memberships & Logbook
-$conn->query("DELETE FROM class_confirmations WHERE class_id=$class_id");
+// Memberships & Logbook
 $conn->query("DELETE FROM class_members WHERE class_id=$class_id");
 $conn->query("DELETE FROM subject_logbook WHERE class_id=$class_id");
 

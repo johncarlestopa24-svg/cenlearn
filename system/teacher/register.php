@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn — Teacher Registration (Test)</title>
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -164,11 +164,11 @@
   </form>
 
   <div class="footer-note">
-    Already registered? <a href="../index.php">Sign in here</a>
+    Already registered? <a href="../">Sign in here</a>
   </div>
 </div>
 
-<script src="../bower_components/jquery/dist/jquery.min.js"></script>
+<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
 <script>
 // Toggle password visibility
 $('#eyeBtn1').on('click', function(){
@@ -214,7 +214,7 @@ $('#regForm').on('submit', function(e){
       $('#btnRegister').prop('disabled', false).html('<i class="fa fa-user-plus"></i> Create Teacher Account');
       if(res.success){
         showAlert('success', res.msg);
-        setTimeout(function(){ window.location.href = '../index.php'; }, 2000);
+        setTimeout(function(){ window.location.href = '../'; }, 2000);
       } else {
         showAlert('danger', res.msg);
       }

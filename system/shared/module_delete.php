@@ -10,7 +10,7 @@ if (empty($_SESSION['user'])) {
         echo json_encode(['success' => false, 'msg' => 'Not logged in']);
         exit;
     }
-    header('location: ../index.php');
+    header('location: /cenlearn/login');
     exit;
 }
 
@@ -24,7 +24,7 @@ if (!$id) {
         echo json_encode(['success' => false, 'msg' => 'Module ID required']);
         exit;
     }
-    header('location: ../teacher/dashboard.php');
+    header('location: /cenlearn/teacher/dashboard');
     exit;
 }
 
@@ -50,7 +50,7 @@ if ($q && $q->num_rows > 0) {
             echo json_encode(['success' => true, 'msg' => 'Material deleted successfully']);
             exit;
         }
-        header('location: class_view.php?id=' . $targetClassId . '&tab=materials');
+        header('location: class_view?id=' . $targetClassId . '&tab=materials');
         exit;
     }
 }
@@ -61,5 +61,6 @@ if ($isAjax) {
     exit;
 }
 
-header('location: class_view.php?id=' . $class_id . '&tab=materials');
+header('location: class_view?id=' . $class_id . '&tab=materials');
 exit;
+

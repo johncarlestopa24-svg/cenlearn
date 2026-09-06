@@ -4,7 +4,7 @@ include '../includes/conn.php';
 include '../includes/session.php';
 
 if(empty($user) || $user['user_group'] !== 'SUPERADMIN'){
-    header('Location: ../index.php'); exit;
+    header('Location: ../login'); exit;
 }
 
 $qStudents = $conn->query("SELECT u.* FROM users u WHERE u.user_group='STUDENT' GROUP BY u.user_code ORDER BY u.last_name, u.first_name");
@@ -22,11 +22,11 @@ $programs  = $qPrograms->fetch_assoc()['c'];
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn — Student Management</title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
-  <link rel="stylesheet" href="../bower_components/datatables.net-bs/css/dataTables.bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/datatables.net-bs/css/dataTables.bootstrap.min.css">
   <style>
     *{box-sizing:border-box;}
     body{font-family:'Inter',sans-serif;background:#f0f4f8;}
@@ -76,10 +76,10 @@ $programs  = $qPrograms->fetch_assoc()['c'];
     <div class="nav-section">Admin Menu</div>
     <ul style="list-style:none;margin:0;padding:0;">
       <li class="nav-item">
-        <a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a>
+        <a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a>
       </li>
       <li class="nav-item active">
-        <a href="students.php"><i class="fa fa-graduation-cap"></i> Student Management</a>
+        <a href="students"><i class="fa fa-graduation-cap"></i> Student Management</a>
       </li>
     </ul>
   </nav>
@@ -93,7 +93,7 @@ $programs  = $qPrograms->fetch_assoc()['c'];
         <span>Super Admin</span>
       </div>
     </div>
-    <a href="../logout.php" class="btn-signout"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="btn-signout"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -191,7 +191,11 @@ $programs  = $qPrograms->fetch_assoc()['c'];
               <tr data-user-code="<?php echo htmlspecialchars($s['user_code']); ?>">
                 <td style="color:#94a3b8;"><?php echo $i++; ?></td>
                 <td style="font-family:monospace;font-weight:600;"><?php echo htmlspecialchars($s['user_code']); ?></td>
-                <td class="full-name"><?php echo htmlspecialchars($s['last_name'].', '.$s['first_name']); ?></td>
+                <td class="full-name">
+                  <a href="javascript:void(0)" onclick="openStudentProfileModal('<?php echo htmlspecialchars($s['user_code']); ?>')" style="color:#2563eb;font-weight:700;text-decoration:none;">
+                    <?php echo htmlspecialchars($s['last_name'].', '.$s['first_name']); ?>
+                  </a>
+                </td>
                 <td class="program-code"><?php echo htmlspecialchars($s['program_code'] ?: '—'); ?></td>
                 <td class="year-level">
                   <?php if($yl && isset($ylLabel[$yl])): ?>
@@ -207,9 +211,14 @@ $programs  = $qPrograms->fetch_assoc()['c'];
                   </span>
                 </td>
                 <td>
-                  <button class="btn-refresh-row" onclick="refreshStudent('<?php echo htmlspecialchars($s['user_code']); ?>')">
-                    <i class="fa fa-refresh"></i> Refresh
-                  </button>
+                  <div style="display:flex;gap:6px;">
+                    <button type="button" class="btn-refresh-row" style="background:#eff6ff;color:#2563eb;border-color:#bfdbfe;" onclick="openStudentProfileModal('<?php echo htmlspecialchars($s['user_code']); ?>')">
+                      <i class="fa fa-user"></i> Profile
+                    </button>
+                    <button type="button" class="btn-refresh-row" onclick="refreshStudent('<?php echo htmlspecialchars($s['user_code']); ?>')">
+                      <i class="fa fa-refresh"></i> Sync
+                    </button>
+                  </div>
                 </td>
               </tr>
               <?php endwhile; ?>
@@ -223,10 +232,10 @@ $programs  = $qPrograms->fetch_assoc()['c'];
   <footer class="cl-footer">CenLearn &mdash; Powered by TechnoPal</footer>
 </div>
 
-<script src="../bower_components/jquery/dist/jquery.min.js"></script>
-<script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
-<script src="../bower_components/datatables.net/js/jquery.dataTables.min.js"></script>
-<script src="../bower_components/datatables.net-bs/js/dataTables.bootstrap.min.js"></script>
+<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
+<script src="/cenlearn/system/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="/cenlearn/system/bower_components/datatables.net/js/jquery.dataTables.min.js"></script>
+<script src="/cenlearn/system/bower_components/datatables.net-bs/js/dataTables.bootstrap.min.js"></script>
 <script>
 $(document).ready(function(){
   $('#studentsTable').DataTable({ autoWidth:false, scrollX:true, pageLength:25 });
@@ -286,5 +295,6 @@ function refreshAllStudents(){
 function openSidebar(){ document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebarOverlay').classList.add('active'); }
 function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('active'); }
 </script>
+<?php include '../includes/student_profile_modal.php'; ?>
 </body>
 </html>

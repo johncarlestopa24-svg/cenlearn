@@ -51,10 +51,10 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn — Teacher Dashboard</title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
   <style>
     *{box-sizing:border-box;}
     html,body{margin:0;padding:0;overflow-x:hidden;}
@@ -178,14 +178,14 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
   <nav class="sb-nav">
     <div class="sb-section">Teacher Menu</div>
     <ul>
-      <li class="active"><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes.php"><i class="fa fa-book"></i> Classes</a></li>
-      <li><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="logbook.php"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
-      <li><a href="subject_repository.php"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
+      <li class="active"><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="classes"><i class="fa fa-book"></i> Classes</a></li>
+      <li><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
+      <li><a href="class_record"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="subject_repository"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -196,7 +196,7 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
         <span>Teacher</span>
       </div>
     </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 <div class="td-main">
@@ -218,7 +218,7 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
         <div style="font-size:13px;font-weight:700;color:#fff;">🔴 Live Session Active</div>
         <div style="font-size:12px;color:rgba(255,255,255,.85);"><?php echo htmlspecialchars($liveSession['title']?:'Live Class'); ?> &mdash; <?php echo htmlspecialchars($liveSession['class_name']); ?></div>
       </div>
-      <a href="../shared/live_class.php?id=<?php echo $liveSession['class_id']; ?>" style="background:rgba(255,255,255,.2);color:#fff;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;border:1px solid rgba(255,255,255,.3);"><i class="fa fa-video-camera"></i> Rejoin</a>
+      <a href="../shared/live_class?id=<?php echo $liveSession['class_id']; ?>" style="background:rgba(255,255,255,.2);color:#fff;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;border:1px solid rgba(255,255,255,.3);"><i class="fa fa-video-camera"></i> Rejoin</a>
     </div>
     <?php endif; ?>
 
@@ -251,10 +251,10 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
       <div class="td-card">
         <div class="td-card-hdr"><h4><i class="fa fa-bolt" style="color:#f59e0b;"></i> Quick Actions</h4></div>
         <div class="qa-grid">
-          <a href="classes.php" class="qa-btn"><i class="fa fa-book" style="color:#10b981;"></i> Classes</a>
-          <a href="quizzes.php" class="qa-btn"><i class="fa fa-question-circle" style="color:#8b5cf6;"></i> Quizzes</a>
-          <a href="subject_repository.php" class="qa-btn"><i class="fa fa-archive" style="color:#0ea5e9;"></i> Past Subjects</a>
-          <a href="class_record.php" class="qa-btn"><i class="fa fa-table" style="color:#10b981;"></i> Class Record</a>
+          <a href="classes" class="qa-btn"><i class="fa fa-book" style="color:#10b981;"></i> Classes</a>
+          <a href="quizzes" class="qa-btn"><i class="fa fa-question-circle" style="color:#8b5cf6;"></i> Quizzes</a>
+          <a href="subject_repository" class="qa-btn"><i class="fa fa-archive" style="color:#0ea5e9;"></i> Past Subjects</a>
+          <a href="class_record" class="qa-btn"><i class="fa fa-table" style="color:#10b981;"></i> Class Record</a>
         </div>
       </div>
 
@@ -443,7 +443,7 @@ $('#btnCreate').on('click', function(){
   var subject = $('#create_subject').val().trim();
   if(!subject){ showAlert('#createAlert','danger','Subject name is required.'); return; }
   $(this).prop('disabled',true).html('<i class="fa fa-spinner fa-spin"></i> Creating...');
-  $.post('../shared/class_save.php',{
+  $.post('/cenlearn/shared/class_save',{
     action:'create', subject:subject,
     program_code:$('#create_program').val().trim().toUpperCase(),
     year_level:$('#create_year').val(),

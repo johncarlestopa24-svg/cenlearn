@@ -3,7 +3,7 @@ include '../includes/session.php';
 include '../includes/conn.php';
 
 if(strtoupper($user['user_group']) !== 'TEACHER'){
-    header('location: ../index.php'); exit;
+    header('location: ../login'); exit;
 }
 
 $tc = $conn->real_escape_string($user['user_code']);
@@ -167,10 +167,10 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn &mdash; Quiz Dashboard</title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; overflow-x: hidden; }
@@ -551,14 +551,14 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
   <nav class="sb-nav">
     <div class="sb-section">Teacher Menu</div>
     <ul>
-      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes.php"><i class="fa fa-book"></i> Classes</a></li>
-      <li class="active"><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="logbook.php"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
-      <li><a href="subject_repository.php"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
+      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="classes"><i class="fa fa-book"></i> Classes</a></li>
+      <li class="active"><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
+      <li><a href="class_record"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="subject_repository"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -569,7 +569,7 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
         <span>Teacher</span>
       </div>
     </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -583,7 +583,6 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
-      <a href="subject_repository.php" class="btn-create-quiz" style="background:#f8fafc;color:#334155;border:1.5px solid #e2e8f0;text-decoration:none;"><i class="fa fa-archive" style="color:#0ea5e9;"></i> Past Quizzes Archive</a>
       <button class="btn-create-quiz" onclick="openCreateQuizModal()" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;border:none;"><i class="fa fa-plus-circle"></i> Create New Quiz</button>
     </div>
   </header>
@@ -723,6 +722,9 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
                 </button>
                 <button class="qz-act-btn" title="Add Class / Assign to Class" onclick="openCopyModal(<?php echo $q['id']; ?>, '<?php echo addslashes($q['title']); ?>', '<?php echo !empty($q['start_date']) ? date('Y-m-d\TH:i', strtotime($q['start_date'])) : ''; ?>', '<?php echo !empty($q['due_date']) ? date('Y-m-d\TH:i', strtotime($q['due_date'])) : ''; ?>')">
                   <i class="fa fa-plus-circle" style="color:#10b981;"></i>
+                </button>
+                <button class="qz-act-btn" title="Duplicate / Copy Entire Quiz" onclick="duplicateQuiz(<?php echo $q['id']; ?>)">
+                  <i class="fa fa-files-o" style="color:#6366f1;"></i>
                 </button>
                 <button class="qz-act-btn btn-danger" title="Delete Quiz" onclick="deleteQuiz('<?php echo $allIds; ?>')">
                   <i class="fa fa-trash-o"></i>
@@ -1067,8 +1069,8 @@ $overallAvgPct = $quizzesWithSubmissions > 0 ? round($sumAvgPct / $quizzesWithSu
   </div>
 </div>
 
-<script src="../bower_components/jquery/dist/jquery.min.js"></script>
-<script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
+<script src="/cenlearn/system/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
 <script>
 let questionCounter = 0;
 let pendingToggleId = null;
@@ -1081,7 +1083,7 @@ function applyFilters() {
   const cid = $('#filterClass').val();
   const term = $('#filterTerm').val();
   const status = $('#filterStatus').val();
-  window.location.href = `quizzes.php?class_id=${cid}&term=${term}&status=${status}`;
+  window.location.href = `quizzes?class_id=${cid}&term=${term}&status=${status}`;
 }
 
 function filterBySearch() {
@@ -1103,7 +1105,7 @@ function toggleActive(id, isActive, classId = 1) {
     return;
   }
 
-  $.post('../shared/quiz_handler.php', {
+  $.post('/cenlearn/shared/quiz_handler', {
     action: 'toggle',
     id: id,
     is_active: isActive ? 1 : 0
@@ -1122,7 +1124,7 @@ function analyzeQuizRelevance(quizId, isPrePublishWarning = false) {
   $('#aiRelevanceBody').html('<div class="text-center py-4"><i class="fa fa-spinner fa-spin fa-2x text-info"></i><p class="mt-2 text-muted">Analyzing quiz against uploaded learning materials...</p></div>');
   $('#aiRelevanceModal').modal('show');
 
-  $.post('../shared/quiz_handler.php', { action: 'analyze_relevance', quiz_id: quizId }, function(res) {
+  $.post('/cenlearn/shared/quiz_handler', { action: 'analyze_relevance', quiz_id: quizId }, function(res) {
     if(!res.success || !res.analytics) {
       $('#aiRelevanceBody').html('<div class="alert alert-danger">Failed to evaluate quiz relevance.</div>');
       return;
@@ -1326,7 +1328,7 @@ function runAiQuizGeneration() {
   var btn = $('#btnRunAiGen');
   btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Analyzing Module & Generating Quiz...');
 
-  $.post('../shared/quiz_handler.php', {
+  $.post('/cenlearn/shared/quiz_handler', {
     action: 'generate_quiz_from_module',
     module_id: modId,
     class_id: parseInt($('#cqQuizClass').val()) || 0,
@@ -1956,7 +1958,7 @@ function submitCqQuiz() {
   const btn = $('#cqBtnSubmit');
   if(btn.length) btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Saving Quiz...');
 
-  $.post('../shared/quiz_handler.php', payload, function(res) {
+  $.post('/cenlearn/shared/quiz_handler', payload, function(res) {
     if(res.success) {
       alert('Quiz created successfully with full AI, Seed Shuffle & Rubrics support!');
       location.reload();
@@ -2042,7 +2044,7 @@ function allowStudentRetake(quizId, studentCode, studentName){
   if(!confirm('Allow ' + displayName + ' (' + studentCode + ') to retake this quiz?\n\nThis will reset ONLY this student\'s submission and attempt records so they can take the quiz again.\n(Other students will remain submitted.)')){
     return;
   }
-  $.post('../shared/quiz_handler.php', { action: 'allow_retake', quiz_id: quizId, student_code: studentCode }, function(res){
+  $.post('/cenlearn/shared/quiz_handler', { action: 'allow_retake', quiz_id: quizId, student_code: studentCode }, function(res){
     if(typeof res === 'string'){ try { res = JSON.parse(res.trim()); } catch(e){} }
     if(res && res.success){
       alert(res.msg || 'Quiz attempt has been reset for ' + displayName + '. Only this student can now retake the quiz.');
@@ -2072,7 +2074,7 @@ function viewSubmissions(quizId) {
   switchSubModalTab('questions');
   $('#submissionsModal').modal('show');
 
-  $.post('../shared/quiz_handler.php', { action: 'get_submissions', quiz_id: quizId }, function(res) {
+  $.post('/cenlearn/shared/quiz_handler', { action: 'get_submissions', quiz_id: quizId }, function(res) {
     if(typeof res === 'string'){ try { res = JSON.parse(res.trim()); } catch(e){} }
     if(!res || !res.success) {
       $('#quizQuestionsContainer').html('<div class="alert alert-danger" style="margin:20px;">' + (res && res.msg ? res.msg : 'Failed to fetch quiz details') + '</div>');
@@ -2082,6 +2084,7 @@ function viewSubmissions(quizId) {
     $('#subModalTitle').html('<i class="fa fa-list-alt" style="color:#60a5fa;"></i> ' + escapeCqHtml(qTitle) + ' &bull; Overview & Submissions');
 
     var questions = res.questions || [];
+    currentModalQuestions = questions;
     var subs = res.submissions || [];
     $('#subCountBadge').text(subs.length);
 
@@ -2098,7 +2101,13 @@ function viewSubmissions(quizId) {
           <div style="width:1px;height:28px;background:#e2e8f0;"></div>
           <div><span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700;display:block;">Submissions</span><strong style="font-size:18px;color:#10b981;">${subs.length}</strong></div>
         </div>
-        <div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm" onclick="copyAllQuizQuestionsText()" style="background:#e0e7ff;color:#4338ca;border:1px solid #c7d2fe;border-radius:8px;font-weight:700;padding:6px 12px;display:inline-flex;align-items:center;gap:6px;" title="Copy all questions & answer key text to clipboard">
+            <i class="fa fa-copy"></i> Copy All Quiz
+          </button>
+          <button type="button" class="btn btn-sm" onclick="duplicateActiveQuiz()" style="background:#f3e8ff;color:#6b21a8;border:1px solid #e9d5ff;border-radius:8px;font-weight:700;padding:6px 12px;display:inline-flex;align-items:center;gap:6px;" title="Duplicate this entire quiz into a new quiz copy">
+            <i class="fa fa-files-o"></i> Duplicate Quiz
+          </button>
           <span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:5px;">
             <i class="fa fa-key"></i> Correct Answer Key
           </span>
@@ -2222,9 +2231,17 @@ function viewSubmissions(quizId) {
                 <span style="font-size:10px;font-weight:800;color:#4f46e5;background:#e0e7ff;padding:2px 8px;border-radius:4px;text-transform:uppercase;">${typeFormatted}</span>
                 ${topicTag}
               </div>
-              <span style="background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;">
-                <i class="fa fa-trophy" style="color:#f59e0b;"></i> ${q.points} pt${parseFloat(q.points)!==1?'s':''}
-              </span>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <button type="button" class="btn btn-xs" onclick="copyIndividualQuestionText(${idx})" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;font-weight:700;padding:3px 8px;" title="Copy this individual question to clipboard">
+                  <i class="fa fa-copy" style="color:#6366f1;"></i> Copy Question
+                </button>
+                <button type="button" class="btn btn-xs" onclick="duplicateIndividualQuestion(${q.id || 0}, ${idx})" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;border-radius:6px;font-weight:700;padding:3px 8px;" title="Duplicate this question in the quiz">
+                  <i class="fa fa-plus-circle" style="color:#0284c7;"></i> Duplicate Q
+                </button>
+                <span style="background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;">
+                  <i class="fa fa-trophy" style="color:#f59e0b;"></i> ${q.points} pt${parseFloat(q.points)!==1?'s':''}
+                </span>
+              </div>
             </div>
             <div style="font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.4;margin-bottom:6px;">
               ${escapeCqHtml(q.question_text)}
@@ -2302,7 +2319,7 @@ function viewStudentAnswers(quizId, studentCode) {
   $('#submissionsModal').modal('hide');
   $('#studentAnswersModal').modal('show');
 
-  $.post('../shared/quiz_handler.php', {
+  $.post('/cenlearn/shared/quiz_handler', {
     action: 'get_student_answers',
     quiz_id: quizId,
     student_code: studentCode
@@ -2806,7 +2823,7 @@ function saveEssayOverride(subId, qId, quizId, studentCode) {
   var score = parseFloat($('#overrideScore_' + qId).val()) || 0;
   var feedback = $('#overrideFb_' + qId).val() || '';
 
-  $.post('../shared/quiz_handler.php', {
+  $.post('/cenlearn/shared/quiz_handler', {
     action: 'override_essay_grade',
     submission_id: subId,
     question_id: qId,
@@ -2853,7 +2870,7 @@ function submitCopyQuiz() {
 
   $('#btnSubmitCopy').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding Class...');
 
-  $.post('../shared/quiz_handler.php', {
+  $.post('/cenlearn/shared/quiz_handler', {
     action: 'copy',
     quiz_id: sourceId,
     target_class_id: targetId,
@@ -2888,7 +2905,7 @@ function viewAssignedClasses(title, subjectsData) {
   } else {
     realSubjects.forEach(function(s){
       let codeBadge = s.code ? `<span class="badge-code-green"><i class="fa fa-tag"></i> ${escapeCqHtml(s.code)}</span>` : '';
-      let classUrl = `../shared/class_view.php?id=${s.class_id}&tab=classwork`;
+      let classUrl = `../shared/class_view?id=${s.class_id}&tab=classwork`;
       
       html += `
         <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 3px rgba(0,0,0,0.03);">
@@ -2913,13 +2930,167 @@ function viewAssignedClasses(title, subjectsData) {
 function deleteQuiz(quizId) {
   if(!confirm('Are you sure you want to delete this quiz? All student submissions and scores will be permanently deleted.')) return;
 
-  $.post('../shared/quiz_handler.php', { action: 'delete', id: quizId }, function(res) {
+  $.post('/cenlearn/shared/quiz_handler', { action: 'delete', id: quizId }, function(res) {
     if(res.success) {
       location.reload();
     } else {
       alert(res.msg || 'Failed to delete quiz.');
     }
   }, 'json');
+}
+
+// ── Copy All Quiz & Copy Individual Question Functions ─────────────────────
+let currentModalQuestions = [];
+
+function duplicateQuiz(quizId) {
+  if (!confirm('Duplicate this entire quiz? A new copy of the quiz with all its questions will be created.')) {
+    return;
+  }
+  $.post('/cenlearn/shared/quiz_handler', { action: 'duplicate_quiz', quiz_id: quizId }, function(res) {
+    if (typeof res === 'string') { try { res = JSON.parse(res.trim()); } catch(e){} }
+    if (res && res.success) {
+      showCopyToast(res.msg || 'Quiz duplicated successfully!');
+      setTimeout(function() { location.reload(); }, 800);
+    } else {
+      alert((res && res.msg) ? res.msg : 'Failed to duplicate quiz.');
+    }
+  }, 'json').fail(function() {
+    alert('Network error while duplicating quiz.');
+  });
+}
+
+function duplicateActiveQuiz() {
+  if (!currentActiveQuizId) return;
+  duplicateQuiz(currentActiveQuizId);
+}
+
+function copyAllQuizQuestionsText() {
+  if (!currentModalQuestions || currentModalQuestions.length === 0) {
+    alert('No questions loaded to copy.');
+    return;
+  }
+  let textList = [];
+  currentModalQuestions.forEach(function(q, idx) {
+    textList.push(formatQuestionToText(q, idx));
+  });
+  let fullText = textList.join('\n\n');
+  copyTextToClipboard(fullText, 'Copied all ' + currentModalQuestions.length + ' questions to clipboard!');
+}
+
+function copyIndividualQuestionText(idx) {
+  if (!currentModalQuestions || !currentModalQuestions[idx]) {
+    alert('Question not found.');
+    return;
+  }
+  let q = currentModalQuestions[idx];
+  let text = formatQuestionToText(q, idx);
+  copyTextToClipboard(text, 'Copied Question #' + (idx + 1) + ' to clipboard!');
+}
+
+function formatQuestionToText(q, idx) {
+  let num = idx + 1;
+  let qText = (q.question_text || '').trim();
+  let type = (q.question_type || 'multiple_choice').toLowerCase();
+  let pts = q.points || 1;
+  let corr = (q.correct_answer || '').trim();
+
+  let lines = [];
+  lines.push(num + '. ' + qText);
+
+  if (type === 'multiple_choice' || type === 'multi_select' || type === 'single_mcq') {
+    if (q.options && Array.isArray(q.options)) {
+      q.options.forEach(function(opt, optIdx) {
+        let letter = String.fromCharCode(65 + optIdx);
+        lines.push(letter + '. ' + opt);
+      });
+    }
+    lines.push('Answer: ' + (corr || 'A'));
+  } else if (type === 'true_false') {
+    lines.push('True / False');
+    lines.push('Answer: ' + (corr || 'True'));
+  } else if (type === 'modified_true_false') {
+    lines.push('Answer: ' + (corr || 'True'));
+  } else if (type === 'matching') {
+    if (q.matching_pairs && Array.isArray(q.matching_pairs) && q.matching_pairs.length > 0) {
+      lines.push('Matching Type');
+      lines.push('Column A:');
+      q.matching_pairs.forEach(function(p, pIdx) {
+        lines.push((pIdx + 1) + '. ' + (p.col_a_text || p.item_text || ''));
+      });
+      lines.push('Column B:');
+      q.matching_pairs.forEach(function(p, pIdx) {
+        let letter = String.fromCharCode(65 + pIdx);
+        lines.push(letter + '. ' + (p.col_b_text || p.target_text || ''));
+      });
+      let ansPairs = q.matching_pairs.map(function(p, pIdx) { return (pIdx + 1) + '-' + String.fromCharCode(65 + pIdx); }).join(', ');
+      lines.push('Answer: ' + (corr || ansPairs));
+    } else {
+      lines.push('Answer: ' + corr);
+    }
+  } else {
+    lines.push('Answer: ' + corr);
+  }
+
+  lines.push('points: ' + pts);
+  return lines.join('\n');
+}
+
+function duplicateIndividualQuestion(questionId, index) {
+  if (!currentActiveQuizId) return;
+  var qNum = (index !== undefined) ? ('#' + (index + 1)) : '';
+  if (!confirm('Duplicate Question ' + qNum + '? This will create an exact copy of this question inside the quiz.')) {
+    return;
+  }
+  $.post('/cenlearn/shared/quiz_handler', { action: 'duplicate_question', quiz_id: currentActiveQuizId, question_id: questionId }, function(res) {
+    if (typeof res === 'string') { try { res = JSON.parse(res.trim()); } catch(e){} }
+    if (res && res.success) {
+      showCopyToast('Question ' + qNum + ' duplicated!');
+      viewSubmissions(currentActiveQuizId);
+    } else {
+      alert((res && res.msg) ? res.msg : 'Failed to duplicate question.');
+    }
+  }, 'json').fail(function() {
+    alert('Network error while duplicating question.');
+  });
+}
+
+function copyTextToClipboard(text, successMsg) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(function() {
+      showCopyToast(successMsg || 'Copied to clipboard!');
+    }).catch(function() {
+      fallbackCopyText(text, successMsg);
+    });
+  } else {
+    fallbackCopyText(text, successMsg);
+  }
+}
+
+function fallbackCopyText(text, successMsg) {
+  var textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.style.position = "fixed";
+  textArea.style.left = "-999999px";
+  textArea.style.top = "-999999px";
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  try {
+    document.execCommand('copy');
+    showCopyToast(successMsg || 'Copied to clipboard!');
+  } catch (err) {
+    alert('Could not copy text: ' + err);
+  }
+  document.body.removeChild(textArea);
+}
+
+function showCopyToast(msg) {
+  var toast = $('#copyToastAlert');
+  if(toast.length === 0){
+    toast = $('<div id="copyToastAlert" style="position:fixed;bottom:24px;right:24px;z-index:9999;background:#0f172a;color:#fff;padding:12px 20px;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,0.25);font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;transition:all 0.3s ease;"><i class="fa fa-check-circle text-success" style="font-size:16px;"></i> <span></span></div>').appendTo('body');
+  }
+  toast.find('span').text(msg);
+  toast.stop(true, true).fadeIn(200).delay(3000).fadeOut(400);
 }
 </script>
 </body>

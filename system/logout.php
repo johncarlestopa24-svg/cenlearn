@@ -16,20 +16,6 @@ if(ini_get('session.use_cookies')){
 session_destroy();
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
-?>
-<!DOCTYPE html>
-<html>
-<head>
-<script>
-if(window.top && window.top !== window){
-    window.top.location.href = 'index.php';
-} else {
-    window.location.href = 'index.php';
-}
-</script>
-</head>
-<body></body>
-</html>
-<?php
+header('location: /cenlearn/login');
 exit;
 ?>

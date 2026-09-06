@@ -431,17 +431,7 @@ if($action === 'create'){
         'schedule_room' => 'varchar(50) DEFAULT NULL'
     ]);
 
-    // Auto-create confirmations table if needed
-    $conn->query("CREATE TABLE IF NOT EXISTS `class_confirmations` (
-      `id` int(11) NOT NULL AUTO_INCREMENT,
-      `class_id` int(11) NOT NULL,
-      `student_code` varchar(50) NOT NULL,
-      `status` enum('pending','accepted','declined') NOT NULL DEFAULT 'pending',
-      `responded_at` datetime DEFAULT NULL,
-      `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (`id`),
-      UNIQUE KEY `class_student` (`class_id`,`student_code`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
 
     foreach ($sec_parts as $sec_part) {
         $sec_part = trim($sec_part);
@@ -579,14 +569,12 @@ if($action === 'create'){
                     }
                 }
 
-                $memVals[]  = "($class_id,'$sc2')";
-                $confVals[] = "($class_id,'$sc2','accepted',NOW())";
+                $memVals[] = "($class_id,'$sc2')";
                 $autoEnrolled++;
             }
 
             if (!empty($memVals)) {
                 $conn->query("INSERT IGNORE INTO class_members (class_id,user_code) VALUES " . implode(',', $memVals));
-                $conn->query("INSERT INTO class_confirmations (class_id,student_code,status,responded_at) VALUES " . implode(',', $confVals) . " ON DUPLICATE KEY UPDATE status='accepted', responded_at=NOW()");
             }
         } elseif ($program_code || $year_level > 0 || $sec_part) {
             $where = ["user_group='STUDENT'", "user_code != '$tc'", "(graduated_at IS NULL OR graduated_at = '')", "is_active = 1"];
@@ -602,13 +590,11 @@ if($action === 'create'){
                 while($s = $students->fetch_assoc()){
                     $sc2 = $conn->real_escape_string($s['user_code']);
                     $memVals[] = "($class_id,'$sc2')";
-                    $confVals[] = "($class_id,'$sc2','pending')";
                     $autoEnrolled++;
                 }
 
                 if(!empty($memVals)){
                     $conn->query("INSERT IGNORE INTO class_members (class_id,user_code) VALUES " . implode(',', $memVals));
-                    $conn->query("INSERT IGNORE INTO class_confirmations (class_id,student_code,status) VALUES " . implode(',', $confVals));
                 }
             }
         }
@@ -668,24 +654,6 @@ if($action === 'join'){
 
     $conn->query("INSERT INTO class_members (class_id,user_code) VALUES ($cid,'$uc')");
 
-    // Auto-create confirmations table if needed
-    $conn->query("CREATE TABLE IF NOT EXISTS `class_confirmations` (
-      `id` int(11) NOT NULL AUTO_INCREMENT,
-      `class_id` int(11) NOT NULL,
-      `student_code` varchar(50) NOT NULL,
-      `status` enum('pending','accepted','declined') NOT NULL DEFAULT 'pending',
-      `responded_at` datetime DEFAULT NULL,
-      `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (`id`),
-      UNIQUE KEY `class_student` (`class_id`,`student_code`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-    // Students who join by code are auto-accepted (they chose to join)
-    if(strtoupper($user['user_group']) === 'STUDENT'){
-        $conn->query("INSERT IGNORE INTO class_confirmations (class_id,student_code,status,responded_at)
-                      VALUES ($cid,'$uc','accepted',NOW())");
-    }
-
     echo json_encode(['success'=>true,'class_name'=>$class['class_name'],'class_code'=>$code]);
     exit;
 }
@@ -722,22 +690,6 @@ if($action === 'join_by_id'){
 
     $conn->query("INSERT IGNORE INTO class_members (class_id,user_code) VALUES ($class_id,'$uc')");
 
-    // Auto-create confirmations table if needed
-    $conn->query("CREATE TABLE IF NOT EXISTS `class_confirmations` (
-      `id` int(11) NOT NULL AUTO_INCREMENT,
-      `class_id` int(11) NOT NULL,
-      `student_code` varchar(50) NOT NULL,
-      `status` enum('pending','accepted','declined') NOT NULL DEFAULT 'pending',
-      `responded_at` datetime DEFAULT NULL,
-      `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (`id`),
-      UNIQUE KEY `class_student` (`class_id`,`student_code`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-
-    // Students who join via the Available section are auto-accepted (they chose to join)
-    $conn->query("INSERT IGNORE INTO class_confirmations (class_id,student_code,status,responded_at)
-                  VALUES ($class_id,'$uc','accepted',NOW())");
-
     echo json_encode(['success'=>true,'class_name'=>$class['class_name']]);
     exit;
 }
@@ -759,7 +711,6 @@ if($action === 'leave_class'){
     // If student: unenroll student from class
     if($role === 'STUDENT'){
         $conn->query("DELETE FROM class_members WHERE class_id=$class_id AND user_code='$uc'");
-        $conn->query("DELETE FROM class_confirmations WHERE class_id=$class_id AND student_code='$uc'");
         echo json_encode(['success'=>true, 'msg'=>'You have left the class successfully.']);
         exit;
     }
@@ -800,7 +751,6 @@ if($action === 'leave_class'){
             $conn->query("DELETE FROM live_attendance WHERE session_id IN (SELECT id FROM live_sessions WHERE class_id=$class_id)");
             $conn->query("DELETE FROM live_admission WHERE session_id IN (SELECT id FROM live_sessions WHERE class_id=$class_id)");
             $conn->query("DELETE FROM live_sessions WHERE class_id=$class_id");
-            $conn->query("DELETE FROM class_confirmations WHERE class_id=$class_id");
             $conn->query("DELETE FROM class_members WHERE class_id=$class_id");
             $conn->query("DELETE FROM classes WHERE id=$class_id");
 

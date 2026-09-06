@@ -74,107 +74,280 @@ foreach($quizzes as $qz){
 }
 
 $avgPct = $totalScorePossible > 0 ? round(($totalScoreEarned / $totalScorePossible) * 100) : 0;
+$fullName = trim(($user['first_name'] ?? 'Student').' '.($user['last_name'] ?? ''));
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>CenLearn &mdash; My Quizzes</title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css?v=3.0">
   <style>
     *, *::before, *::after { box-sizing: border-box; }
-    html,body{margin:0;padding:0;overflow-x:hidden;}
-    body { font-family: 'Inter', sans-serif; background: #f0f4f8; color: #1e293b; }
+    html, body { margin: 0; padding: 0; background: #f4f7fa; font-family: 'Inter', sans-serif; color: #1e293b; overflow-x: hidden; }
 
-    /* ── Sidebar ── */
-    .sd-sidebar{position:fixed;top:0;left:0;width:260px;height:100vh;background:linear-gradient(180deg,#0c1a2e 0%,#0f2d4a 55%,#0f5f80 100%);display:flex;flex-direction:column;z-index:200;transition:transform .3s cubic-bezier(.4,0,.2,1);transform:translateX(-260px);}
-    .sd-sidebar.open{transform:translateX(0);}
-    @media(min-width:901px){.sd-sidebar{transform:translateX(0);}}
-    .sb-brand{padding:26px 22px 18px;border-bottom:1px solid rgba(255,255,255,.08);}
-    .sb-logo{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#1792bb,#0f5f80);display:inline-flex;align-items:center;justify-content:center;margin-bottom:10px;box-shadow:0 4px 14px rgba(23,146,187,.45);}
-    .sb-logo i{color:#fff;font-size:18px;}
-    .sb-brand h2{color:#fff;font-size:19px;font-weight:800;margin:0;}
-    .sb-brand h2 span{color:#38bdf8;}
-    .sb-brand p{color:rgba(255,255,255,.35);font-size:10px;margin:2px 0 0;}
-    .sb-nav{flex:1;padding:14px 0;overflow-y:auto;}
-    .sb-section{padding:8px 22px 4px;font-size:9px;font-weight:700;color:rgba(255,255,255,.25);letter-spacing:1.4px;text-transform:uppercase;}
-    .sb-nav ul{list-style:none;margin:0;padding:0;}
-    .sb-nav li a{display:flex;align-items:center;gap:11px;padding:10px 22px;color:rgba(255,255,255,.6);text-decoration:none;font-size:13px;font-weight:500;transition:all .2s;border-left:3px solid transparent;}
-    .sb-nav li a:hover{background:rgba(255,255,255,.07);color:#fff;}
-    .sb-nav li.active a{background:rgba(56,189,248,.12);color:#fff;border-left-color:#38bdf8;}
-    .sb-nav li a i{width:17px;text-align:center;font-size:14px;}
-    .sb-footer{padding:14px 22px;border-top:1px solid rgba(255,255,255,.07);}
-    .sb-user{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
-    .sb-av{width:36px;height:36px;border-radius:9px;background:linear-gradient(135deg,#1792bb,#0f5f80);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0;}
-    .sb-meta strong{display:block;color:#fff;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .sb-meta span{color:rgba(255,255,255,.4);font-size:10px;}
-    .sb-out{display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;width:100%;background:rgba(255,255,255,.07);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.1);border-radius:8px;font-size:12px;font-weight:500;text-decoration:none;transition:background .2s;}
-    .sb-out:hover{background:rgba(255,255,255,.13);color:#fff;}
+    /* ── LEFT SIDEBAR ── */
+    .app-sidebar {
+      position: fixed; top: 0; left: 0; width: 250px; height: 100vh;
+      background: #0b1727; display: flex; flex-direction: column; z-index: 300;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transform: translateX(-250px);
+    }
+    .app-sidebar.open { transform: translateX(0); }
+    @media (min-width: 901px) { .app-sidebar { transform: translateX(0); } }
 
-    /* ── Main layout ── */
-    .sd-main{margin-left:0;min-height:100vh;display:flex;flex-direction:column;}
-    @media(min-width:901px){.sd-main{margin-left:260px;}}
-    .sd-topbar{background:#fff;padding:0 28px;height:62px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:50;box-shadow:0 1px 4px rgba(0,0,0,.04);}
-    .sd-topbar h3{font-size:16px;font-weight:700;color:#0f172a;margin:0;}
-    .sd-topbar p{font-size:12px;color:#64748b;margin:0;}
-    .sd-content{padding:24px 28px 48px;flex:1;}
+    .sb-brand {
+      padding: 24px 22px 18px; display: flex; align-items: center; gap: 12px;
+    }
+    .sb-brand-icon {
+      width: 38px; height: 38px; border-radius: 10px;
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 18px; box-shadow: 0 4px 12px rgba(37,99,235,0.4);
+    }
+    .sb-brand-text h2 { margin: 0; font-size: 19px; font-weight: 800; color: #ffffff; letter-spacing: -0.3px; }
+    .sb-brand-text p { margin: 2px 0 0; font-size: 10px; color: #64748b; font-weight: 500; }
 
-    /* ── Stats Strip ── */
-    .stats-strip{display:flex;gap:14px;margin-bottom:24px;flex-wrap:wrap;}
-    .stat-pill{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px 18px;flex:1;min-width:140px;transition:box-shadow .2s;}
-    .stat-pill:hover{box-shadow:0 4px 12px rgba(0,0,0,.05);}
-    .sp-icon{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-    .stat-pill strong{display:block;font-size:24px;font-weight:800;color:#0f172a;line-height:1;}
-    .stat-pill span{font-size:11px;color:#64748b;font-weight:500;}
+    .sb-nav { flex: 1; padding: 12px 14px; overflow-y: auto; }
+    .sb-nav ul { list-style: none; margin: 0; padding: 0; }
+    .sb-nav li { margin-bottom: 4px; }
+    .sb-nav li a {
+      display: flex; align-items: center; gap: 12px; padding: 11px 16px;
+      color: #94a3b8; text-decoration: none; font-size: 13.5px; font-weight: 500;
+      border-radius: 12px; transition: all 0.18s ease;
+    }
+    .sb-nav li a:hover { background: rgba(255,255,255,0.06); color: #ffffff; }
+    .sb-nav li.active a {
+      background: #2563eb; color: #ffffff; font-weight: 600;
+      box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+    }
+    .sb-nav li a i { width: 18px; text-align: center; font-size: 15px; }
 
-    /* ── Class Filter Selector ── */
-    .class-filter-card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:16px 20px;margin-bottom:22px;box-shadow:0 1px 4px rgba(0,0,0,.03);}
-    .class-filter-card h4{font-size:13px;font-weight:700;color:#0f172a;margin:0 0 12px;display:flex;align-items:center;gap:7px;}
-    .class-pills{display:flex;flex-wrap:wrap;gap:8px;}
-    .class-pill{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:10px;border:1.5px solid #e2e8f0;background:#f8fafc;font-size:12px;font-weight:600;color:#475569;cursor:pointer;text-decoration:none;transition:all .18s;}
-    .class-pill:hover{border-color:#1792bb;background:#f0f9ff;color:#0369a1;text-decoration:none;}
-    .class-pill.active{border-color:#1792bb;background:linear-gradient(135deg,#1792bb,#0f5f80);color:#fff;box-shadow:0 3px 12px rgba(23,146,187,.3);}
+    .sb-promo-card {
+      margin: 14px; padding: 16px; border-radius: 16px;
+      background: linear-gradient(180deg, rgba(30,58,138,0.4) 0%, rgba(15,23,42,0.6) 100%);
+      border: 1px solid rgba(255,255,255,0.08); position: relative; overflow: hidden;
+    }
+    .sb-promo-icon {
+      width: 32px; height: 32px; border-radius: 8px; background: rgba(56,189,248,0.15);
+      color: #38bdf8; display: flex; align-items: center; justify-content: center;
+      font-size: 16px; margin-bottom: 10px;
+    }
+    .sb-promo-card p {
+      margin: 0; font-size: 11.5px; color: rgba(255,255,255,0.8); line-height: 1.45; font-weight: 500;
+    }
 
-    /* ── Section Header & Tabs ── */
-    .quiz-sec-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;}
-    .quiz-sec-header h3{font-size:15px;font-weight:800;color:#0f172a;margin:0;display:flex;align-items:center;gap:8px;}
-    .quiz-tabs{display:flex;gap:6px;background:#e2e8f0;padding:3px;border-radius:10px;}
-    .quiz-tab-btn{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;color:#64748b;border:none;background:transparent;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;}
-    .quiz-tab-btn.active{background:#fff;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.1);}
+    /* ── MAIN CONTENT AREA ── */
+    .app-main {
+      margin-left: 0; min-height: 100vh; display: flex; flex-direction: column;
+      transition: margin-left 0.3s;
+    }
+    @media (min-width: 901px) { .app-main { margin-left: 250px; } }
 
-    /* ── Quizzes Grid & Row Cards ── */
-    .quiz-row-list{display:flex;flex-direction:column;gap:10px;}
-    .quiz-row-card{background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:16px;transition:all .18s;box-shadow:0 1px 3px rgba(0,0,0,.02);}
-    .quiz-row-card:hover{border-color:#cbd5e1;box-shadow:0 4px 12px rgba(0,0,0,.05);}
-    .qrc-left{display:flex;align-items:center;gap:14px;flex:1;min-width:0;}
-    .qrc-info{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;min-width:0;}
-    .qrc-title{font-size:14px;font-weight:700;color:#0f172a;margin:0;margin-right:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .qz-class-badge{font-size:11px;font-weight:700;color:#0369a1;background:#e0f2fe;padding:2px 8px;border-radius:5px;border:1px solid #bae6fd;display:inline-flex;align-items:center;gap:4px;}
-    .qrc-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-    .qz-pill{font-size:11px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;padding:3px 9px;border-radius:6px;display:inline-flex;align-items:center;gap:5px;font-weight:500;}
-    .qrc-right{display:flex;align-items:center;gap:12px;flex-shrink:0;}
+    /* Top Bar Header */
+    .top-header {
+      background: #ffffff; height: 68px; padding: 0 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 100;
+    }
+    .header-search {
+      position: relative; width: 360px; max-width: 100%;
+    }
+    .header-search input {
+      width: 100%; height: 42px; padding: 0 16px 0 42px; border-radius: 99px;
+      border: 1px solid #f1f5f9; background: #f8fafc; font-size: 13px; color: #1e293b;
+      outline: none; transition: all 0.2s; font-family: 'Inter', sans-serif;
+    }
+    .header-search input:focus { background: #ffffff; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+    .header-search i {
+      position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+      color: #94a3b8; font-size: 14px;
+    }
 
-    /* Status Pills */
-    .status-pill{padding:4px 10px;border-radius:99px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px;}
-    .status-open{background:#dcfce7;color:#166534;}
-    .status-done{background:#e0f2fe;color:#0369a1;}
-    .status-closed{background:#f1f5f9;color:#64748b;}
-    .status-graded{background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;}
+    .header-user { display: flex; align-items: center; gap: 12px; position: relative; }
+    .user-profile-wrap { position: relative; }
+    .user-profile-btn {
+      display: flex; align-items: center; justify-content: center; padding: 2px;
+      border-radius: 50%; background: #ffffff; border: 2px solid #e2e8f0;
+      cursor: pointer; transition: all 0.2s ease; user-select: none;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+    .user-profile-btn:hover { background: #f8fafc; border-color: #2563eb; transform: scale(1.05); box-shadow: 0 4px 12px rgba(37,99,235,0.18); }
+    .user-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: linear-gradient(135deg, #0284c7, #2563eb); color: #ffffff;
+      font-weight: 700; font-size: 13.5px; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 6px rgba(37,99,235,0.3); flex-shrink: 0;
+    }
+    .user-info strong { display: block; font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.2; }
+    .user-info span { font-size: 11px; color: #64748b; font-weight: 500; }
 
-    /* Action Buttons */
-    .btn-take-quiz{padding:8px 16px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;border:none;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 3px 10px rgba(139,92,246,.3);font-family:'Inter',sans-serif;transition:opacity .15s;}
-    .btn-take-quiz:hover{opacity:.9;}
-    .btn-view-results{padding:7px 14px;background:#f5f3ff;color:#6d28d9;border:1.5px solid #ede9fe;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-family:'Inter',sans-serif;transition:background .15s;}
-    .btn-view-results:hover{background:#ede9fe;}
+    .header-logout-btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+      border-radius: 99px; background: #fee2e2; color: #dc2626; font-size: 12.5px;
+      font-weight: 700; text-decoration: none; border: 1px solid #fca5a5; transition: all 0.2s ease;
+    }
+    .header-logout-btn:hover { background: #dc2626; color: #ffffff; border-color: #dc2626; text-decoration: none; box-shadow: 0 4px 12px rgba(220,38,38,0.25); }
 
-    .qc-empty{text-align:center;padding:56px 20px;background:#fff;border-radius:18px;border:1px solid #e2e8f0;grid-column:1/-1;}
-    .qc-empty i{font-size:36px;color:#cbd5e1;display:block;margin-bottom:12px;}
-    .qc-empty h4{font-size:15px;font-weight:700;color:#64748b;margin:0 0 4px;}
-    .qc-empty p{font-size:12px;color:#94a3b8;margin:0;}
+    .profile-dropdown-menu {
+      position: absolute; top: calc(100% + 8px); right: 0; width: 230px;
+      background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.12); padding: 8px; z-index: 1000;
+      display: none; animation: pdmFade 0.2s ease-out;
+    }
+    .profile-dropdown-menu.show { display: block; }
+    @keyframes pdmFade {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .pdm-header { padding: 12px 14px 10px; border-bottom: 1px solid #f1f5f9; margin-bottom: 6px; }
+    .pdm-header strong { display: block; font-size: 13px; font-weight: 700; color: #0f172a; }
+    .pdm-header span { font-size: 11px; color: #64748b; }
+    .pdm-item {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      border-radius: 10px; color: #334155; font-size: 13px; font-weight: 600;
+      text-decoration: none; transition: all 0.15s ease;
+    }
+    .pdm-item:hover { background: #f8fafc; color: #2563eb; text-decoration: none; }
+    .pdm-item.danger { color: #dc2626; }
+    .pdm-item.danger:hover { background: #fef2f2; color: #b91c1c; text-decoration: none; }
+
+    /* Main Inner Container */
+    .content-body { padding: 28px 32px 60px; flex: 1; }
+
+    /* Welcome Hero Banner */
+    .hero-banner {
+      background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 50%, #38bdf8 100%);
+      border-radius: 20px; padding: 28px 36px; color: #ffffff;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 24px; box-shadow: 0 10px 25px -5px rgba(37,99,235,0.3);
+      position: relative; overflow: hidden;
+    }
+    .hero-text h1 { margin: 0 0 6px; font-size: 24px; font-weight: 800; letter-spacing: -0.4px; }
+    .hero-text p { margin: 0; font-size: 13.5px; opacity: 0.9; font-weight: 400; max-width: 500px; }
+    .hero-graphic {
+      display: flex; align-items: center; justify-content: center; position: relative;
+    }
+    .hero-graphic-box {
+      width: 140px; height: 90px; border-radius: 16px;
+      background: rgba(255,255,255,0.18); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.3); display: flex;
+      align-items: center; justify-content: center; font-size: 42px; color: #ffffff;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.15); transform: rotate(-3deg);
+    }
+
+    /* 4-Grid Summary Stat Cards */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-bottom: 28px;
+    }
+    @media (max-width: 1100px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 600px) { .stats-grid { grid-template-columns: 1fr; } }
+
+    .stat-card {
+      background: #ffffff; border-radius: 16px; padding: 20px;
+      border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.02); transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.06); }
+    .stat-card-left { display: flex; align-items: center; gap: 14px; }
+    .stat-icon-circle {
+      width: 46px; height: 46px; border-radius: 14px; display: flex;
+      align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
+    }
+    .stat-card-info label { display: block; font-size: 12px; font-weight: 600; color: #64748b; margin-bottom: 2px; }
+    .stat-card-info strong { display: block; font-size: 22px; font-weight: 800; color: #0f172a; line-height: 1.1; }
+    .stat-card-info span { display: block; font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    .stat-chevron { color: #cbd5e1; font-size: 13px; }
+
+    /* Section Title & Filter Tabs Bar */
+    .section-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px; flex-wrap: wrap; gap: 16px;
+    }
+    .section-title h2 { margin: 0; font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px; }
+    .section-title p { margin: 3px 0 0; font-size: 12.5px; color: #64748b; }
+
+    .filter-tabs { display: flex; align-items: center; gap: 8px; }
+    .tab-pill {
+      padding: 8px 18px; border-radius: 99px; font-size: 12.5px; font-weight: 600;
+      border: 1px solid #e2e8f0; background: #ffffff; color: #475569;
+      cursor: pointer; transition: all 0.18s; font-family: 'Inter', sans-serif;
+    }
+    .tab-pill.active {
+      background: #0f172a; color: #ffffff; border-color: #0f172a;
+      box-shadow: 0 4px 12px rgba(15,23,42,0.15);
+    }
+
+    /* Class Cards List / Grid */
+    /* ═══════════════ SLEEK, COMPACT & RESPONSIVE QUIZ CARDS ═══════════════ */
+    .class-cards-container { display: flex; flex-direction: column; gap: 12px; transition: all 0.3s ease; }
+    
+    .class-card {
+      background: #ffffff; border-radius: 14px; border: 1px solid #e2e8f0;
+      padding: 12px 18px; display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; box-shadow: 0 1.5px 6px rgba(0,0,0,0.02); transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .class-card:hover {
+      transform: translateY(-1.5px); box-shadow: 0 6px 18px rgba(0,0,0,0.05);
+      border-color: #cbd5e1;
+    }
+
+    .cc-main-info { display: flex; align-items: center; gap: 14px; flex: 1.2; min-width: 200px; }
+    .cc-thumb {
+      width: 58px; height: 58px; border-radius: 12px;
+      background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+      display: flex; align-items: center; justify-content: center;
+      color: #ffffff; font-size: 22px; flex-shrink: 0; position: relative;
+      box-shadow: 0 3px 10px rgba(37,99,235,0.22);
+    }
+    .cc-details { display: flex; flex-direction: column; gap: 2px; }
+    .status-tag {
+      display: inline-flex; align-items: center; padding: 1.5px 7px; border-radius: 99px;
+      font-size: 9.5px; font-weight: 700; background: #dcfce7; color: #166534; width: fit-content;
+      margin-bottom: 2px;
+    }
+    .cc-title { margin: 0; font-size: 14.5px; font-weight: 800; color: #0f172a; line-height: 1.25; }
+    .cc-sub { font-size: 11.5px; color: #64748b; font-weight: 500; }
+
+    /* Schedule & Info Column */
+    .cc-schedule-col { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 160px; }
+    .info-item { display: flex; align-items: center; gap: 8px; }
+    .info-item i { color: #64748b; font-size: 13px; width: 14px; text-align: center; }
+    .info-text label { display: block; font-size: 9.5px; font-weight: 700; color: #94a3b8; margin: 0; text-transform: uppercase; letter-spacing: 0.3px; }
+    .info-text strong { display: block; font-size: 11.5px; font-weight: 700; color: #1e293b; }
+
+    /* Action Column */
+    .cc-action-col { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+
+    .btn-view-class {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 7px 18px; border-radius: 99px; background: #2563eb;
+      color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none;
+      box-shadow: 0 3px 10px rgba(37,99,235,0.22); transition: all 0.18s; border: none;
+      cursor: pointer;
+    }
+    .btn-view-class:hover { background: #1d4ed8; color: #ffffff; text-decoration: none; transform: translateY(-1px); }
+
+    @media (max-width: 850px) {
+      .class-card { flex-wrap: wrap; padding: 12px 14px; gap: 10px; }
+      .cc-main-info { flex: 1 1 100%; }
+      .cc-schedule-col { flex: 1 1 100%; flex-direction: row; justify-content: space-between; background: #f8fafc; padding: 8px 12px; border-radius: 10px; }
+      .cc-action-col { flex: 1 1 100%; justify-content: space-between; border-top: 1px solid #f1f5f9; padding-top: 8px; margin-top: 2px; }
+      .top-header { padding: 0 16px; }
+      .content-body { padding: 16px 16px 40px; }
+    }
+    @media (max-width: 520px) {
+      .cc-thumb { width: 48px; height: 48px; font-size: 18px; border-radius: 10px; }
+      .cc-title { font-size: 13.5px; }
+      .cc-sub { font-size: 11px; }
+      .cc-schedule-col { flex-direction: column; gap: 6px; }
+      .btn-view-class { padding: 6px 14px; font-size: 11.5px; }
+    }
 
     /* Take Quiz Modal Fullscreen */
     #quizViolationBar{display:none;background:#fef2f2;border-bottom:1px solid #fecaca;color:#991b1b;padding:8px 16px;font-size:12px;font-weight:600;align-items:center;gap:8px;}
@@ -195,454 +368,184 @@ $avgPct = $totalScorePossible > 0 ? round(($totalScoreEarned / $totalScorePossib
     .quiz-id-input:focus{border-color:#8b5cf6;}
     .quiz-tf{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;}
 
-    /* ── High-Visibility Student Quiz Timer ── */
+    /* High-Visibility Student Quiz Timer */
     #quizTimer {
-      display: none;
-      align-items: center;
-      gap: 7px;
-      padding: 6px 14px;
-      border-radius: 30px;
-      font-size: 15px;
-      font-weight: 800;
-      font-family: 'Inter', -apple-system, monospace;
-      letter-spacing: 0.5px;
-      background: #ffffff;
-      color: #6d28d9;
+      display: none; align-items: center; gap: 7px; padding: 6px 14px; border-radius: 30px;
+      font-size: 15px; font-weight: 800; font-family: 'Inter', -apple-system, monospace;
+      letter-spacing: 0.5px; background: #ffffff; color: #6d28d9;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18), 0 0 0 2px rgba(255, 255, 255, 0.4);
-      transition: all 0.25s ease;
-      white-space: nowrap;
-      user-select: none;
+      transition: all 0.25s ease; white-space: nowrap; user-select: none;
     }
-    #quizTimer .timer-icon {
-      font-size: 15px;
-      color: #7c3aed;
-    }
-    #quizTimer .timer-text {
-      font-size: 16px;
-      font-weight: 800;
-      font-family: 'Consolas', 'Courier New', monospace;
-      letter-spacing: 1px;
-    }
-    #quizTimer.timer-warning {
-      background: #fffbeb !important;
-      color: #b45309 !important;
-      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35), 0 0 0 2px #f59e0b !important;
-    }
-    #quizTimer.timer-warning .timer-icon {
-      color: #d97706 !important;
-    }
-    #quizTimer.timer-danger {
-      background: #fef2f2 !important;
-      color: #dc2626 !important;
-      box-shadow: 0 4px 16px rgba(239, 68, 68, 0.45), 0 0 0 2px #ef4444 !important;
-      animation: timerPulse 0.8s ease-in-out infinite;
-    }
-    #quizTimer.timer-danger .timer-icon {
-      color: #dc2626 !important;
-    }
-    @keyframes timerPulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-    }
+    #quizTimer .timer-icon { font-size: 15px; color: #7c3aed; }
+    #quizTimer .timer-text { font-size: 16px; font-weight: 800; font-family: 'Consolas', 'Courier New', monospace; letter-spacing: 1px; }
+    #quizTimer.timer-warning { background: #fffbeb !important; color: #b45309 !important; box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35), 0 0 0 2px #f59e0b !important; }
+    #quizTimer.timer-warning .timer-icon { color: #d97706 !important; }
+    #quizTimer.timer-danger { background: #fef2f2 !important; color: #dc2626 !important; box-shadow: 0 4px 16px rgba(239, 68, 68, 0.45), 0 0 0 2px #ef4444 !important; animation: timerPulse 0.8s ease-in-out infinite; }
+    #quizTimer.timer-danger .timer-icon { color: #dc2626 !important; }
+    @keyframes timerPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 
-    /* ── Fullscreen Quiz Modal Auto-Fit & Responsive ── */
-    #takeQuizModal.cv-modal-overlay {
-      position: fixed !important;
-      inset: 0 !important;
-      top: 0 !important;
-      left: 0 !important;
-      width: 100vw !important;
-      height: 100vh !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      border: none !important;
-      border-radius: 0 !important;
-      background: #f8fafc !important;
-      z-index: 999999 !important;
-      display: none;
-      flex-direction: column !important;
-      align-items: stretch !important;
-      justify-content: stretch !important;
-    }
-    #takeQuizModal .cv-modal {
-      width: 100vw !important;
-      max-width: 100vw !important;
-      height: 100vh !important;
-      max-height: 100vh !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      border-radius: 0 !important;
-      border: none !important;
-      display: flex !important;
-      flex-direction: column !important;
-      flex: 1 1 100% !important;
-      background: #f8fafc !important;
-      box-shadow: none !important;
-    }
-    #takeQuizModal .cv-modal-body {
-      flex: 1 1 auto !important;
-      overflow-y: auto !important;
-      padding: 24px 20px !important;
-      display: flex !important;
-      flex-direction: column !important;
-      align-items: center !important;
-      width: 100% !important;
-    }
-    #takeQuizModal #quizQuestionCardArea {
-      width: 100% !important;
-      max-width: 980px !important;
-      margin: 0 auto !important;
-      position: relative !important;
-      z-index: 10 !important;
-    }
-    .quiz-matching-tables-grid {
-      display: grid !important;
-      grid-template-columns: 1.25fr 1fr !important;
-      gap: 18px !important;
-      align-items: start !important;
-      margin-top: 14px !important;
-    }
-    #quizTimer {
-      background: #ffffff !important;
-      color: #dc2626 !important;
-      border: 2px solid #ef4444 !important;
-      padding: 5px 18px !important;
-      border-radius: 24px !important;
-      font-size: 16px !important;
-      font-weight: 800 !important;
-      letter-spacing: 0.5px !important;
-      box-shadow: 0 4px 14px rgba(220, 38, 38, 0.25) !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      gap: 7px !important;
-    }
-    #quizTimer .timer-icon {
-      color: #dc2626 !important;
-      font-size: 16px !important;
-    }
-    @media (max-width: 768px) {
-      .quiz-matching-tables-grid {
-        grid-template-columns: 1fr !important;
-      }
-      #takeQuizModal .cv-modal-body {
-        padding: 14px 10px !important;
-      }
-      .quiz-single-card {
-        padding: 16px 14px !important;
-        border-radius: 12px !important;
-      }
-    }
+    /* Fullscreen Quiz Modal Auto-Fit & Responsive */
+    #takeQuizModal.cv-modal-overlay { position: fixed !important; inset: 0 !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; margin: 0 !important; padding: 0 !important; border: none !important; border-radius: 0 !important; background: #f8fafc !important; z-index: 999999 !important; display: none; flex-direction: column !important; align-items: stretch !important; justify-content: stretch !important; }
+    #takeQuizModal .cv-modal { width: 100vw !important; max-width: 100vw !important; height: 100vh !important; max-height: 100vh !important; margin: 0 !important; padding: 0 !important; border-radius: 0 !important; border: none !important; display: flex !important; flex-direction: column !important; flex: 1 1 100% !important; background: #f8fafc !important; box-shadow: none !important; }
+    #takeQuizModal .cv-modal-body { flex: 1 1 auto !important; overflow-y: auto !important; padding: 24px 20px !important; display: flex !important; flex-direction: column !important; align-items: center !important; width: 100% !important; }
+    #takeQuizModal #quizQuestionCardArea { width: 100% !important; max-width: 980px !important; margin: 0 auto !important; position: relative !important; z-index: 10 !important; }
+    .quiz-matching-tables-grid { display: grid !important; grid-template-columns: 1.25fr 1fr !important; gap: 18px !important; align-items: start !important; margin-top: 14px !important; }
 
-    /* ── Single-Question Step-by-Step Layout ── */
-    .quiz-stepper-header {
-      background: #ffffff;
-      border-bottom: 1px solid #e2e8f0;
-      padding: 10px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 14px;
-      flex-wrap: wrap;
-      z-index: 15;
-    }
-    .quiz-palette-wrap {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      overflow-x: auto;
-      padding: 4px 2px;
-      scrollbar-width: thin;
-      flex: 1;
-      max-width: 100%;
-    }
-    .quiz-palette-btn {
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      border: 1.5px solid #cbd5e1;
-      background: #f8fafc;
-      color: #475569;
-      font-size: 11.5px;
-      font-weight: 700;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      flex-shrink: 0;
-      transition: all .15s;
-      position: relative;
-      font-family: 'Inter', sans-serif;
-    }
-    .quiz-palette-btn:hover {
-      border-color: #8b5cf6;
-      background: #f5f3ff;
-      color: #6d28d9;
-    }
-    .quiz-palette-btn.current {
-      border-color: #8b5cf6 !important;
-      background: #8b5cf6 !important;
-      color: #fff !important;
-      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.35) !important;
-      font-weight: 800;
-    }
-    .quiz-palette-btn.answered {
-      border-color: #10b981;
-      background: #ecfdf5;
-      color: #059669;
-    }
-    .quiz-palette-btn.answered.current {
-      border-color: #059669 !important;
-      background: #059669 !important;
-      color: #fff !important;
-      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.35) !important;
-    }
-    .quiz-palette-btn.answered::after {
-      content: '';
-      position: absolute;
-      bottom: 2px;
-      right: 2px;
-      width: 5px;
-      height: 5px;
-      border-radius: 50%;
-      background: #10b981;
-    }
-    .quiz-palette-btn.current::after {
-      background: #fff !important;
-    }
+    /* Stepper Header & Palette */
+    .quiz-stepper-header { background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; z-index: 15; }
+    .quiz-palette-wrap { display: flex; align-items: center; gap: 7px; overflow-x: auto; padding: 4px 2px; scrollbar-width: thin; flex: 1; max-width: 100%; }
+    .quiz-palette-btn { width: 32px; height: 32px; border-radius: 8px; border: 1.5px solid #cbd5e1; background: #f8fafc; color: #475569; font-size: 11.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: all .15s; position: relative; font-family: 'Inter', sans-serif; }
+    .quiz-palette-btn:hover { border-color: #8b5cf6; background: #f5f3ff; color: #6d28d9; }
+    .quiz-palette-btn.current { border-color: #8b5cf6 !important; background: #8b5cf6 !important; color: #fff !important; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.35) !important; font-weight: 800; }
+    .quiz-palette-btn.answered { border-color: #10b981; background: #ecfdf5; color: #059669; }
+    .quiz-palette-btn.answered.current { border-color: #059669 !important; background: #059669 !important; color: #fff !important; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.35) !important; }
 
-    /* Single Question Card */
-    .quiz-single-card {
-      background: #ffffff;
-      border: 1.5px solid #e2e8f0;
-      border-radius: 18px;
-      padding: 28px 32px;
-      max-width: 860px;
-      margin: 0 auto;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
-      position: relative;
-      animation: fadeInCard .22s ease-out;
-    }
-    @keyframes fadeInCard {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .quiz-card-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding-bottom: 18px;
-      border-bottom: 1px solid #f1f5f9;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
-    }
-    .quiz-card-qnum {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 15px;
-      font-weight: 800;
-      color: #0f172a;
-    }
-    .quiz-card-qnum-pill {
-      background: linear-gradient(135deg,#8b5cf6,#6d28d9);
-      color: #fff;
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 700;
-    }
-    .quiz-card-badges {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .quiz-card-pts {
-      font-size: 12px;
-      font-weight: 700;
-      color: #7c3aed;
-      background: #f5f3ff;
-      border: 1px solid #ddd6fe;
-      padding: 4px 10px;
-      border-radius: 8px;
-    }
-    .quiz-card-status {
-      font-size: 11.5px;
-      font-weight: 700;
-      padding: 4px 10px;
-      border-radius: 8px;
-    }
-    .quiz-card-status.answered {
-      background: #dcfce7;
-      color: #15803d;
-      border: 1px solid #bbf7d0;
-    }
-    .quiz-card-status.unanswered {
-      background: #f1f5f9;
-      color: #64748b;
-      border: 1px solid #e2e8f0;
-    }
-    .quiz-card-text {
-      font-size: 16.5px;
-      font-weight: 700;
-      color: #0f172a;
-      line-height: 1.6;
-      margin-bottom: 24px;
-    }
+    .quiz-single-card { background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 18px; padding: 28px 32px; max-width: 860px; margin: 0 auto; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04); position: relative; animation: fadeInCard .22s ease-out; }
+    @keyframes fadeInCard { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* Single Question Options */
-    .quiz-single-card .quiz-opt {
-      padding: 14px 18px;
-      font-size: 14.5px;
-      border-radius: 12px;
-      margin-top: 12px;
-    }
-    .quiz-single-card .quiz-opt span:first-child {
-      width: 28px;
-      height: 28px;
-      font-size: 12px;
-    }
-    .quiz-single-card .quiz-id-input {
-      padding: 14px 18px;
-      font-size: 15px;
-      border-radius: 12px;
-    }
+    .quiz-stepper-foot { padding: 14px 28px; background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 16px; z-index: 20; }
+    .btn-step-nav { padding: 10px 22px; border-radius: 10px; font-size: 13.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all .18s; border: 1.5px solid transparent; font-family: 'Inter', sans-serif; }
+    .btn-step-prev { background: #f8fafc; border-color: #cbd5e1; color: #334155; }
+    .btn-step-prev:hover:not(:disabled) { background: #e2e8f0; color: #0f172a; }
+    .btn-step-prev:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-step-next { background: linear-gradient(135deg,#8b5cf6,#6d28d9); color: #fff; box-shadow: 0 3px 12px rgba(139, 92, 246, 0.35); }
+    .btn-step-next:hover { opacity: 0.92; box-shadow: 0 4px 16px rgba(139, 92, 246, 0.45); }
+    .btn-step-submit { background: linear-gradient(135deg,#10b981,#059669); color: #fff; box-shadow: 0 3px 12px rgba(16, 185, 129, 0.35); }
+    .btn-step-submit:hover { opacity: 0.92; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.45); }
 
-    /* Stepper Navigation Footer */
-    .quiz-stepper-foot {
-      padding: 14px 28px;
-      background: #ffffff;
-      border-top: 1px solid #e2e8f0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      z-index: 20;
-    }
-    .btn-step-nav {
-      padding: 10px 22px;
-      border-radius: 10px;
-      font-size: 13.5px;
-      font-weight: 700;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      transition: all .18s;
-      border: 1.5px solid transparent;
-      font-family: 'Inter', sans-serif;
-    }
-    .btn-step-prev {
-      background: #f8fafc;
-      border-color: #cbd5e1;
-      color: #334155;
-    }
-    .btn-step-prev:hover:not(:disabled) {
-      background: #e2e8f0;
-      color: #0f172a;
-    }
-    .btn-step-prev:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-    .btn-step-next {
-      background: linear-gradient(135deg,#8b5cf6,#6d28d9);
-      color: #fff;
-      box-shadow: 0 3px 12px rgba(139, 92, 246, 0.35);
-    }
-    .btn-step-next:hover {
-      opacity: 0.92;
-      box-shadow: 0 4px 16px rgba(139, 92, 246, 0.45);
-    }
-    .btn-step-submit {
-      background: linear-gradient(135deg,#10b981,#059669);
-      color: #fff;
-      box-shadow: 0 3px 12px rgba(16, 185, 129, 0.35);
-    }
-    .btn-step-submit:hover {
-      opacity: 0.92;
-      box-shadow: 0 4px 16px rgba(16, 185, 129, 0.45);
-    }
-
-    footer.t-footer{text-align:center;padding:14px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;background:#fff;}
+    footer.t-footer{text-align:center;padding:20px;font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0;background:#fff;margin-top:auto;}
   </style>
 </head>
 <body>
 
 <div class="cl-sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
-<aside class="sd-sidebar" id="sidebar">
+<!-- ── LEFT SIDEBAR ── -->
+<aside class="app-sidebar" id="sidebar">
   <div class="sb-brand">
-    <div class="sb-logo"><i class="fa fa-graduation-cap"></i></div>
-    <h2>Cen<span>Learn</span></h2>
-    <p>Learning Management System</p>
+    <div class="sb-brand-icon"><i class="fa fa-graduation-cap"></i></div>
+    <div class="sb-brand-text">
+      <h2>CenLearn</h2>
+      <p>Learn &middot; Grow &middot; Succeed</p>
+    </div>
   </div>
   <nav class="sb-nav">
-    <div class="sb-section">Student Menu</div>
     <ul>
-      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes.php"><i class="fa fa-book"></i> My Classes</a></li>
-      <li class="active"><a href="quizzes.php"><i class="fa fa-question-circle"></i> My Quizzes</a></li>
+      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="classes"><i class="fa fa-book"></i> My Classes</a></li>
+      <li class="active"><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="assignments"><i class="fa fa-clipboard"></i> Assignments</a></li>
+      <li><a href="grades"><i class="fa fa-bar-chart"></i> Grades</a></li>
+      <li><a href="attendance"><i class="fa fa-calendar"></i> Attendance</a></li>
     </ul>
   </nav>
-  <div class="sb-footer">
-    <div class="sb-user">
-      <div class="sb-av"><?php echo $initials; ?></div>
-      <div class="sb-meta">
-        <strong><?php echo htmlspecialchars($user['first_name'].' '.$user['last_name']); ?></strong>
-        <span><?php echo htmlspecialchars($user['program_code'] ?: 'Student'); ?></span>
-      </div>
-    </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+  <div class="sb-promo-card">
+    <div class="sb-promo-icon"><i class="fa fa-leaf"></i></div>
+    <p>Small steps every day lead to big results.</p>
   </div>
 </aside>
 
-<div class="sd-main">
-  <header class="sd-topbar">
-    <div style="display:flex;align-items:center;gap:12px;">
-      <button class="cl-hamburger" onclick="openSidebar()" aria-label="Menu"><i class="fa fa-bars"></i></button>
-      <div>
-        <h3 style="display:flex;align-items:center;gap:7px;"><i class="fa fa-question-circle" style="color:#8b5cf6;"></i> My Quizzes</h3>
-        <p>View and take quizzes across all your enrolled classes</p>
+<!-- ── MAIN CONTENT AREA ── -->
+<div class="app-main">
+  <!-- Top Bar Header -->
+  <header class="top-header">
+    <div style="display:flex;align-items:center;gap:16px;">
+      <button class="cl-hamburger" onclick="openSidebar()" aria-label="Menu" style="background:none;border:none;font-size:18px;color:#0f172a;cursor:pointer;"><i class="fa fa-bars"></i></button>
+      <div class="header-search">
+        <i class="fa fa-search"></i>
+        <input type="text" placeholder="Search for quizzes, topics, or subjects..." onkeyup="searchQuizzes(this.value)">
       </div>
     </div>
-    <a href="classes.php" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#f0f9ff;color:#0369a1;border:1.5px solid #bae6fd;border-radius:9px;font-size:12px;font-weight:600;text-decoration:none;transition:all .18s;">
-      <i class="fa fa-book"></i> My Classes
-    </a>
+    <div class="header-user">
+      <div class="user-profile-wrap">
+        <div class="user-profile-btn" onclick="toggleProfileMenu(event)" title="<?php echo htmlspecialchars($fullName); ?>">
+          <div class="user-avatar"><?php echo $initials; ?></div>
+        </div>
+
+        <div class="profile-dropdown-menu" id="profileMenu">
+          <div class="pdm-header">
+            <strong><?php echo htmlspecialchars($fullName); ?></strong>
+            <span>Student &bull; <?php echo htmlspecialchars($user['program_code'] ?? 'Regular'); ?></span>
+          </div>
+          <a href="javascript:void(0)" class="pdm-item" onclick="openStudentProfileModal()"><i class="fa fa-user-circle"></i> Student Profile</a>
+          <div class="pdm-divider"></div>
+          <a href="/cenlearn/logout" class="pdm-item danger"><i class="fa fa-sign-out"></i> Log Out</a>
+        </div>
+      </div>
+    </div>
   </header>
 
-  <div class="sd-content">
+  <!-- Main Content Body -->
+  <div class="content-body">
 
-    <!-- Stats strip -->
-    <div class="stats-strip">
-      <div class="stat-pill">
-        <div class="sp-icon" style="background:linear-gradient(135deg,rgba(139,92,246,.12),rgba(109,40,217,.06));"><i class="fa fa-question-circle" style="color:#8b5cf6;font-size:18px;"></i></div>
-        <div><strong><?php echo $totalQuizzes; ?></strong><span>Total Quizzes</span></div>
+    <!-- 4-Grid Summary Stat Cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-card-left">
+          <div class="stat-icon-circle" style="background:rgba(139,92,246,0.1);color:#8b5cf6;">
+            <i class="fa fa-question-circle"></i>
+          </div>
+          <div class="stat-card-info">
+            <label>Total Quizzes</label>
+            <strong><?php echo $totalQuizzes; ?></strong>
+            <span>Assigned</span>
+          </div>
+        </div>
+        <i class="fa fa-chevron-right stat-chevron"></i>
       </div>
-      <div class="stat-pill">
-        <div class="sp-icon" style="background:linear-gradient(135deg,rgba(16,185,129,.12),rgba(5,150,105,.06));"><i class="fa fa-play-circle" style="color:#10b981;font-size:18px;"></i></div>
-        <div><strong><?php echo $availableQuizzes; ?></strong><span>Available Now</span></div>
+      <div class="stat-card">
+        <div class="stat-card-left">
+          <div class="stat-icon-circle" style="background:rgba(16,185,129,0.1);color:#10b981;">
+            <i class="fa fa-play-circle"></i>
+          </div>
+          <div class="stat-card-info">
+            <label>Available Now</label>
+            <strong><?php echo $availableQuizzes; ?></strong>
+            <span>Active &amp; Ready</span>
+          </div>
+        </div>
+        <i class="fa fa-chevron-right stat-chevron"></i>
       </div>
-      <div class="stat-pill">
-        <div class="sp-icon" style="background:linear-gradient(135deg,rgba(23,146,187,.12),rgba(15,95,128,.06));"><i class="fa fa-check-circle" style="color:#1792bb;font-size:18px;"></i></div>
-        <div><strong><?php echo $completedQuizzes; ?></strong><span>Completed</span></div>
+      <div class="stat-card">
+        <div class="stat-card-left">
+          <div class="stat-icon-circle" style="background:rgba(37,99,235,0.1);color:#2563eb;">
+            <i class="fa fa-check-circle"></i>
+          </div>
+          <div class="stat-card-info">
+            <label>Completed</label>
+            <strong><?php echo $completedQuizzes; ?></strong>
+            <span>Submitted</span>
+          </div>
+        </div>
+        <i class="fa fa-chevron-right stat-chevron"></i>
       </div>
-      <div class="stat-pill">
-        <div class="sp-icon" style="background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(217,119,6,.06));"><i class="fa fa-star" style="color:#d97706;font-size:18px;"></i></div>
-        <div><strong><?php echo $avgPct; ?>%</strong><span>Avg Grade</span></div>
+      <div class="stat-card">
+        <div class="stat-card-left">
+          <div class="stat-icon-circle" style="background:rgba(245,158,11,0.1);color:#d97706;">
+            <i class="fa fa-star"></i>
+          </div>
+          <div class="stat-card-info">
+            <label>Average Grade</label>
+            <strong><?php echo $avgPct; ?>%</strong>
+            <span>Overall Score</span>
+          </div>
+        </div>
+        <i class="fa fa-chevron-right stat-chevron"></i>
       </div>
     </div>
 
-    <!-- Class Filter Pills -->
+    <!-- Class Filter Selector -->
     <?php if(!empty($classes)): ?>
-    <div class="class-filter-card">
-      <h4><i class="fa fa-filter" style="color:#1792bb;"></i> Filter by Class</h4>
-      <div class="class-pills">
-        <a href="quizzes.php" class="class-pill <?php echo $classFilter===0?'active':''; ?>">
+    <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;padding:18px 24px;margin-bottom:24px;box-shadow:0 2px 6px rgba(0,0,0,0.02);">
+      <h4 style="font-size:13px;font-weight:700;color:#0f172a;margin:0 0 12px;display:flex;align-items:center;gap:8px;">
+        <i class="fa fa-filter" style="color:#2563eb;"></i> Filter by Class
+      </h4>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <a href="quizzes" class="tab-pill <?php echo $classFilter===0?'active':''; ?>" style="text-decoration:none;">
           <i class="fa fa-th-large"></i> All Classes
         </a>
         <?php foreach($classes as $c): ?>
-        <a href="quizzes.php?class_id=<?php echo $c['id']; ?>" class="class-pill <?php echo $c['id']===$classFilter?'active':''; ?>">
+        <a href="quizzes?class_id=<?php echo $c['id']; ?>" class="tab-pill <?php echo $c['id']===$classFilter?'active':''; ?>" style="text-decoration:none;">
           <i class="fa fa-book"></i> <?php echo htmlspecialchars($c['class_name']); ?>
         </a>
         <?php endforeach; ?>
@@ -650,81 +553,109 @@ $avgPct = $totalScorePossible > 0 ? round(($totalScoreEarned / $totalScorePossib
     </div>
     <?php endif; ?>
 
-    <!-- Quizzes Dashboard Cards -->
-    <div class="quiz-sec-header">
-      <h3><i class="fa fa-list" style="color:#8b5cf6;"></i> Quizzes Overview</h3>
-      <div class="quiz-tabs">
-        <button class="quiz-tab-btn active" onclick="filterQuizCards('all', this)">All (<?php echo count($quizzes); ?>)</button>
-        <button class="quiz-tab-btn" onclick="filterQuizCards('available', this)">Available (<?php echo $availableQuizzes; ?>)</button>
-        <button class="quiz-tab-btn" onclick="filterQuizCards('completed', this)">Completed (<?php echo $completedQuizzes; ?>)</button>
+    <!-- Section Header & Filter Tabs -->
+    <div class="section-bar">
+      <div class="section-title">
+        <h2>Quizzes Overview</h2>
+        <p>Select a quiz to attempt or review your completed test results</p>
+      </div>
+      <div class="filter-tabs">
+        <button type="button" class="tab-pill active" onclick="filterQuizCards('all', this)">All (<?php echo count($quizzes); ?>)</button>
+        <button type="button" class="tab-pill" onclick="filterQuizCards('available', this)">Available (<?php echo $availableQuizzes; ?>)</button>
+        <button type="button" class="tab-pill" onclick="filterQuizCards('completed', this)">Completed (<?php echo $completedQuizzes; ?>)</button>
       </div>
     </div>
 
     <?php if(empty($quizzes)): ?>
-    <div class="qc-empty">
-      <i class="fa fa-inbox"></i>
-      <h4>No quizzes available</h4>
-      <p>Your teachers haven't posted any quizzes for your classes yet.</p>
+    <div style="text-align:center;padding:56px 20px;background:#fff;border-radius:18px;border:1px solid #e2e8f0;margin-bottom:24px;">
+      <i class="fa fa-inbox" style="font-size:40px;color:#cbd5e1;display:block;margin-bottom:12px;"></i>
+      <h4 style="font-size:16px;font-weight:700;color:#64748b;margin:0 0 4px;">No Quizzes Available</h4>
+      <p style="font-size:13px;color:#94a3b8;margin:0;">Your instructors have not posted any quizzes for your classes yet.</p>
     </div>
     <?php else: ?>
 
-    <div class="quiz-row-list" id="quizCardsGrid">
+    <div class="class-cards-container" id="quizCardsGrid">
       <?php foreach($quizzes as $qz):
         $isSubmitted = !empty($qz['sub_id']);
         $isDue = $qz['due_date'] && strtotime($qz['due_date']) < time();
         $isUpcoming = !empty($qz['start_date']) && strtotime($qz['start_date']) > time();
         $cardCategory = $isSubmitted ? 'completed' : ($isDue ? 'closed' : ($isUpcoming ? 'scheduled' : 'available'));
       ?>
-      <div class="quiz-row-card" data-category="<?php echo $cardCategory; ?>">
-        <div class="qrc-left">
-          <div class="qrc-info">
-            <h5 class="qrc-title"><?php echo htmlspecialchars($qz['title']); ?></h5>
-            <span class="qz-class-badge"><i class="fa fa-book"></i> <?php echo htmlspecialchars($qz['class_name']); ?></span>
-            <div class="qrc-meta">
-              <span class="qz-pill" title="Number of Questions"><i class="fa fa-question-circle" style="color:#6366f1;"></i> <strong><?php echo $qz['q_count']; ?></strong> Questions</span>
-              <span class="qz-pill" title="Time Limit"><i class="fa fa-clock-o" style="color:#64748b;"></i> <strong><?php echo $qz['time_limit'] ? $qz['time_limit'].'m' : 'Unlimited'; ?></strong></span>
-              <?php if(!empty($qz['start_date'])): ?>
-                <span class="qz-pill" title="Start Time">
-                  <i class="fa fa-clock-o" style="color:#0284c7;"></i>
-                  Starts: <strong><?php echo date('M d, Y g:i A', strtotime($qz['start_date'])); ?></strong>
-                </span>
+      <div class="class-card quiz-searchable-card" data-category="<?php echo $cardCategory; ?>" data-search="<?php echo htmlspecialchars(strtolower($qz['title'].' '.$qz['class_name'].' '.$qz['subject'])); ?>">
+        <div class="cc-main-info">
+          <div class="cc-thumb" style="background: linear-gradient(135deg, #1d4ed8, #2563eb);">
+            <i class="fa fa-question-circle"></i>
+          </div>
+          <div class="cc-details">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+              <?php if($isSubmitted): ?>
+                <span class="status-tag" style="background:#e0f2fe;color:#0369a1;"><i class="fa fa-check-circle" style="margin-right:4px;"></i> Completed</span>
+              <?php elseif($isUpcoming): ?>
+                <span class="status-tag" style="background:#fef3c7;color:#b45309;"><i class="fa fa-clock-o" style="margin-right:4px;"></i> Upcoming</span>
+              <?php elseif(!$isDue): ?>
+                <span class="status-tag"><i class="fa fa-play" style="margin-right:4px;"></i> Active</span>
+              <?php else: ?>
+                <span class="status-tag" style="background:#f1f5f9;color:#64748b;"><i class="fa fa-times-circle" style="margin-right:4px;"></i> Closed</span>
               <?php endif; ?>
-              <span class="qz-pill" title="Due / Expiration Date">
-                <i class="fa fa-hourglass-end" style="color:#64748b;"></i>
-                <?php if($qz['due_date']): ?>
-                  Due: <strong style="color:<?php echo $isDue?'#ef4444':'#0f172a'; ?>;"><?php echo date('M d, Y g:i A', strtotime($qz['due_date'])); ?></strong>
-                <?php else: ?>
-                  No expiration
-                <?php endif; ?>
+              <span style="font-size:11px;font-weight:700;color:#2563eb;background:#eff6ff;padding:2px 8px;border-radius:6px;">
+                <i class="fa fa-book"></i> <?php echo htmlspecialchars($qz['class_name']); ?>
               </span>
+            </div>
+            <h3 class="cc-title"><?php echo htmlspecialchars($qz['title']); ?></h3>
+            <span class="cc-sub"><?php echo htmlspecialchars($qz['subject'] ?? 'General Subject'); ?></span>
+          </div>
+        </div>
+
+        <div class="cc-schedule-col">
+          <div class="info-item">
+            <i class="fa fa-list-ol"></i>
+            <div class="info-text">
+              <label>Questions &amp; Limit</label>
+              <strong><?php echo $qz['q_count']; ?> Questions &middot; <?php echo $qz['time_limit'] ? $qz['time_limit'].' mins' : 'No Limit'; ?></strong>
+            </div>
+          </div>
+          <div class="info-item">
+            <i class="fa fa-calendar"></i>
+            <div class="info-text">
+              <label>Due Date</label>
+              <strong style="color:<?php echo $isDue && !$isSubmitted ? '#ef4444' : '#1e293b'; ?>;">
+                <?php echo $qz['due_date'] ? date('M d, Y @ g:i A', strtotime($qz['due_date'])) : 'No expiration'; ?>
+              </strong>
             </div>
           </div>
         </div>
 
-        <div class="qrc-right">
+        <div class="cc-action-col">
           <?php if($isSubmitted): ?>
-            <div style="text-align:right;margin-right:4px;">
-              <div style="font-size:9px;color:#94a3b8;font-weight:700;text-transform:uppercase;">Score</div>
-              <div style="font-size:14px;font-weight:800;color:#0369a1;"><?php echo $qz['score']; ?> / <?php echo $qz['total_points']; ?></div>
+            <div style="text-align:right;margin-right:8px;">
+              <span style="display:block;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;">Your Score</span>
+              <strong style="font-size:16px;font-weight:800;color:#059669;"><?php echo $qz['score']; ?> / <?php echo $qz['total_points']; ?></strong>
             </div>
-            <span class="status-pill status-graded" style="font-weight:700;"><i class="fa fa-check-circle"></i> Completed</span>
+            <button class="btn-view-class" style="background:#f1f5f9;color:#475569;box-shadow:none;cursor:default;" disabled>
+              <i class="fa fa-check"></i> Done
+            </button>
           <?php elseif($isUpcoming): ?>
-            <span class="status-pill" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;"><i class="fa fa-lock"></i> Opens <?php echo date('M d, g:i A', strtotime($qz['start_date'])); ?></span>
+            <button class="btn-view-class" style="background:#e2e8f0;color:#64748b;box-shadow:none;cursor:not-allowed;" disabled>
+              <i class="fa fa-lock"></i> Locked
+            </button>
           <?php elseif(!$isDue): ?>
-            <span class="status-pill status-open"><i class="fa fa-play"></i> Ready</span>
-            <button class="btn-take-quiz" onclick="takeQuiz(<?php echo $qz['id']; ?>)"><i class="fa fa-pencil"></i> Take Quiz</button>
+            <button class="btn-view-class" onclick="takeQuiz(<?php echo $qz['id']; ?>)">
+              <i class="fa fa-pencil"></i> Take Quiz <i class="fa fa-arrow-right" style="font-size:11px;"></i>
+            </button>
           <?php else: ?>
-            <span class="status-pill status-closed"><i class="fa fa-times-circle"></i> Missed</span>
+            <button class="btn-view-class" style="background:#f1f5f9;color:#94a3b8;box-shadow:none;cursor:not-allowed;" disabled>
+              <i class="fa fa-times"></i> Closed
+            </button>
           <?php endif; ?>
         </div>
       </div>
       <?php endforeach; ?>
     </div>
-
     <?php endif; ?>
 
   </div>
   <footer class="t-footer">CenLearn &mdash; Powered by TechnoPal</footer>
+</div> class="t-footer">CenLearn &mdash; Powered by TechnoPal</footer>
 </div>
 
 <!-- ═══════════ TAKE QUIZ MODAL (FULLSCREEN) ═══════════ -->
@@ -777,17 +708,50 @@ $avgPct = $totalScorePossible > 0 ? round(($totalScoreEarned / $totalScorePossib
   </div>
 </div>
 
+<!-- ── Anti-Cheat Protection Warning & Fullscreen Recovery Overlay ── -->
+<div id="antiCheatOverlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.96);z-index:999999;flex-direction:column;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(10px);text-align:center;">
+  <div style="width:72px;height:72px;border-radius:50%;background:#fef2f2;border:2px solid #fecaca;display:flex;align-items:center;justify-content:center;color:#ef4444;font-size:32px;margin-bottom:18px;box-shadow:0 0 30px rgba(239,68,68,0.3);animation:pulse 1.5s infinite;">
+    <i class="fa fa-shield"></i>
+  </div>
+  <h3 style="color:#fff;font-size:22px;font-weight:800;margin:0 0 8px;">Anti-Cheat Security Violation Detected!</h3>
+  <p id="antiCheatReasonText" style="color:#cbd5e1;font-size:14px;max-width:480px;line-height:1.5;margin:0 0 16px;">
+    You attempted to switch tabs, press ESC, or exit full-screen mode during an active quiz attempt.
+  </p>
+  <div id="antiCheatViolationCountPill" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;padding:6px 18px;border-radius:99px;font-size:13px;font-weight:800;margin-bottom:24px;">
+    Violations Recorded: 1 / 3 Allowed
+  </div>
+  <p style="color:#94a3b8;font-size:12.5px;max-width:440px;margin-bottom:24px;">
+    <strong>Notice:</strong> Reaching 3 violations will automatically submit your quiz attempt immediately with your current answers.
+  </p>
+  <button type="button" onclick="resumeQuizFullscreen()" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;border:none;padding:12px 28px;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(139,92,246,0.4);display:inline-flex;align-items:center;gap:8px;font-family:'Inter',sans-serif;">
+    <i class="fa fa-arrows-alt"></i> Re-Enter Full-Screen &amp; Resume Quiz
+  </button>
+</div>
+
 <?php include '../includes/scripts.php'; ?>
 <script>
 function openSidebar(){ document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebarOverlay').classList.add('active'); }
 function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('active'); }
 
 function filterQuizCards(cat, btn){
-  document.querySelectorAll('.quiz-tab-btn').forEach(function(b){ b.classList.remove('active'); });
-  btn.classList.add('active');
-  var cards = document.querySelectorAll('#quizCardsGrid .quiz-row-card');
+  document.querySelectorAll('.filter-tabs .tab-pill').forEach(function(b){ b.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  var cards = document.querySelectorAll('#quizCardsGrid .class-card');
   cards.forEach(function(c){
     if(cat === 'all' || c.getAttribute('data-category') === cat){
+      c.style.display = 'flex';
+    } else {
+      c.style.display = 'none';
+    }
+  });
+}
+
+function searchQuizzes(query) {
+  var q = query.toLowerCase().trim();
+  var cards = document.querySelectorAll('#quizCardsGrid .class-card');
+  cards.forEach(function(c) {
+    var searchData = (c.getAttribute('data-search') || '').toLowerCase();
+    if(!q || searchData.includes(q)) {
       c.style.display = 'flex';
     } else {
       c.style.display = 'none';
@@ -800,6 +764,7 @@ var _quizId = null, _answers = {}, _quizQuestions = [], _timerInt = null, _heart
 var _currentQuestionIdx = 0;
 
 function closeQuizModalDirect(){
+  stopAntiCheatEngine();
   var modal = document.getElementById('takeQuizModal');
   if(modal) modal.style.display = 'none';
 
@@ -837,6 +802,191 @@ function closeQuizModal(){
   }
 }
 
+// ── ANTI-CHEAT PROTECTION ENGINE ─────────────────────────────────────────────
+var _antiCheatActive = false;
+var _violationCooldown = false;
+
+function initAntiCheatEngine() {
+  if (_antiCheatActive) return;
+  _antiCheatActive = true;
+  _violationCooldown = false;
+
+  requestQuizFullscreen();
+
+  document.addEventListener('fullscreenchange', handleFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+  document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+  document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('blur', handleWindowBlur);
+  window.addEventListener('pagehide', handleWindowBlur);
+
+  document.addEventListener('contextmenu', preventDefaultAntiCheat, true);
+  document.addEventListener('copy', preventDefaultAntiCheat, true);
+  document.addEventListener('cut', preventDefaultAntiCheat, true);
+  document.addEventListener('paste', preventDefaultAntiCheat, true);
+  document.addEventListener('selectstart', preventDefaultAntiCheat, true);
+  window.addEventListener('keydown', handleAntiCheatKeydown, true);
+}
+
+function stopAntiCheatEngine() {
+  _antiCheatActive = false;
+  _violationCooldown = false;
+
+  document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+  document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+  document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+  window.removeEventListener('blur', handleWindowBlur);
+  window.removeEventListener('pagehide', handleWindowBlur);
+
+  document.removeEventListener('contextmenu', preventDefaultAntiCheat, true);
+  document.removeEventListener('copy', preventDefaultAntiCheat, true);
+  document.removeEventListener('cut', preventDefaultAntiCheat, true);
+  document.removeEventListener('paste', preventDefaultAntiCheat, true);
+  document.removeEventListener('selectstart', preventDefaultAntiCheat, true);
+  window.removeEventListener('keydown', handleAntiCheatKeydown, true);
+
+  hideAntiCheatOverlay();
+}
+
+function requestQuizFullscreen() {
+  var docEl = document.documentElement;
+  if (docEl.requestFullscreen) { docEl.requestFullscreen().catch(function(){}); }
+  else if (docEl.webkitRequestFullscreen) { docEl.webkitRequestFullscreen(); }
+  else if (docEl.mozRequestFullScreen) { docEl.mozRequestFullScreen(); }
+  else if (docEl.msRequestFullscreen) { docEl.msRequestFullscreen(); }
+}
+
+function isFullscreenActive() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+}
+
+function resumeQuizFullscreen() {
+  requestQuizFullscreen();
+  hideAntiCheatOverlay();
+}
+
+function showAntiCheatOverlay(reason, count) {
+  var overlay = document.getElementById('antiCheatOverlay');
+  var reasonEl = document.getElementById('antiCheatReasonText');
+  var countEl = document.getElementById('antiCheatViolationCountPill');
+
+  if (reasonEl) reasonEl.textContent = reason || 'Exited full-screen or switched tabs during quiz!';
+  if (countEl) countEl.textContent = 'Violations Recorded: ' + (count || 1) + ' / 3 Allowed';
+  if (overlay) overlay.style.display = 'flex';
+}
+
+function hideAntiCheatOverlay() {
+  var overlay = document.getElementById('antiCheatOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function handleFullscreenChange() {
+  if (!_antiCheatActive || _isSubmitting) return;
+  if (!isFullscreenActive()) {
+    _fsExits++;
+    registerAntiCheatViolation('Full-screen mode exited (ESC key / window resize detected)!');
+  } else {
+    hideAntiCheatOverlay();
+  }
+}
+
+function handleVisibilityChange() {
+  if (!_antiCheatActive || _isSubmitting) return;
+  if (document.hidden || document.visibilityState === 'hidden') {
+    _tabSwitches++;
+    registerAntiCheatViolation('Tab switch / browser window minimize detected!');
+  }
+}
+
+function handleWindowBlur() {
+  if (!_antiCheatActive || _isSubmitting) return;
+  if (!_violationCooldown) {
+    _tabSwitches++;
+    registerAntiCheatViolation('Window focus lost (Alt+Tab / application switch detected)!');
+  }
+}
+
+function preventDefaultAntiCheat(e) {
+  if (!_antiCheatActive) return;
+  var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+  if (e.type === 'selectstart' && (tag === 'input' || tag === 'textarea')) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+  return false;
+}
+
+function handleAntiCheatKeydown(e) {
+  if (!_antiCheatActive) return;
+  var code = e.keyCode || e.which;
+  var key = e.key ? e.key.toLowerCase() : '';
+
+  // Prevent ESC key default behavior inside active quiz
+  if (code === 27 || key === 'escape') {
+    e.preventDefault();
+    _fsExits++;
+    registerAntiCheatViolation('ESC key pressed during active quiz!');
+    return false;
+  }
+
+  // Block F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C (DevTools)
+  if (code === 123 || (e.ctrlKey && e.shiftKey && (code === 73 || code === 74 || code === 67 || key === 'i' || key === 'j' || key === 'c'))) {
+    e.preventDefault(); e.stopPropagation(); return false;
+  }
+  // Block Ctrl+U (View Source), Ctrl+C (Copy), Ctrl+V (Paste), Ctrl+S (Save), Ctrl+P (Print)
+  if (e.ctrlKey && (code === 85 || code === 67 || code === 86 || code === 83 || code === 80 || key === 'u' || key === 'c' || key === 'v' || key === 's' || key === 'p')) {
+    var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+    if (code === 85 || (e.ctrlKey && key === 'u')) { e.preventDefault(); e.stopPropagation(); return false; }
+    if (tag !== 'input' && tag !== 'textarea') {
+      e.preventDefault(); e.stopPropagation(); return false;
+    }
+  }
+}
+
+function registerAntiCheatViolation(reason) {
+  if (_violationCooldown || _isSubmitting) return;
+  _violationCooldown = true;
+
+  var totalViolations = (_tabSwitches + _fsExits);
+  
+  if (_quizId) {
+    $.post('/cenlearn/shared/quiz_handler', {
+      action: 'log_violation',
+      quiz_id: _quizId,
+      tab_switches: _tabSwitches,
+      fullscreen_exits: _fsExits,
+      reason: reason
+    }, function(res){
+      if (res && res.tab_switches) {
+        totalViolations = parseInt(res.tab_switches) || totalViolations;
+      }
+    }, 'json');
+  }
+
+  var vBar = document.getElementById('quizViolationBar');
+  var vMsg = document.getElementById('quizViolationMsg');
+  if (vBar && vMsg) {
+    vMsg.innerHTML = '<strong>ANTI-CHEAT WARNING:</strong> ' + reason + ' (' + totalViolations + ' of 3 violations)';
+    vBar.style.display = 'flex';
+  }
+
+  showAntiCheatOverlay(reason, totalViolations);
+
+  if (totalViolations >= 3) {
+    setTimeout(function(){
+      alert('SECURITY ALERT: Maximum 3 anti-cheat violations reached! Your quiz is being automatically submitted now.');
+      submitQuizAnswers(true);
+    }, 400);
+  } else {
+    setTimeout(function(){ _violationCooldown = false; }, 1500);
+  }
+}
+
 function takeQuiz(id){
   _quizId = id; _answers = {}; _tabSwitches = 0; _fsExits = 0; _currentQuestionIdx = 0; _isSubmitting = false;
   var bodyEl = document.getElementById('takeQuizBody');
@@ -858,12 +1008,12 @@ function takeQuiz(id){
   if (_heartbeatInt) clearInterval(_heartbeatInt);
   _heartbeatInt = setInterval(function(){
     if (_quizId && document.getElementById('takeQuizModal') && document.getElementById('takeQuizModal').style.display === 'flex') {
-      $.post('../shared/quiz_handler.php', { action: 'heartbeat', quiz_id: _quizId });
+      $.post('/cenlearn/shared/quiz_handler', { action: 'heartbeat', quiz_id: _quizId });
     }
   }, 10000);
   document.getElementById('quizProgress').innerHTML = '<i class="fa fa-pencil-square-o"></i> 0/0 Answered';
 
-  $.post('../shared/quiz_handler.php', {action:'get_questions', quiz_id:id}, function(r){
+  $.post('/cenlearn/shared/quiz_handler', {action:'get_questions', quiz_id:id}, function(r){
     if(typeof r === 'string'){
       try { r = JSON.parse(r.trim()); } catch(e){ r = {success:false, msg:'Invalid data'}; }
     }
@@ -881,6 +1031,8 @@ function takeQuiz(id){
     _tabSwitches = parseInt(r.tab_switches) || 0;
     _answers = r.saved_answers || {};
     _currentQuestionIdx = 0;
+
+    initAntiCheatEngine();
 
     document.getElementById('takeQuizTitle').innerHTML='<i class="fa fa-question-circle"></i> ' + escapeCqHtml(r.quiz ? r.quiz.title : 'Quiz');
     updateQuizProgress();
@@ -1395,7 +1547,7 @@ function updateCardAnswerStatus(isAns){
 
 function saveDraftAnswers(){
   if(_quizId && _answers){
-    $.post('../shared/quiz_handler.php', {
+    $.post('/cenlearn/shared/quiz_handler', {
       action: 'save_draft',
       quiz_id: _quizId,
       answers: JSON.stringify(_answers)
@@ -1439,7 +1591,7 @@ function submitQuizAnswers(auto){
   var btn = document.getElementById('btnSubmitQuiz');
   if(btn) { btn.disabled = true; btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Submitting...'; }
 
-  $.post('../shared/quiz_handler.php', {
+  $.post('/cenlearn/shared/quiz_handler', {
     action: 'submit',
     quiz_id: _quizId,
     answers: JSON.stringify(_answers),
@@ -1479,6 +1631,17 @@ $(document).ready(function(){
   takeQuiz(<?php echo intval($_GET['take']); ?>);
 });
 <?php endif; ?>
+function toggleProfileMenu(e) {
+  e.stopPropagation();
+  var m = document.getElementById('profileMenu');
+  if(m) m.classList.toggle('show');
+}
+document.addEventListener('click', function(e) {
+  var m = document.getElementById('profileMenu');
+  if(m && !m.contains(e.target)) m.classList.remove('show');
+});
 </script>
+
+<?php include '../includes/student_profile_modal.php'; ?>
 </body>
 </html>

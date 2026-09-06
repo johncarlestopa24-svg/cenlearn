@@ -3,7 +3,7 @@ include '../includes/session.php';
 include '../includes/conn.php';
 
 if(empty($user) || strtoupper($user['user_group']) !== 'STUDENT'){
-    header('Location: ../index.php');
+    header('Location: /cenlearn/login');
     exit;
 }
 
@@ -126,13 +126,14 @@ $fullName  = trim(($user['first_name']??'').' '.(isset($user['middle_name'])&&$u
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn — My Program</title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
   <style>
     *{box-sizing:border-box;}
     html,body{margin:0;padding:0;overflow-x:hidden;}
@@ -222,8 +223,54 @@ $fullName  = trim(($user['first_name']??'').' '.(isset($user['middle_name'])&&$u
     .no-prog i{font-size:48px;color:#cbd5e1;margin-bottom:16px;display:block;}
     .no-prog h4{font-size:18px;font-weight:700;color:#334155;margin-bottom:8px;}
     .no-prog p{font-size:13px;color:#64748b;max-width:340px;margin:0 auto;}
-    footer.sd-footer{text-align:center;padding:14px;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;background:#fff;}
-    @media(max-width:600px){.hide-mobile{display:none !important;}}
+    /* Header User Profile & Logout Dropdown */
+    .header-user { display: flex; align-items: center; gap: 12px; position: relative; }
+    .user-profile-wrap { position: relative; }
+    .user-profile-btn {
+      display: flex; align-items: center; justify-content: center; padding: 2px;
+      border-radius: 50%; background: #ffffff; border: 2px solid #e2e8f0;
+      cursor: pointer; transition: all 0.2s ease; user-select: none;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+    .user-profile-btn:hover { background: #f8fafc; border-color: #2563eb; transform: scale(1.05); box-shadow: 0 4px 12px rgba(37,99,235,0.18); }
+    .user-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: linear-gradient(135deg, #0284c7, #2563eb); color: #ffffff;
+      font-weight: 700; font-size: 13.5px; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 6px rgba(37,99,235,0.3); flex-shrink: 0;
+    }
+    .user-info strong { display: block; font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.2; }
+    .user-info span { font-size: 11px; color: #64748b; font-weight: 500; }
+
+    .header-logout-btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+      border-radius: 99px; background: #fee2e2; color: #dc2626; font-size: 12.5px;
+      font-weight: 700; text-decoration: none; border: 1px solid #fca5a5; transition: all 0.2s ease;
+    }
+    .header-logout-btn:hover { background: #dc2626; color: #ffffff; border-color: #dc2626; text-decoration: none; box-shadow: 0 4px 12px rgba(220,38,38,0.25); }
+
+    .profile-dropdown-menu {
+      position: absolute; top: calc(100% + 8px); right: 0; width: 230px;
+      background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.12); padding: 8px; z-index: 1000;
+      display: none; animation: pdmFade 0.2s ease-out;
+    }
+    .profile-dropdown-menu.show { display: block; }
+    @keyframes pdmFade {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .pdm-header { padding: 12px 14px 10px; border-bottom: 1px solid #f1f5f9; margin-bottom: 6px; }
+    .pdm-header strong { display: block; font-size: 13px; font-weight: 700; color: #0f172a; }
+    .pdm-header span { font-size: 11px; color: #64748b; }
+    .pdm-item {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      border-radius: 10px; color: #334155; font-size: 13px; font-weight: 600;
+      text-decoration: none; transition: all 0.15s ease;
+    }
+    .pdm-item:hover { background: #f8fafc; color: #2563eb; text-decoration: none; }
+    .pdm-item.danger { color: #dc2626; }
+    .pdm-item.danger:hover { background: #fef2f2; color: #b91c1c; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -235,12 +282,13 @@ $fullName  = trim(($user['first_name']??'').' '.(isset($user['middle_name'])&&$u
     <p>Learning Management System</p>
   </div>
   <nav class="sb-nav">
-    <div class="sb-section">Student Menu</div>
     <ul>
-      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes.php"><i class="fa fa-book"></i> My Classes</a></li>
-
-
+      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="classes"><i class="fa fa-book"></i> My Classes</a></li>
+      <li><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="assignments"><i class="fa fa-clipboard"></i> Assignments</a></li>
+      <li><a href="grades"><i class="fa fa-bar-chart"></i> Grades</a></li>
+      <li><a href="attendance"><i class="fa fa-calendar"></i> Attendance</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -251,7 +299,7 @@ $fullName  = trim(($user['first_name']??'').' '.(isset($user['middle_name'])&&$u
         <span><?php echo htmlspecialchars($programCode ?: 'Student'); ?></span>
       </div>
     </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -264,7 +312,22 @@ $fullName  = trim(($user['first_name']??'').' '.(isset($user['middle_name'])&&$u
         <p><?php echo date('l, F j, Y'); ?></p>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;">
+    <div class="header-user">
+      <div class="user-profile-wrap">
+        <div class="user-profile-btn" onclick="toggleProfileMenu(event)" title="<?php echo htmlspecialchars($fullName); ?>">
+          <div class="user-avatar"><?php echo htmlspecialchars($initials); ?></div>
+        </div>
+
+        <div class="profile-dropdown-menu" id="profileMenu">
+          <div class="pdm-header">
+            <strong><?php echo htmlspecialchars($fullName); ?></strong>
+            <span>Student &bull; <?php echo htmlspecialchars($user['program_code'] ?? 'Regular'); ?></span>
+          </div>
+          <a href="javascript:void(0)" class="pdm-item" onclick="openStudentProfileModal()"><i class="fa fa-user-circle"></i> Student Profile</a>
+          <div class="pdm-divider"></div>
+          <a href="/cenlearn/logout" class="pdm-item danger"><i class="fa fa-sign-out"></i> Log Out</a>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -276,7 +339,7 @@ $fullName  = trim(($user['first_name']??'').' '.(isset($user['middle_name'])&&$u
     <i class="fa fa-university"></i>
     <h4>No Program Assigned</h4>
     <p>Your program information hasn't been set yet. Please contact your registrar or log in again to sync your data from TechnoPal.</p>
-    <a href="dashboard.php" style="margin-top:16px;display:inline-block;padding:9px 20px;background:linear-gradient(135deg,#1792bb,#0f5f80);color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;">
+    <a href="dashboard" style="margin-top:16px;display:inline-block;padding:9px 20px;background:linear-gradient(135deg,#1792bb,#0f5f80);color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;">
       <i class="fa fa-home"></i> Back to Dashboard
     </a>
   </div>
@@ -393,7 +456,7 @@ $fullName  = trim(($user['first_name']??'').' '.(isset($user['middle_name'])&&$u
   <div class="pg-card" style="margin-bottom:20px;">
     <div class="pg-card-hdr">
       <h4><i class="fa fa-book" style="color:#1792bb;"></i> My Classes in <?php echo htmlspecialchars($programCode); ?></h4>
-      <a href="classes.php">View all classes</a>
+      <a href="classes">View all classes</a>
     </div>
     <?php if(empty($classRows)): ?>
     <div class="empty-msg"><i class="fa fa-book"></i>No classes found for your program yet.</div>
@@ -410,7 +473,7 @@ $fullName  = trim(($user['first_name']??'').' '.(isset($user['middle_name'])&&$u
       <?php if(!empty($cl['subject'])): ?>
       <span class="cl-chip"><?php echo htmlspecialchars($cl['subject']); ?></span>
       <?php endif; ?>
-      <a href="classes.php" style="font-size:12px;color:#1792bb;text-decoration:none;margin-left:8px;white-space:nowrap;"><i class="fa fa-arrow-right"></i></a>
+      <a href="classes" style="font-size:12px;color:#1792bb;text-decoration:none;margin-left:8px;white-space:nowrap;"><i class="fa fa-arrow-right"></i></a>
     </div>
     <?php endforeach; ?>
     <?php endif; ?>
@@ -423,10 +486,21 @@ $fullName  = trim(($user['first_name']??'').' '.(isset($user['middle_name'])&&$u
   <footer class="sd-footer">&copy; <?php echo date('Y'); ?> CenLearn &mdash; Bago City College LMS</footer>
 </div><!-- sd-main -->
 
-<script src="../bower_components/jquery/dist/jquery.min.js"></script>
+<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
 <script>
 function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('sidebarOverlay').style.display='block';}
 function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebarOverlay').style.display='none';}
+function toggleProfileMenu(e) {
+  e.stopPropagation();
+  var m = document.getElementById('profileMenu');
+  if(m) m.classList.toggle('show');
+}
+document.addEventListener('click', function(e) {
+  var m = document.getElementById('profileMenu');
+  if(m && !m.contains(e.target)) m.classList.remove('show');
+});
 </script>
+
+<?php include '../includes/student_profile_modal.php'; ?>
 </body>
 </html>

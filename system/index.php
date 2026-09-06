@@ -350,7 +350,7 @@ session_destroy();
       <div class="nav-links">
         <a href="#about-section" class="nav-link" onclick="scrollToSection(event, 'about-section')">About</a>
         <a href="#contact-section" class="nav-link" onclick="scrollToSection(event, 'contact-section')">Contact</a>
-        <a href="register.php" class="nav-link" style="color:#2dd4bf;font-weight:600;"><i class="fa fa-user-plus"></i> Register</a>
+        <a href="register" class="nav-link" style="color:#2dd4bf;font-weight:600;"><i class="fa fa-user-plus"></i> Register</a>
         <button class="nav-btn" onclick="openLogin()">
           <i class="fa fa-sign-in"></i> Login
         </button>
@@ -457,8 +457,8 @@ session_destroy();
 
       <div style="margin-top:22px; padding-top:18px; border-top:1px solid rgba(255,255,255,0.12); text-align:center; font-size:13px; color:rgba(255,255,255,0.7);">
         Don't have an account? Register as<br>
-        <a href="teacher/register.php" style="color:#2dd4bf; font-weight:700; text-decoration:none; margin-right:6px;"><i class="fa fa-graduation-cap"></i> Teacher</a> | 
-        <a href="superadmin/register.php" style="color:#c084fc; font-weight:700; text-decoration:none; margin-left:6px;"><i class="fa fa-shield"></i> Super Admin</a>
+        <a href="teacher/register" style="color:#2dd4bf; font-weight:700; text-decoration:none; margin-right:6px;"><i class="fa fa-graduation-cap"></i> Teacher</a> | 
+        <a href="superadmin/register" style="color:#c084fc; font-weight:700; text-decoration:none; margin-left:6px;"><i class="fa fa-shield"></i> Super Admin</a>
       </div>
     </form>
 
@@ -620,14 +620,14 @@ function login(){
   showCenLoader('Loading');
 
   $.ajax({
-    url: 'proxy.php', method: 'POST', dataType: 'JSON',
+    url: 'proxy', method: 'POST', dataType: 'JSON',
     data: { txtUserName: user, txtPassword: pass, txtCallback: $('#txtCallback').val(), txtRequestId: $('#txtRequestId').val() },
     success: function(res){
       if(!res.is_valid){
         hideCenLoader();
         openLogin();
         if(res.err_msg === 'API_DOWN_NO_CACHE'){
-          showErr('⚠ Authentication server is offline. <a href="set_password.php" style="color:#dc2626;font-weight:700;">Click here to set your password</a> and log in.');
+          showErr('⚠ Authentication server is offline. <a href="set_password" style="color:#dc2626;font-weight:700;">Click here to set your password</a> and log in.');
         } else {
           showErr('Invalid username or password. Please try again.');
         }
@@ -637,13 +637,12 @@ function login(){
         var profileIncomplete = role === 'STUDENT'
           && (!res.first_name || !res.program_code || !res.year_level || !res.section);
         
-        var targetUrl = 'student/dashboard';
-        if(role === 'STUDENT' && isGrad)                  targetUrl = 'student/graduated';
+        var targetUrl = 'dashboard';
+        if(role === 'STUDENT' && isGrad)                  targetUrl = 'graduated';
         else if(role === 'STUDENT' && profileIncomplete)  targetUrl = 'complete_profile';
-        else if(role === 'STUDENT')                       targetUrl = 'student/dashboard';
+        else if(role === 'STUDENT')                       targetUrl = 'dashboard';
         else if(role === 'TEACHER' || role === 'FACULTY') targetUrl = 'teacher/dashboard';
         else if(role === 'SUPERADMIN' || role === 'ADMIN') targetUrl = 'superadmin/dashboard';
-
 
         window.location.href = targetUrl;
       }

@@ -262,7 +262,7 @@
   </form>
 
   <div class="footer-links">
-    Already registered? <a href="index.php">Sign in to your account</a>
+    Already registered? <a href="./">Sign in to your account</a>
   </div>
 </div>
 
@@ -390,7 +390,7 @@ $('#portalRegisterForm').on('submit', function(e){
       
       if(res.success){
         showAlert('success', res.msg);
-        setTimeout(function(){ window.location.href = 'index.php'; }, 2000);
+        setTimeout(function(){ window.location.href = './'; }, 2000);
       } else {
         showAlert('danger', res.msg);
       }

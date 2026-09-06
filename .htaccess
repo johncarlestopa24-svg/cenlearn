@@ -1,26 +1,115 @@
-# CenLearn Local Apache Handler — Pretty Extensionless URLs (Windows XAMPP Safe)
+# CenLearn Global Clean URL Routing Engine
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /cenlearn/
-    DirectoryIndex index.php
 
-    # 1. Strip .php extension safely without filesystem path leakage
-    RewriteCond %{THE_REQUEST} \s/cenlearn/(?:system/)?([^\s?]+)\.php[\s?] [NC]
-    RewriteRule ^ /cenlearn/%1 [R=301,L]
+    # ----------------------------------------------------------------------
+    # 1. BROWSER 301 REDIRECTS: Convert legacy .php & /system/ URLs to clean URLs
+    # ----------------------------------------------------------------------
+    RewriteCond %{ENV:REDIRECT_STATUS} ^$
+    RewriteCond %{REQUEST_METHOD} ^(GET|HEAD)
 
-    # 2. Allow existing static assets & directories in root to load directly
-    RewriteCond %{REQUEST_FILENAME} -f [OR]
-    RewriteCond %{REQUEST_FILENAME} -d
-    RewriteRule ^ - [L]
+    # Redirect /system/student/file.php -> /file
+    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?system/student/([a-zA-Z0-9_\-]+)\.php[\s?] [NC]
+    RewriteRule ^ %1 [R=301,L,NE]
 
-    # 3. Internal Rewrite: Map extensionless URLs to system/ subfolder .php files
+    # Redirect /system/teacher/file.php -> /teacher/file
+    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?system/teacher/([a-zA-Z0-9_\-]+)\.php[\s?] [NC]
+    RewriteRule ^ teacher/%1 [R=301,L,NE]
+
+    # Redirect /system/superadmin/file.php -> /superadmin/file
+    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?system/superadmin/([a-zA-Z0-9_\-]+)\.php[\s?] [NC]
+    RewriteRule ^ superadmin/%1 [R=301,L,NE]
+
+    # Redirect /system/shared/file.php -> /shared/file
+    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?system/shared/([a-zA-Z0-9_\-]+)\.php[\s?] [NC]
+    RewriteRule ^ shared/%1 [R=301,L,NE]
+
+    # Redirect /system/index.php -> /login
+    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?system/index\.php[\s?] [NC]
+    RewriteRule ^ login [R=301,L,NE]
+
+    # Redirect /system/file.php -> /file (root system files)
+    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?system/([a-zA-Z0-9_\-]+)\.php[\s?] [NC]
+    RewriteRule ^ %1 [R=301,L,NE]
+
+    # Redirect root file.php -> /file
+    RewriteCond %{THE_REQUEST} \s/+(?:cenlearn/)?(.+?)\.php[\s?] [NC]
+    RewriteCond %{THE_REQUEST} !/index\.php [NC]
+    RewriteRule ^ %1 [R=301,L,NE]
+
+    # ----------------------------------------------------------------------
+    # 2. INTERNAL REWRITES: Map clean public URLs to underlying physical PHP files & assets
+    # ----------------------------------------------------------------------
+
+    # Direct Asset Mappings
+    RewriteRule ^bower_components/(.*)$ system/bower_components/$1 [L]
+    RewriteRule ^dist/(.*)$ system/dist/$1 [L]
+    RewriteRule ^plugins/(.*)$ system/plugins/$1 [L]
+    RewriteRule ^uploads/(.*)$ system/uploads/$1 [L]
+    RewriteRule ^build/(.*)$ system/build/$1 [L]
+
+    # Explicit Live Class Handler Routes
+    RewriteRule ^live_handler(\.php)?$ system/shared/live_handler.php [L,QSA]
+    RewriteRule ^teacher/live_handler(\.php)?$ system/shared/live_handler.php [L,QSA]
+    RewriteRule ^student/live_handler(\.php)?$ system/shared/live_handler.php [L,QSA]
+    RewriteRule ^shared/live_handler(\.php)?$ system/shared/live_handler.php [L,QSA]
+
+    # Explicit Root Routes
+    RewriteRule ^login/?$ system/index.php [L,QSA]
+    RewriteRule ^register/?$ system/register.php [L,QSA]
+    RewriteRule ^logout/?$ system/logout.php [L,QSA]
+    RewriteRule ^proxy/?$ system/proxy.php [L,QSA]
+    RewriteRule ^complete_profile/?$ system/complete_profile.php [L,QSA]
+    RewriteRule ^save_profile/?$ system/save_profile.php [L,QSA]
+    RewriteRule ^set_password/?$ system/set_password.php [L,QSA]
+
+    # Explicit Student Routes
+    RewriteRule ^dashboard/?$ system/student/dashboard.php [L,QSA]
+    RewriteRule ^student/dashboard/?$ system/student/dashboard.php [L,QSA]
+    RewriteRule ^classes/?$ system/student/classes.php [L,QSA]
+    RewriteRule ^student/classes/?$ system/student/classes.php [L,QSA]
+    RewriteRule ^quizzes/?$ system/student/quizzes.php [L,QSA]
+    RewriteRule ^student/quizzes/?$ system/student/quizzes.php [L,QSA]
+    RewriteRule ^assignments/?$ system/student/assignments.php [L,QSA]
+    RewriteRule ^student/assignments/?$ system/student/assignments.php [L,QSA]
+    RewriteRule ^grades/?$ system/student/grades.php [L,QSA]
+    RewriteRule ^student/grades/?$ system/student/grades.php [L,QSA]
+    RewriteRule ^attendance/?$ system/student/attendance.php [L,QSA]
+    RewriteRule ^student/attendance/?$ system/student/attendance.php [L,QSA]
+    RewriteRule ^program/?$ system/student/program.php [L,QSA]
+    RewriteRule ^student/program/?$ system/student/program.php [L,QSA]
+    RewriteRule ^graduated/?$ system/student/graduated.php [L,QSA]
+    RewriteRule ^student/graduated/?$ system/student/graduated.php [L,QSA]
+    RewriteRule ^class_record/?$ system/student/class_record.php [L,QSA]
+    RewriteRule ^student/class_record/?$ system/student/class_record.php [L,QSA]
+
+    # Dynamic Student Module Routes (/student/* -> system/student/*.php)
+    RewriteCond %{DOCUMENT_ROOT}/cenlearn/system/student/$1.php -f
+    RewriteRule ^student/([a-zA-Z0-9_\-]+)/?$ system/student/$1.php [L,QSA]
+
+    # Dynamic Teacher Module Routes (/teacher/* -> system/teacher/*.php)
+    RewriteCond %{DOCUMENT_ROOT}/cenlearn/system/teacher/$1.php -f
+    RewriteRule ^teacher/([a-zA-Z0-9_\-]+)/?$ system/teacher/$1.php [L,QSA]
+
+    # Dynamic SuperAdmin Module Routes (/superadmin/* -> system/superadmin/*.php)
+    RewriteCond %{DOCUMENT_ROOT}/cenlearn/system/superadmin/$1.php -f
+    RewriteRule ^superadmin/([a-zA-Z0-9_\-]+)/?$ system/superadmin/$1.php [L,QSA]
+
+    # Admin Shortcut (/admin/* -> system/superadmin/*.php)
+    RewriteCond %{DOCUMENT_ROOT}/cenlearn/system/superadmin/$1.php -f
+    RewriteRule ^admin/([a-zA-Z0-9_\-]+)/?$ system/superadmin/$1.php [L,QSA]
+
+    # Dynamic Shared Module Routes (/shared/* -> system/shared/*.php)
+    RewriteCond %{DOCUMENT_ROOT}/cenlearn/system/shared/$1.php -f
+    RewriteRule ^shared/([a-zA-Z0-9_\-]+)/?$ system/shared/$1.php [L,QSA]
+
+    # Dynamic Student Module Routes Fallback (/dashboard, /classes, etc. -> system/student/*.php)
+    RewriteCond %{DOCUMENT_ROOT}/cenlearn/system/student/$1.php -f
+    RewriteRule ^([a-zA-Z0-9_\-]+)/?$ system/student/$1.php [L,QSA]
+
+    # Dynamic System Root Files Fallback (/proxy, /complete_profile, etc. -> system/*.php)
     RewriteCond %{DOCUMENT_ROOT}/cenlearn/system/$1.php -f
-    RewriteRule ^(.*)$ system/$1.php [QSA,L]
+    RewriteRule ^([a-zA-Z0-9_\-]+)/?$ system/$1.php [L,QSA]
 
-    # 4. Internal Rewrite: Map extensionless URLs to root .php files
-    RewriteCond %{DOCUMENT_ROOT}/cenlearn/$1.php -f
-    RewriteRule ^(.*)$ $1.php [QSA,L]
-
-    # 5. Route remaining requests to system/ directory
-    RewriteRule ^(.*)$ system/$1 [QSA,L]
 </IfModule>

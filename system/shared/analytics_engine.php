@@ -1058,6 +1058,144 @@ function cenlearn_assignment_module_recommendations($conn, $student_code, $class
     return $items;
 }
 
+/**
+ * Compute student's holistic overall academic performance across all enrolled classes
+ * including cumulative quiz scores, assignment grades, active classes, completed lessons, and study engagement.
+ */
+function cenlearn_overall_student_performance($conn, $student_code): array {
+    $uc = $conn->real_escape_string($student_code);
+
+    // 1. Quizzes summary across all classes
+    $qRes = $conn->query("
+        SELECT COUNT(DISTINCT qs.quiz_id) AS total_quizzes_taken,
+               SUM(qs.score) AS total_earned_points,
+               SUM(qs.total_points) AS total_max_points
+        FROM quiz_submissions qs
+        WHERE qs.student_code = '$uc'
+    ");
+    $qData = $qRes ? $qRes->fetch_assoc() : [];
+    $quizzes_taken = intval($qData['total_quizzes_taken'] ?? 0);
+    $quiz_earned   = floatval($qData['total_earned_points'] ?? 0);
+    $quiz_max      = floatval($qData['total_max_points'] ?? 0);
+    $quiz_pct      = $quiz_max > 0 ? round(($quiz_earned / $quiz_max) * 100, 1) : null;
+
+    // 2. Assignments summary across all classes
+    $aRes = $conn->query("
+        SELECT COUNT(DISTINCT sub.assignment_id) AS total_assignments_submitted,
+               SUM(sub.grade) AS total_earned_points,
+               SUM(a.points) AS total_max_points
+        FROM assignment_submissions sub
+        JOIN assignments a ON sub.assignment_id = a.id
+        WHERE sub.student_code = '$uc' AND sub.grade IS NOT NULL
+    ");
+    $aData = $aRes ? $aRes->fetch_assoc() : [];
+    $assignments_submitted = intval($aData['total_assignments_submitted'] ?? 0);
+    $assign_earned        = floatval($aData['total_earned_points'] ?? 0);
+    $assign_max           = floatval($aData['total_max_points'] ?? 0);
+    $assign_pct           = $assign_max > 0 ? round(($assign_earned / $assign_max) * 100, 1) : null;
+
+    // 3. Enrolled active classes count
+    $cRes = $conn->query("
+        SELECT COUNT(cm.id) AS enrolled_count
+        FROM class_members cm
+        JOIN classes c ON cm.class_id = c.id
+        WHERE cm.user_code = '$uc' AND (c.is_archived = 0 OR c.is_archived IS NULL)
+    ");
+    $enrolled_count = intval(($cRes ? $cRes->fetch_assoc()['enrolled_count'] : 0));
+
+    // 4. Completed lessons / modules count
+    $lRes = $conn->query("
+        SELECT COUNT(id) AS completed_lessons
+        FROM lesson_progress
+        WHERE student_code = '$uc' AND status = 'completed'
+    ");
+    $completed_lessons = intval(($lRes ? $lRes->fetch_assoc()['completed_lessons'] : 0));
+
+    // Calculate Overall Weighted Score
+    $overall_pct = 75.0; // default baseline
+    if ($quiz_pct !== null && $assign_pct !== null) {
+        $overall_pct = round(($quiz_pct * 0.5) + ($assign_pct * 0.5), 1);
+    } elseif ($quiz_pct !== null) {
+        $overall_pct = $quiz_pct;
+    } elseif ($assign_pct !== null) {
+        $overall_pct = $assign_pct;
+    }
+
+    // Determine performance standing classification
+    if ($overall_pct < 50) {
+        $standing = "Critical Remediation Required";
+        $badge    = "Action Required (Overall: {$overall_pct}%)";
+        $color    = "#ef4444";
+        $bg       = "#fef2f2";
+        $border   = "#fecaca";
+        $icon     = "fa-exclamation-triangle";
+    } elseif ($overall_pct < 75) {
+        $standing = "Developing Standing";
+        $badge    = "Developing (Overall: {$overall_pct}%)";
+        $color    = "#f59e0b";
+        $bg       = "#fffbeb";
+        $border   = "#fde68a";
+        $icon     = "fa-bar-chart";
+    } elseif ($overall_pct < 90) {
+        $standing = "Proficient Academic Standing";
+        $badge    = "Proficiency Met (Overall: {$overall_pct}%)";
+        $color    = "#3b82f6";
+        $bg       = "#eff6ff";
+        $border   = "#bfdbfe";
+        $icon     = "fa-check-circle";
+    } else {
+        $standing = "Exemplary Honors Performance";
+        $badge    = "Top Performer (Overall: {$overall_pct}%)";
+        $color    = "#10b981";
+        $bg       = "#f0fdf4";
+        $border   = "#bbf7d0";
+        $icon     = "fa-trophy";
+    }
+
+    // Generate personalized AI Overall Strategy & Guidance
+    $ai_message = "Your overall cumulative academic average across <strong>{$enrolled_count} active class" . ($enrolled_count !== 1 ? 'es' : '') . "</strong> is <strong>{$overall_pct}%</strong> ({$standing}).";
+    
+    if ($quiz_pct !== null && $assign_pct !== null) {
+        $ai_message .= " Your assignment average is <strong>{$assign_pct}%</strong> based on {$assignments_submitted} task" . ($assignments_submitted !== 1 ? 's' : '') . ", while your quiz mastery average is <strong>{$quiz_pct}%</strong> across {$quizzes_taken} quiz" . ($quizzes_taken !== 1 ? 'zes' : '') . ".";
+        if ($quiz_pct < $assign_pct) {
+            $ai_message .= " Your primary opportunity for overall GPA improvement is boosting your quiz performance through targeted module reviews and practice quizzes.";
+        } else {
+            $ai_message .= " Your quiz foundation is strong. Maintain high assignment submission quality and submit remaining coursework on time.";
+        }
+    } elseif ($quiz_pct !== null) {
+        $ai_message .= " Your cumulative quiz score is <strong>{$quiz_pct}%</strong> across {$quizzes_taken} completed quiz" . ($quizzes_taken !== 1 ? 'zes' : '') . ". Keep completing class assignments to build your overall grade profile.";
+    } elseif ($assign_pct !== null) {
+        $ai_message .= " Your assignment average is <strong>{$assign_pct}%</strong> across {$assignments_submitted} submitted task" . ($assignments_submitted !== 1 ? 's' : '') . ". Take upcoming class quizzes to establish your full academic mastery score.";
+    } else {
+        $ai_message .= " Start taking quizzes and submitting assignments to build your personalized AI performance tracking and overall study recommendations.";
+    }
+
+    // Recommended Action Pathway
+    if ($overall_pct < 75) {
+        $action = "Follow your 3-step overall action plan: 1. Review weak subject modules, 2. Retake practice quizzes to reach 75%+ benchmark, 3. Complete pending assignment tasks.";
+    } else {
+        $action = "Maintain your high overall academic streak with spaced topic repetition and capstone project synthesis.";
+    }
+
+    return [
+        'overall_pct'           => $overall_pct,
+        'quiz_pct'              => $quiz_pct,
+        'assign_pct'            => $assign_pct,
+        'quizzes_taken'         => $quizzes_taken,
+        'assignments_submitted' => $assignments_submitted,
+        'enrolled_count'        => $enrolled_count,
+        'completed_lessons'     => $completed_lessons,
+        'standing'              => $standing,
+        'badge'                 => $badge,
+        'color'                 => $color,
+        'bg'                    => $bg,
+        'border'                => $border,
+        'icon'                  => $icon,
+        'message'               => $ai_message,
+        'action'                => $action,
+    ];
+}
+
 // ── AI Performance Coach & Diagnostic Insight Engine ────────────────────────
 // Replaces generic quotes with personalized, data-grounded AI diagnostic feedback
 // based on the student's actual quiz scores, essay evaluation, and weak concepts.
@@ -1215,12 +1353,13 @@ function cenlearn_topic_recommendations($conn, $student_code, $class_id = null):
     if(!$res || $res->num_rows === 0){
         $default_quote = cenlearn_get_motivational_quote(75.0);
         return [
-            'has_data'           => false,
-            'weak_topics'        => [],
-            'strong_topics'      => [],
-            'recommendations'    => [],
-            'ml_active'          => false,
-            'motivational_quote' => $default_quote,
+            'has_data'            => false,
+            'weak_topics'         => [],
+            'strong_topics'       => [],
+            'recommendations'     => [],
+            'ml_active'           => false,
+            'motivational_quote'  => $default_quote,
+            'overall_performance' => cenlearn_overall_student_performance($conn, $student_code),
         ];
     }
 
@@ -1575,17 +1714,18 @@ function cenlearn_topic_recommendations($conn, $student_code, $class_id = null):
     );
 
     return [
-        'has_data'           => true,
-        'all_topics'         => $all_topics,
-        'weak_topics'        => array_values($weak_topics),
-        'strong_topics'      => array_values($strong_topics),
-        'recommendations'    => $recommendations,
-        'assignment_recs'    => $assignment_recs,
-        'ml_active'          => true,
-        'total_topics'       => count($all_topics),
-        'weak_count'         => count($weak_topics),
-        'strong_count'       => count($strong_topics),
-        'motivational_quote' => $motivational_quote,
+        'has_data'            => true,
+        'all_topics'          => $all_topics,
+        'weak_topics'         => array_values($weak_topics),
+        'strong_topics'       => array_values($strong_topics),
+        'recommendations'     => $recommendations,
+        'assignment_recs'     => $assignment_recs,
+        'ml_active'           => true,
+        'total_topics'        => count($all_topics),
+        'weak_count'          => count($weak_topics),
+        'strong_count'        => count($strong_topics),
+        'motivational_quote'  => $motivational_quote,
+        'overall_performance' => cenlearn_overall_student_performance($conn, $student_code),
     ];
 }
 ?>

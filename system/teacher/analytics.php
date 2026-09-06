@@ -4,7 +4,7 @@ include '../includes/conn.php';
 include '../shared/analytics_engine.php';
 
 if(strtoupper($user['user_group']) !== 'TEACHER') {
-    header('location: ../student/dashboard.php'); exit;
+    header('location: /cenlearn/dashboard'); exit;
 }
 
 $tc = $conn->real_escape_string($user['user_code']);
@@ -45,11 +45,11 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>CenLearn — Teacher Performance &amp; Analytics</title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
-  <script src="../plugins/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
+  <script src="/cenlearn/system/plugins/chart.umd.min.js"></script>
   <style>
     *,*::before,*::after{box-sizing:border-box;}
     body{font-family:'Inter',sans-serif;background:#f0f4f8;margin:0;color:#1e293b;-webkit-font-smoothing:antialiased;}
@@ -218,14 +218,14 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
   <nav class="sb-nav">
     <div class="sb-section">Teacher Menu</div>
     <ul>
-      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes.php"><i class="fa fa-book"></i> Classes</a></li>
-      <li><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="logbook.php"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
-      <li><a href="subject_repository.php"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
+      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="classes"><i class="fa fa-book"></i> Classes</a></li>
+      <li><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
+      <li><a href="class_record"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="subject_repository"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -236,7 +236,7 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
         <span>Teacher</span>
       </div>
     </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -289,7 +289,7 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
     <div class="class-selector-card">
       <div class="cs-left">
         <label class="cs-label"><i class="fa fa-book" style="color:#10b981;"></i> Select Class:</label>
-        <select class="cs-select" onchange="location.href='analytics.php?class_id='+this.value">
+        <select class="cs-select" onchange="location.href='analytics?class_id='+this.value">
           <?php foreach($classes as $c): ?>
           <option value="<?php echo $c['id']; ?>" <?php echo (int)$c['id']===$selectedId?'selected':''; ?>>
             <?php echo htmlspecialchars($c['class_name']); ?>
@@ -310,7 +310,7 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
         <?php if($selectedClass['section']): ?>
         <span class="cs-badge" style="background:#fdf4ff;color:#7e22ce;border:1px solid #f5d0fe;">Sec <?php echo htmlspecialchars($selectedClass['section']); ?></span>
         <?php endif; ?>
-        <a href="../shared/class_view.php?id=<?php echo $selectedId; ?>&tab=performance" class="cs-badge" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;text-decoration:none;">
+        <a href="../shared/class_view?id=<?php echo $selectedId; ?>&tab=performance" class="cs-badge" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;text-decoration:none;">
           <i class="fa fa-external-link"></i> Class View
         </a>
       </div>
@@ -596,8 +596,8 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
   <footer class="an-footer">CenLearn &mdash; Powered by TechnoPal</footer>
 </div>
 
-<script src="../bower_components/jquery/dist/jquery.min.js"></script>
-<script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
+<script src="/cenlearn/system/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
 <script>
 <?php if($total > 0): ?>
 (function(){
@@ -684,7 +684,7 @@ function closeSidebar(){ document.getElementById('sidebar').classList.remove('op
 
 <?php if($selectedId): ?>
 $(document).ready(function(){
-  $.get('../shared/topic_analytics_handler.php', { action:'get_class_analytics', class_id:<?php echo $selectedId; ?> }, function(r){
+  $.get('/cenlearn/shared/topic_analytics_handler', { action:'get_class_analytics', class_id:<?php echo $selectedId; ?> }, function(r){
     if(!r.success) {
       $('#classTopicsArea').html('<p style="color:#ef4444;font-size:12px;">'+r.msg+'</p>');
       $('#studentTopicsArea').html('<p style="color:#ef4444;font-size:12px;">'+r.msg+'</p>');
@@ -714,7 +714,7 @@ $(document).ready(function(){
         
         var modBadge = '';
         if(t.matched_modules && t.matched_modules.length > 0) {
-          modBadge = '<div style="margin-top:3px;"><a href="../shared/module_view.php?id=' + t.matched_modules[0].id + '" target="_blank" style="background:#eff6ff;color:#1d4ed8;padding:2px 6px;border-radius:5px;font-size:10px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:3px;"><i class="fa fa-book"></i> Module: ' + t.matched_modules[0].title + '</a></div>';
+          modBadge = '<div style="margin-top:3px;"><a href="../shared/module_view?id=' + t.matched_modules[0].id + '" target="_blank" style="background:#eff6ff;color:#1d4ed8;padding:2px 6px;border-radius:5px;font-size:10px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:3px;"><i class="fa fa-book"></i> Module: ' + t.matched_modules[0].title + '</a></div>';
         }
         
         var quizBadge = '';

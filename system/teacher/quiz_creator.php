@@ -2,11 +2,11 @@
 include '../includes/session.php';
 include '../includes/conn.php';
 
-if(strtoupper($user['user_group']) !== 'TEACHER'){
-    header('location: ../index.php'); exit;
+if (strtoupper($user['user_group']) !== 'TEACHER') {
+    header('location: /cenlearn/login'); exit;
 }
 
-header('location: quizzes.php?create=1');
+header('location: quizzes?create=1');
 exit;
 
 $tc = $conn->real_escape_string($user['user_code']);
@@ -28,10 +28,10 @@ while($r = $classesQ->fetch_assoc()) $classes[] = $r;
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn &mdash; Excel Auto-Paste Quiz Creator</title>
-  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../dist/css/cenlearn.css">
+  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
   <style>
     :root {
       --bg-main: #f0f4f8;
@@ -241,11 +241,11 @@ while($r = $classesQ->fetch_assoc()) $classes[] = $r;
   <nav class="sb-nav">
     <div class="sb-section">Teacher Menu</div>
     <ul>
-      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes.php"><i class="fa fa-book"></i> Classes</a></li>
-      <li class="active"><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="logbook.php"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="classes"><i class="fa fa-book"></i> Classes</a></li>
+      <li class="active"><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
+      <li><a href="class_record"><i class="fa fa-table"></i> Class Record</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -256,7 +256,7 @@ while($r = $classesQ->fetch_assoc()) $classes[] = $r;
         <span>Teacher</span>
       </div>
     </div>
-    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -271,7 +271,7 @@ while($r = $classesQ->fetch_assoc()) $classes[] = $r;
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
       <button class="btn-theme-toggle" onclick="toggleDarkMode()"><i class="fa fa-moon-o"></i> Dark Mode</button>
-      <a href="quizzes.php" class="btn-act"><i class="fa fa-arrow-left"></i> Back to Quizzes</a>
+      <a href="quizzes" class="btn-act"><i class="fa fa-arrow-left"></i> Back to Quizzes</a>
       <button class="btn-parse-purple" onclick="saveQuizToDatabase()" style="padding:8px 18px;font-size:12px;"><i class="fa fa-paper-plane"></i> Publish Quiz</button>
     </div>
   </header>
@@ -422,7 +422,7 @@ while($r = $classesQ->fetch_assoc()) $classes[] = $r;
   <!-- Sticky Bottom Footer Bar -->
   <div class="creator-bottom-bar">
     <div style="display:flex;align-items:center;gap:12px;">
-      <button type="button" class="btn-cancel-out" onclick="window.location.href='quizzes.php'">Cancel</button>
+      <button type="button" class="btn-cancel-out" onclick="window.location.href='quizzes'">Cancel</button>
       <button type="button" class="btn-create-purple" onclick="saveQuizToDatabase()"><i class="fa fa-floppy-o"></i> Create Quiz</button>
     </div>
   </div>
@@ -691,8 +691,8 @@ while($r = $classesQ->fetch_assoc()) $classes[] = $r;
   </div>
 </div>
 
-<script src="../bower_components/jquery/dist/jquery.min.js"></script>
-<script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
+<script src="/cenlearn/system/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
 <script>
 let questionsData = [];
 let historyStack = [];
@@ -1530,10 +1530,10 @@ function submitPublishQuiz() {
     questions: JSON.stringify(formattedQuestions)
   };
 
-  $.post('../shared/quiz_handler.php', payload, function(res) {
+  $.post('/cenlearn/shared/quiz_handler', payload, function(res) {
     if(res.success) {
       alert('Quiz created and published successfully!');
-      window.location.href = 'quizzes.php';
+      window.location.href = 'quizzes';
     } else {
       alert(res.msg || 'Error saving quiz.');
     }
@@ -1559,7 +1559,7 @@ function checkCreatorRelevance() {
     options: q.options
   }));
 
-  $.post('../shared/quiz_handler.php', {
+  $.post('/cenlearn/shared/quiz_handler', {
     action: 'analyze_relevance',
     class_id: classId,
     questions: JSON.stringify(formattedQuestions)
