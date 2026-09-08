@@ -78,10 +78,10 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>CenLearn - Classes</title>
-  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
+  <link rel="stylesheet" href="../dist/css/cenlearn.css">
   <style>
     *,*::before,*::after{box-sizing:border-box;}
     html,body{margin:0;padding:0;overflow-x:hidden;}
@@ -550,23 +550,22 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
   <nav class="sb-nav">
     <div class="sb-nav-sec">Main</div>
     <ul>
-      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
       <li class="active">
-        <a href="classes"><i class="fa fa-book"></i> Classes</a>
+        <a href="classes.php"><i class="fa fa-book"></i> Classes</a>
         <ul class="sb-submenu" id="classSubmenu" style="display: none;">
           <li><a href="#" id="subMaterials"><i class="fa fa-folder-open"></i> Materials</a></li>
           <li><a href="#" id="subClasswork"><i class="fa fa-tasks"></i> Classwork</a></li>
-          <li><a href="#" id="subLiveClass"><i class="fa fa-video-camera"></i> Online Class</a></li>
+          <li><a href="#" id="subLiveClass"><i class="fa fa-video-camera"></i> Live Class</a></li>
           <li><a href="#" id="subPerformance"><i class="fa fa-line-chart"></i> Performance &amp; Analytics</a></li>
           <li><a href="#" id="subRecord"><i class="fa fa-book"></i> Subject Class Record</a></li>
         </ul>
       </li>
-      <li><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="class_record"><i class="fa fa-table"></i> Class Record</a></li>
-      <li><a href="subject_repository"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
+      <li><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="subject_repository.php"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -577,7 +576,7 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
         <span>Teacher</span>
       </div>
     </div>
-    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 <div class="t-main">
@@ -590,7 +589,9 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
-      <button class="btn-primary-t" data-toggle="modal" data-target="#createClassModal"><i class="fa fa-plus"></i> Create Class</button>
+      <button class="btn-primary-t" onclick="openTechnoPalSyncModal()" style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:10px;font-size:13.5px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:opacity .18s;box-shadow:0 4px 14px rgba(16,185,129,.25);">
+        <i class="fa fa-refresh" id="btnSyncSpinIcon"></i> Sync from TechnoPal
+      </button>
     </div>
   </header>
   <div class="t-content">
@@ -681,12 +682,6 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
             <button onclick="toggleSidebarClass(<?php echo $c['id']; ?>, this)" class="crc-btn open-btn toggle-class-btn" data-class-id="<?php echo $c['id']; ?>">
               <i class="fa fa-folder-open"></i> <span class="lbl-text">Open</span>
             </button>
-            <button onclick="openArchiveModal(<?php echo $c['id']; ?>,'<?php echo htmlspecialchars(addslashes($c['class_name'])); ?>')" class="crc-btn archive-btn icon-only" title="Archive">
-              <i class="fa fa-archive"></i>
-            </button>
-            <button onclick="confirmDelete(<?php echo $c['id']; ?>,'<?php echo htmlspecialchars(addslashes($c['class_name'])); ?>')" class="crc-btn delete-btn icon-only" title="Delete Class">
-              <i class="fa fa-trash"></i>
-            </button>
           </div>
         </div>
         <?php endforeach; ?>
@@ -695,8 +690,8 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
       <div class="empty-state">
         <div class="empty-icon"><i class="fa fa-folder-open-o"></i></div>
         <h5>No active classes</h5>
-        <p>Create your first class to start managing students and materials.</p>
-        <button class="btn-primary-t" data-toggle="modal" data-target="#createClassModal"><i class="fa fa-plus"></i> Create First Class</button>
+        <p>Sync your classes from TechnoPal to start managing students and materials.</p>
+        <button class="btn-primary-t" onclick="openTechnoPalSyncModal()"><i class="fa fa-refresh"></i> Sync from TechnoPal</button>
       </div>
       <?php endif; ?>
     </div>
@@ -737,7 +732,7 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
           </div>
 
           <div class="crc-actions">
-            <a href="../shared/class_view?id=<?php echo $c['id']; ?>" class="crc-btn open-btn">
+            <a href="../shared/class_view.php?id=<?php echo $c['id']; ?>" class="crc-btn open-btn">
               <i class="fa fa-eye"></i> View
             </a>
             <button onclick="unarchiveClass(<?php echo $c['id']; ?>,'<?php echo htmlspecialchars(addslashes($c['class_name'])); ?>')" class="crc-btn archive-btn icon-only" style="border-color:#10b981; background:#f0fdf4; color:#059669;" title="Restore to Active">
@@ -762,6 +757,73 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
   </div>
   <footer class="t-footer">CenLearn &mdash; Powered by TechnoPal</footer>
 </div>
+<!-- Sync from TechnoPal Modal -->
+<div class="modal fade" id="syncTechnoPalModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="border:none;border-radius:16px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.18);">
+      <div style="padding:18px 22px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#0d9488,#0f766e);">
+        <h4 style="color:#fff;font-size:15px;font-weight:700;margin:0;display:flex;align-items:center;gap:8px;">
+          <i class="fa fa-refresh"></i> Sync Subjects from TechnoPal
+        </h4>
+        <button type="button" class="close" data-dismiss="modal" style="color:#fff;opacity:.8;font-size:20px;background:none;border:none;">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:22px 24px;">
+        <p style="font-size:13px;color:#64748b;margin-bottom:16px;line-height:1.5;">
+          Import your officially assigned subjects, schedules, and sections from TechnoPal. Enrolled students will automatically be added to your class rosters.
+        </p>
+
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px;">Academic Year</label>
+          <select id="sync_ay" onchange="toggleCustomAy(this.value)" style="width:100%;padding:10px 13px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13px;font-family:'Inter',sans-serif;background:#fff;">
+            <?php
+            $curYear   = (int)date('Y');
+            $curMonth  = (int)date('n');
+            // Academic year starts around July-August
+            $baseAyStart = ($curMonth >= 7) ? $curYear : ($curYear - 1);
+            for ($i = 0; $i <= 3; $i++):
+              $syStart = $baseAyStart + $i;
+              $syEnd   = $syStart + 1;
+              $syVal   = "$syStart-$syEnd";
+              $isDefault = ($i === 0);
+              $label   = ($i === 0) ? "$syVal (Current Academic Year)" : "$syVal (Upcoming Future Year)";
+            ?>
+              <option value="<?php echo $syVal; ?>" <?php echo $isDefault ? 'selected' : ''; ?>>
+                <?php echo $label; ?>
+              </option>
+            <?php endfor; ?>
+            <option value="<?php echo ($baseAyStart - 1) . '-' . $baseAyStart; ?>"><?php echo ($baseAyStart - 1) . '-' . $baseAyStart . ' (Past Year)'; ?></option>
+            <option value="custom">Custom Academic Year...</option>
+          </select>
+          <input type="text" id="sync_ay_custom" placeholder="e.g. 2026-2027" style="display:none;width:100%;margin-top:8px;padding:9px 13px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13px;font-family:'Inter',sans-serif;background:#fff;" />
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:5px;">Semester</label>
+          <select id="sync_sem" style="width:100%;padding:10px 13px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13px;font-family:'Inter',sans-serif;background:#fff;">
+            <option value="1" selected>First Semester</option>
+            <option value="2">Second Semester</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom:18px;display:flex;align-items:flex-start;gap:9px;background:#f8fafc;border:1px solid #e2e8f0;padding:10px 12px;border-radius:9px;">
+          <input type="checkbox" id="sync_archive_old" value="1" checked style="width:16px;height:16px;margin-top:2px;cursor:pointer;accent-color:#0d9488;">
+          <label for="sync_archive_old" style="margin:0;font-size:12px;color:#334155;font-weight:500;cursor:pointer;line-height:1.4;">
+            Archive previous academic year classes and move them to <strong>Past Subject Repository</strong>
+          </label>
+        </div>
+
+        <div id="syncAlert" style="display:none;" class="m-alert"></div>
+      </div>
+      <div style="padding:14px 22px;background:#f8fafc;border-top:1px solid #f1f5f9;display:flex;justify-content:flex-end;gap:10px;">
+        <button type="button" data-dismiss="modal" style="padding:9px 18px;border:1.5px solid #e2e8f0;border-radius:9px;background:#fff;color:#64748b;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;">Cancel</button>
+        <button type="button" id="btnStartSync" onclick="performTechnoPalSync()" style="display:inline-flex;align-items:center;gap:7px;padding:9px 20px;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;box-shadow:0 3px 10px rgba(13,148,136,.25);">
+          <i class="fa fa-cloud-download"></i> Start Sync
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Create Class Modal -->
 <div class="modal fade" id="createClassModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
@@ -806,8 +868,8 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
             <?php endforeach; ?>
           </select>
           <?php if (empty($managed_subjects)): ?>
-            <small style="display:block;color:#ef4444;margin-top:5px;font-size:11px;">
-              <i class="fa fa-exclamation-circle"></i> No subjects found. Please create one in <b><a href="logbook" style="color:#059669;font-weight:600;text-decoration:underline;">Manage Subject</a></b> first.
+            <small style="display:block;color:#0d9488;margin-top:5px;font-size:11px;">
+              <i class="fa fa-info-circle"></i> No subjects loaded. You can import your official subjects using <b><a href="javascript:void(0)" onclick="openTechnoPalSyncModal()" style="color:#0f766e;font-weight:600;text-decoration:underline;">Sync from TechnoPal</a></b>.
             </small>
           <?php endif; ?>
         </div>
@@ -940,7 +1002,7 @@ $icons = ['fa-calculator','fa-flask','fa-book','fa-globe','fa-code','fa-pencil',
   </div>
 </div>
 <?php include '../includes/scripts.php'; ?>
-<script src="/cenlearn/system/plugins/doc_viewer/xlsx.full.min.js"></script>
+<script src="../plugins/doc_viewer/xlsx.full.min.js"></script>
 <script>
 // ── Tab switching ──────────────────────────────────────────────────────────
 function switchTab(tabId, btn){
@@ -981,7 +1043,7 @@ $('#btnArchiveConfirm').on('click', function(){
   if(!_archiveId) return;
   var sy = $('#archiveYear').val().trim();
   $(this).prop('disabled',true).html('<i class="fa fa-spinner fa-spin"></i>');
-  $.post('/cenlearn/shared/class_archive',{action:'archive',class_id:_archiveId,school_year:sy},function(res){
+  $.post('../shared/class_archive.php',{action:'archive',class_id:_archiveId,school_year:sy},function(res){
     $('#btnArchiveConfirm').prop('disabled',false).html('<i class="fa fa-archive"></i> Archive');
     if(res.success){ $('#archiveModal').modal('hide'); location.reload(); }
     else alert(res.msg||'Failed to archive.');
@@ -991,7 +1053,7 @@ $('#btnArchiveConfirm').on('click', function(){
 // ── Unarchive ──────────────────────────────────────────────────────────────
 function unarchiveClass(id, name){
   if(!confirm('Restore "'+name+'" to active classes?')) return;
-  $.post('/cenlearn/shared/class_archive',{action:'unarchive',class_id:id},function(res){
+  $.post('../shared/class_archive.php',{action:'unarchive',class_id:id},function(res){
     if(res.success) location.reload();
     else alert(res.msg||'Failed to restore.');
   },'json');
@@ -1196,7 +1258,7 @@ $('#btnCreate').on('click',function(){
   $('#btnCreate').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Creating...');
 
   $.ajax({
-    url: '/cenlearn/shared/class_save',
+    url: '../shared/class_save.php',
     type: 'POST',
     data: fd,
     processData: false,
@@ -1331,7 +1393,7 @@ function confirmDelete(id,name){_deleteId=id;$('#deleteClassName').text(name);$(
 $('#btnDeleteConfirm').on('click',function(){
   if(!_deleteId)return;
   $(this).prop('disabled',true).html('<i class="fa fa-spinner fa-spin"></i> Deleting...');
-  $.post('/cenlearn/shared/class_delete',{class_id:_deleteId},function(res){
+  $.post('../shared/class_delete.php',{class_id:_deleteId},function(res){
     if(res.success){$('#deleteClassModal').modal('hide');setTimeout(function(){location.reload();},400);}
     else{$('#btnDeleteConfirm').prop('disabled',false).html('<i class="fa fa-trash"></i> Delete');showAlert('#deleteAlert','danger',res.msg);}
   },'json');
@@ -1364,11 +1426,11 @@ function toggleSidebarClass(classId, btn) {
   }
 
   // Update submenu URLs dynamically
-  $('#subMaterials').attr('href', '../shared/class_view?id=' + classId + '&tab=materials');
-  $('#subClasswork').attr('href', '../shared/class_view?id=' + classId + '&tab=classwork');
-  $('#subLiveClass').attr('href', '../shared/live_class?id=' + classId);
-  $('#subPerformance').attr('href', '../shared/class_view?id=' + classId + '&tab=performance');
-  $('#subRecord').attr('href', '../shared/class_record_detail?id=' + classId);
+  $('#subMaterials').attr('href', '../shared/class_view.php?id=' + classId + '&tab=materials');
+  $('#subClasswork').attr('href', '../shared/class_view.php?id=' + classId + '&tab=classwork');
+  $('#subLiveClass').attr('href', '../shared/live_class.php?id=' + classId);
+  $('#subPerformance').attr('href', '../shared/class_view.php?id=' + classId + '&tab=performance');
+  $('#subRecord').attr('href', '../shared/class_record_detail.php?id=' + classId);
 
   // Expand submenu
   submenu.slideDown(200);
@@ -1380,6 +1442,63 @@ function toggleSidebarClass(classId, btn) {
   if (window.innerWidth <= 900) {
     openSidebar();
   }
+}
+
+function toggleCustomAy(val){
+  if(val === 'custom'){
+    $('#sync_ay_custom').slideDown(150).focus();
+  } else {
+    $('#sync_ay_custom').slideUp(150);
+  }
+}
+
+function openTechnoPalSyncModal(){
+  $('#syncAlert').hide();
+  $('#btnStartSync').prop('disabled', false).html('<i class="fa fa-cloud-download"></i> Start Sync');
+  $('#syncTechnoPalModal').modal('show');
+}
+
+function performTechnoPalSync(){
+  var ay = $('#sync_ay').val();
+  if(ay === 'custom'){
+    ay = $.trim($('#sync_ay_custom').val());
+    if(!ay){
+      $('#syncAlert').removeClass('success').addClass('m-alert danger').css('background', '#fef2f2').css('color', '#991b1b').css('borderColor', '#fecaca').html('<i class="fa fa-exclamation-circle"></i> Please enter an Academic Year (e.g. 2026-2027).').show();
+      return;
+    }
+  }
+  var sem = $('#sync_sem').val();
+  var archiveOld = $('#sync_archive_old').is(':checked') ? 1 : 0;
+  var btn = $('#btnStartSync');
+  var alertBox = $('#syncAlert');
+
+  btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Syncing with TechnoPal...');
+  alertBox.removeClass('danger success').addClass('m-alert').css('background', '#eff6ff').css('color', '#1e40af').css('borderColor', '#bfdbfe').html('<i class="fa fa-spinner fa-spin"></i> Connecting to TechnoPal API and syncing subjects & students for ' + ay + '...').show();
+
+  $.ajax({
+    url: 'sync_subjects.php',
+    type: 'POST',
+    data: { ay: ay, sem: sem, archive_old: archiveOld },
+    dataType: 'json',
+    timeout: 30000,
+    success: function(res){
+      if(res.success){
+        alertBox.removeClass('danger').addClass('m-alert success').css('background', '#f0fdf4').css('color', '#166534').css('borderColor', '#bbf7d0').html('<i class="fa fa-check-circle"></i> ' + res.msg).show();
+        btn.html('<i class="fa fa-check"></i> Synced!').css('background', '#10b981');
+        setTimeout(function(){
+          $('#syncTechnoPalModal').modal('hide');
+          location.reload();
+        }, 1400);
+      } else {
+        btn.prop('disabled', false).html('<i class="fa fa-cloud-download"></i> Start Sync');
+        alertBox.removeClass('success').addClass('m-alert danger').css('background', '#fef2f2').css('color', '#991b1b').css('borderColor', '#fecaca').html('<i class="fa fa-exclamation-circle"></i> ' + res.msg).show();
+      }
+    },
+    error: function(xhr, status, err){
+      btn.prop('disabled', false).html('<i class="fa fa-cloud-download"></i> Start Sync');
+      alertBox.removeClass('success').addClass('m-alert danger').css('background', '#fef2f2').css('color', '#991b1b').css('borderColor', '#fecaca').html('<i class="fa fa-exclamation-circle"></i> Sync failed. Please verify network connection or TechnoPal server status.').show();
+    }
+  });
 }
 
 function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('sidebarOverlay').classList.add('active');}

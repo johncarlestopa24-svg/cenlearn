@@ -139,7 +139,23 @@ if (!function_exists('safeAddColumns')) {
 // Replaces 20+ per-request DDL checks with a smart version-cached manager.
 // This makes page reloads and API responses execute with 0ms schema overhead.
 if (isset($conn) && $conn) {
+    // Critical self-heal: guarantee essential classes columns exist on any database state
+    safeAddColumns($conn, 'classes', [
+        'is_subject_only' => 'tinyint(1) NOT NULL DEFAULT 0',
+        'is_archived'     => 'tinyint(1) NOT NULL DEFAULT 0',
+        'school_year'     => 'varchar(20) DEFAULT NULL',
+        'schedule_json'   => 'text DEFAULT NULL'
+    ]);
+
     include_once __DIR__ . '/schema_sync.php';
     $forceSync = isset($_GET['migrate']) && ($_GET['migrate'] === '1' || $_GET['migrate'] === 'force');
     cenlearn_sync_schema($conn, $forceSync);
+}
+
+// ── TechnoPal Integration API Configuration ────────────────────────────────
+if (!defined('TECHNOPAL_API_URL')) {
+    define('TECHNOPAL_API_URL', 'https://s1.bagocitycollege.com/bccweb/api/index.php');
+}
+if (!defined('TECHNOPAL_API_TOKEN')) {
+    define('TECHNOPAL_API_TOKEN', 'eyJ1YyI6IlRDLVRFU1QiLCJ1biI6InRlc3R0ZWFjaGVyIiwiZm4iOiJUZXN0IiwibG4iOiJUZWFjaGVyIn0.NbmQf-y3hQ8zalOtplUEKW3e2TjSFxNaGBiv_aZVKzI');
 }

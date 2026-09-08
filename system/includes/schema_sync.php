@@ -8,7 +8,7 @@
  */
 
 if (!defined('CENLEARN_SCHEMA_VERSION')) {
-    define('CENLEARN_SCHEMA_VERSION', 14);
+    define('CENLEARN_SCHEMA_VERSION', 16);
 }
 
 if (!function_exists('cenlearn_sync_schema')) {
@@ -191,6 +191,17 @@ if (!function_exists('cenlearn_sync_schema')) {
                     UNIQUE KEY `session_user` (`session_id`,`user_code`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
+                // Class Confirmations
+                "CREATE TABLE IF NOT EXISTS `class_confirmations` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `class_id` int(11) NOT NULL,
+                    `student_code` varchar(50) NOT NULL,
+                    `status` enum('pending','accepted','declined') NOT NULL DEFAULT 'pending',
+                    `responded_at` datetime DEFAULT NULL,
+                    `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `class_student` (`class_id`,`student_code`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
                 // Class Record Columns
                 "CREATE TABLE IF NOT EXISTS `class_record_columns` (
@@ -226,11 +237,12 @@ if (!function_exists('cenlearn_sync_schema')) {
                     `id` int(11) NOT NULL AUTO_INCREMENT,
                     `class_id` int(11) NOT NULL,
                     `written_pct` int(11) NOT NULL DEFAULT 20,
-                    `performance_pct` int(11) NOT NULL DEFAULT 40,
-                    `exam_pct` int(11) NOT NULL DEFAULT 30,
+                    `performance_pct` int(11) NOT NULL DEFAULT 20,
+                    `exam_pct` int(11) NOT NULL DEFAULT 40,
                     `attendance_pct` int(11) NOT NULL DEFAULT 10,
+                    `deportment_pct` int(11) NOT NULL DEFAULT 10,
                     `grading_method` varchar(20) NOT NULL DEFAULT 'sum_of_points',
-                    `base_grade` int(11) NOT NULL DEFAULT 0,
+                    `base_grade` int(11) NOT NULL DEFAULT 50,
                     `midterm_weight` int(11) NOT NULL DEFAULT 40,
                     `final_weight` int(11) NOT NULL DEFAULT 60,
                     PRIMARY KEY (`id`),
@@ -369,20 +381,6 @@ if (!function_exists('cenlearn_sync_schema')) {
                     `last_updated` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     PRIMARY KEY (`id`),
                     UNIQUE KEY `class_topic` (`class_id`,`topic`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
-
-                // Student Study Plan History
-                "CREATE TABLE IF NOT EXISTS `student_study_plan_history` (
-                    `id` int(11) NOT NULL AUTO_INCREMENT,
-                    `student_code` varchar(50) NOT NULL,
-                    `overall_risk` varchar(30) NOT NULL DEFAULT 'on_track',
-                    `risk_score` int(11) NOT NULL DEFAULT 0,
-                    `recommendations_json` text DEFAULT NULL,
-                    `topic_plans_json` text DEFAULT NULL,
-                    `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (`id`),
-                    KEY `student_code` (`student_code`),
-                    KEY `created_at` (`created_at`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
                 // Subject Logbook
@@ -573,6 +571,7 @@ if (!function_exists('cenlearn_sync_schema')) {
 
             safeAddColumns($conn, 'class_record_weights', [
                 'attendance_pct' => 'int(11) NOT NULL DEFAULT 10',
+                'deportment_pct' => 'int(11) NOT NULL DEFAULT 10',
                 'grading_method' => "varchar(20) NOT NULL DEFAULT 'sum_of_points'",
                 'base_grade'     => 'int(11) NOT NULL DEFAULT 0',
                 'midterm_weight' => 'int(11) NOT NULL DEFAULT 40',
@@ -582,6 +581,21 @@ if (!function_exists('cenlearn_sync_schema')) {
             safeAddColumns($conn, 'assignments', [
                 'term' => "varchar(20) NOT NULL DEFAULT 'midterm'"
             ]);
+
+            // Classes compatibility
+            safeAddColumns($conn, 'classes', [
+                'is_subject_only' => 'tinyint(1) NOT NULL DEFAULT 0',
+                'is_archived'     => 'tinyint(1) NOT NULL DEFAULT 0',
+                'school_year'     => "varchar(20) DEFAULT NULL",
+                'schedule_json'   => "text DEFAULT NULL"
+            ]);
+
+            try {
+                $idxChk = $conn->query("SHOW INDEX FROM `classes` WHERE Key_name = 'idx_classes_archived'");
+                if ($idxChk && $idxChk->num_rows === 0) {
+                    $conn->query("ALTER TABLE `classes` ADD INDEX `idx_classes_archived` (`is_archived`)");
+                }
+            } catch (\Throwable $e) {}
 
             // 4. Stored Procedure sp_resequence_all_ids (Safe Stub)
             $conn->query("DROP PROCEDURE IF EXISTS `sp_resequence_all_ids`");

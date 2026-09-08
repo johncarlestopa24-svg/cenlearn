@@ -59,7 +59,7 @@ if($action === 'save_attendance'){
         $colCheck = $conn->query("SELECT id FROM class_record_columns WHERE class_id=$class_id AND (attendance_session_id=$session_id OR (is_f2f=1 AND session_id=$session_id) OR (is_f2f=1 AND created_at LIKE '$date%')) LIMIT 1");
         if(!$colCheck || $colCheck->num_rows === 0){
             $conn->query("INSERT INTO class_record_columns (class_id, component, title, max_score, sort_order, term, session_id, attendance_session_id, is_f2f, created_at)
-                          VALUES ($class_id, 'attendance', '$displayTitle', 1.00, 0, '$term', $session_id, $session_id, 1, '$created_at')");
+                          VALUES ($class_id, 'attendance', '$displayTitle', 2.00, 0, '$term', $session_id, $session_id, 1, '$created_at')");
             $col_id = (int)$conn->insert_id;
         } else {
             $col_id = intval($colCheck->fetch_assoc()['id']);
@@ -84,11 +84,11 @@ if($action === 'save_attendance'){
                           ON DUPLICATE KEY UPDATE status='$status', remarks='$recRem'");
 
             // Convert status to numeric score for Class Record
-            // Present: 1.00, Late: 0.50, Excused: 1.00, Absent: 0.00
-            $score = 1.00;
-            if($status === 'late')    $score = 0.50;
+            // Present: 2.00, Late: 1.00, Excused: 2.00, Absent: 0.00
+            $score = 2.00;
+            if($status === 'late')    $score = 1.00;
             if($status === 'absent')  $score = 0.00;
-            if($status === 'excused') $score = 1.00;
+            if($status === 'excused') $score = 2.00;
 
             if($col_id > 0){
                 try {
@@ -125,10 +125,10 @@ if($action === 'update_student_status'){
     $colCheck = $conn->query("SELECT id FROM class_record_columns WHERE class_id=$class_id AND session_id=$session_id LIMIT 1");
     if($colCheck && $colCheck->num_rows > 0){
         $col_id = intval($colCheck->fetch_assoc()['id']);
-        $score = 1.00;
-        if($status === 'late')   $score = 0.50;
+        $score = 2.00;
+        if($status === 'late')   $score = 1.00;
         if($status === 'absent') $score = 0.00;
-        if($status === 'excused') $score = 1.00;
+        if($status === 'excused') $score = 2.00;
 
         $conn->query("INSERT INTO class_record_scores (column_id, class_id, student_code, score)
                       VALUES ($col_id, $class_id, '$stuCode', $score)

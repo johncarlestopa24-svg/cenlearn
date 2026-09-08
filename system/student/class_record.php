@@ -1,21 +1,22 @@
 <?php
 include '../includes/session.php';
 include '../includes/conn.php';
+require_once __DIR__ . '/../shared/grading_engine.php';
 
 if(strtoupper($user['user_group']) !== 'STUDENT'){
-    header('location: dashboard'); exit;
+    header('location: dashboard.php'); exit;
 }
 
 $class_id = intval($_GET['id'] ?? 0);
 $uc = $conn->real_escape_string($user['user_code']);
-if(!$class_id){ header('location: classes'); exit; }
+if(!$class_id){ header('location: classes.php'); exit; }
 
 // Validate enrollment
 $memQ = $conn->query("SELECT 1 FROM class_members WHERE class_id=$class_id AND user_code='$uc'");
 if($memQ->num_rows === 0){ die('Access denied.'); }
 
 // Fetch class
-$cq = $conn->query("SELECT c.*, u.first_name AS tf, u.last_name AS tl FROM classes c LEFT JOIN users u ON c.teacher_code=u.user_code WHERE c.id=$class_id AND (c.is_subject_only = 0 OR c.is_subject_only IS NULL) AND (c.is_archived = 0 OR c.is_archived IS NULL)");
+$cq = $conn->query("SELECT c.*, u.first_name AS tf, u.last_name AS tl FROM classes c LEFT JOIN users u ON c.teacher_code=u.user_code WHERE c.id=$class_id");
 if($cq->num_rows === 0){ die('Class not found.'); }
 $class = $cq->fetch_assoc();
 $teacherName = trim($class['tf'].' '.$class['tl']);
@@ -25,21 +26,7 @@ if(!in_array($term, ['midterm', 'final'])) $term = 'midterm';
 
 // Load weights
 $wq = $conn->query("SELECT * FROM class_record_weights WHERE class_id=$class_id");
-$weights = $wq->num_rows > 0 ? $wq->fetch_assoc() : [
-    'written_pct'=>20,
-    'performance_pct'=>40,
-    'exam_pct'=>30,
-    'attendance_pct'=>10,
-    'grading_method'=>'sum_of_points',
-    'base_grade'=>0,
-    'midterm_weight'=>40,
-    'final_weight'=>60,
-    'extra_weights'=>'[]'
-];
-if(!isset($weights['grading_method'])) $weights['grading_method'] = 'sum_of_points';
-if(!isset($weights['base_grade'])) $weights['base_grade'] = 0;
-if(!isset($weights['midterm_weight'])) $weights['midterm_weight'] = 40;
-if(!isset($weights['final_weight'])) $weights['final_weight'] = 60;
+$weights = $wq->num_rows > 0 ? array_merge(GradingEngine::DEFAULT_WEIGHTS, $wq->fetch_assoc()) : GradingEngine::DEFAULT_WEIGHTS;
 if(!isset($weights['extra_weights'])) $weights['extra_weights'] = '[]';
 
 // Load columns & scores for both terms
@@ -100,69 +87,7 @@ foreach($finalCols as $col) {
 
 // Compute grades
 function computeStudentGrade($studentCode, $colsByComp, $scores, $weights) {
-    $method = $weights['grading_method'] ?? 'sum_of_points';
-    $base = (int)($weights['base_grade'] ?? 0);
-    if ($base < 0 || $base >= 100) $base = 0;
-
-    $compAvg = [];
-    foreach(['written','performance','exam','deportment'] as $comp) {
-        $cols = $colsByComp[$comp] ?? [];
-        $regularCols = array_filter($cols, fn($c) => empty($c['session_id']));
-        if(empty($regularCols)){ $compAvg[$comp] = null; }
-        else {
-            if ($method === 'avg_of_pct') {
-                $pcts = [];
-                foreach($regularCols as $col) {
-                    $sc = $scores[$col['id']] ?? null;
-                    if($sc !== null && $col['max_score'] > 0){
-                        $pcts[] = ($sc / $col['max_score']) * 100;
-                    }
-                }
-                $raw = count($pcts) ? (array_sum($pcts) / count($pcts)) : null;
-            } else {
-                $total = 0; $max = 0; $hasAny = false;
-                foreach($regularCols as $col) {
-                    $sc = $scores[$col['id']] ?? null;
-                    if($sc !== null){ 
-                        $total += $sc; 
-                        $max += $col['max_score']; 
-                        $hasAny = true; 
-                    }
-                }
-                $raw = ($hasAny && $max > 0) ? ($total / $max) * 100 : null;
-            }
-
-            if ($raw !== null) {
-                $compAvg[$comp] = round($raw * (100 - $base) / 100 + $base, 2);
-            } else {
-                $compAvg[$comp] = null;
-            }
-        }
-    }
-
-    $wTotal = 0; $wWeight = 0;
-    $compMap = [
-        'written'    => 'written_pct',
-        'performance'=> 'performance_pct',
-        'exam'       => 'exam_pct',
-        'deportment' => 'attendance_pct',
-    ];
-    foreach($compMap as $comp => $key) {
-        if(isset($compAvg[$comp]) && $compAvg[$comp] !== null && isset($weights[$key])) {
-            $wTotal  += $compAvg[$comp] * $weights[$key];
-            $wWeight += $weights[$key];
-        }
-    }
-    if(!empty($weights['extra_weights'])){
-        $extraArr = json_decode($weights['extra_weights'], true);
-        if(is_array($extraArr)){
-            foreach($extraArr as $ew){
-                $wWeight += intval($ew['pct'] ?? 0);
-            }
-        }
-    }
-    $final = $wWeight > 0 ? round($wTotal / $wWeight, 2) : null;
-    return ['components'=>$compAvg,'final'=>$final];
+    return GradingEngine::computeStudentGrade($studentCode, $colsByComp, $scores, $weights);
 }
 
 $myGrade = computeStudentGrade($uc, $colsByComp, $scores, $weights);
@@ -193,9 +118,10 @@ $publishedGrade = $pubQ->num_rows > 0 ? $pubQ->fetch_assoc() : null;
 // Helper transmutation
 function transmuteGrade($grade) {
     if($grade === null) return '—';
-    if($grade >= 99) return '1.00'; if($grade >= 96) return '1.25'; if($grade >= 93) return '1.50';
-    if($grade >= 90) return '1.75'; if($grade >= 87) return '2.00'; if($grade >= 84) return '2.25';
-    if($grade >= 81) return '2.50'; if($grade >= 78) return '2.75'; if($grade >= 75) return '3.00';
+    $r = round(floatval($grade));
+    if($r >= 98) return '1.00'; if($r >= 95) return '1.25'; if($r >= 92) return '1.50';
+    if($r >= 89) return '1.75'; if($r >= 86) return '2.00'; if($r >= 83) return '2.25';
+    if($r >= 80) return '2.50'; if($r >= 77) return '2.75'; if($r >= 75) return '3.00';
     return '5.00';
 }
 
@@ -223,21 +149,20 @@ foreach ($sessions as $s) {
         }
     }
 }
-$attPct = $totalSessions > 0 ? round(($totalAttPoints / ($totalSessions * 2)) * 100, 1) : null;
+$attPct = $myGrade['components']['attendance'] ?? ($totalSessions > 0 ? round(($totalAttPoints / ($totalSessions * 2)) * 100, 1) : null);
 
 $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name'],0,1));
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>CenLearn — My Course Record</title>
-  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
+  <link rel="stylesheet" href="../dist/css/cenlearn.css">
   <style>
     *{box-sizing:border-box;}
     body{font-family:'Inter',sans-serif;background:#f0f4f8;margin:0;color:#1e293b;}
@@ -318,54 +243,8 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
     @media (max-width: 768px) {
       .sd-main{margin-left:0;}
       .sd-content{padding:16px 14px;}
-    /* Header User Profile & Logout Dropdown */
-    .header-user { display: flex; align-items: center; gap: 12px; position: relative; }
-    .user-profile-wrap { position: relative; }
-    .user-profile-btn {
-      display: flex; align-items: center; justify-content: center; padding: 2px;
-      border-radius: 50%; background: #ffffff; border: 2px solid #e2e8f0;
-      cursor: pointer; transition: all 0.2s ease; user-select: none;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+      .kpi-row{grid-template-columns:repeat(2,1fr);gap:10px;}
     }
-    .user-profile-btn:hover { background: #f8fafc; border-color: #2563eb; transform: scale(1.05); box-shadow: 0 4px 12px rgba(37,99,235,0.18); }
-    .user-avatar {
-      width: 36px; height: 36px; border-radius: 50%;
-      background: linear-gradient(135deg, #0284c7, #2563eb); color: #ffffff;
-      font-weight: 700; font-size: 13.5px; display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 2px 6px rgba(37,99,235,0.3); flex-shrink: 0;
-    }
-    .user-info strong { display: block; font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.2; }
-    .user-info span { font-size: 11px; color: #64748b; font-weight: 500; }
-
-    .header-logout-btn {
-      display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
-      border-radius: 99px; background: #fee2e2; color: #dc2626; font-size: 12.5px;
-      font-weight: 700; text-decoration: none; border: 1px solid #fca5a5; transition: all 0.2s ease;
-    }
-    .header-logout-btn:hover { background: #dc2626; color: #ffffff; border-color: #dc2626; text-decoration: none; box-shadow: 0 4px 12px rgba(220,38,38,0.25); }
-
-    .profile-dropdown-menu {
-      position: absolute; top: calc(100% + 8px); right: 0; width: 230px;
-      background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.12); padding: 8px; z-index: 1000;
-      display: none; animation: pdmFade 0.2s ease-out;
-    }
-    .profile-dropdown-menu.show { display: block; }
-    @keyframes pdmFade {
-      from { opacity: 0; transform: translateY(-6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .pdm-header { padding: 12px 14px 10px; border-bottom: 1px solid #f1f5f9; margin-bottom: 6px; }
-    .pdm-header strong { display: block; font-size: 13px; font-weight: 700; color: #0f172a; }
-    .pdm-header span { font-size: 11px; color: #64748b; }
-    .pdm-item {
-      display: flex; align-items: center; gap: 10px; padding: 10px 14px;
-      border-radius: 10px; color: #334155; font-size: 13px; font-weight: 600;
-      text-decoration: none; transition: all 0.15s ease;
-    }
-    .pdm-item:hover { background: #f8fafc; color: #2563eb; text-decoration: none; }
-    .pdm-item.danger { color: #dc2626; }
-    .pdm-item.danger:hover { background: #fef2f2; color: #b91c1c; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -378,13 +257,11 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
     <p>Learning Management System</p>
   </div>
   <nav class="sb-nav">
+    <div class="sb-section">Student Menu</div>
     <ul>
-      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes"><i class="fa fa-book"></i> My Classes</a></li>
-      <li><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="assignments"><i class="fa fa-clipboard"></i> Assignments</a></li>
-      <li><a href="grades" style="font-weight:700;color:#fff;"><i class="fa fa-bar-chart"></i> Grades</a></li>
-      <li><a href="attendance"><i class="fa fa-calendar"></i> Attendance</a></li>
+      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li class="active"><a href="classes.php"><i class="fa fa-book"></i> My Classes</a></li>
+
     </ul>
   </nav>
   <div class="sb-footer">
@@ -395,7 +272,7 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
         <span>Student &bull; <?php echo htmlspecialchars($user['program_code'] ?? 'No program'); ?></span>
       </div>
     </div>
-    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -406,23 +283,6 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
       <div class="sd-topbar-title">
         <h3>My Class Record</h3>
         <p><?php echo htmlspecialchars($class['class_name']); ?> &bull; Prof. <?php echo htmlspecialchars($teacherName); ?></p>
-      </div>
-    </div>
-    <div class="header-user">
-      <div class="user-profile-wrap">
-        <div class="user-profile-btn" onclick="toggleProfileMenu(event)" title="<?php echo htmlspecialchars($user['first_name'].' '.$user['last_name']); ?>">
-          <div class="user-avatar"><?php echo $initials; ?></div>
-        </div>
-
-        <div class="profile-dropdown-menu" id="profileMenu">
-          <div class="pdm-header">
-            <strong><?php echo htmlspecialchars($user['first_name'].' '.$user['last_name']); ?></strong>
-            <span>Student &bull; <?php echo htmlspecialchars($user['program_code'] ?? 'Regular'); ?></span>
-          </div>
-          <a href="javascript:void(0)" class="pdm-item" onclick="openStudentProfileModal()"><i class="fa fa-user-circle"></i> Student Profile</a>
-          <div class="pdm-divider"></div>
-          <a href="/cenlearn/logout" class="pdm-item danger"><i class="fa fa-sign-out"></i> Log Out</a>
-        </div>
       </div>
     </div>
   </header>
@@ -486,24 +346,40 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
                   <tr>
                     <th>Component Name</th>
                     <th>Weight</th>
-                    <th>Your Avg %</th>
+                    <th>Raw Score</th>
+                    <th>Transmuted Grade</th>
                     <th>Contribution</th>
                   </tr>
                 </thead>
                 <tbody>
                   <?php
-                  $compNames = ['written'=>'Quiz', 'performance'=>'Performance Task', 'exam'=>'Exam', 'attendance'=>'Deportment'];
-                  $compKeys  = ['written'=>'written_pct', 'performance'=>'performance_pct', 'exam'=>'exam_pct', 'attendance'=>'attendance_pct'];
+                  $compNames = [
+                      'performance' => 'Performance Task',
+                      'exam'        => 'Exam',
+                      'written'     => 'Quiz',
+                      'deportment'  => 'Deportment',
+                      'attendance'  => 'Attendance'
+                  ];
+                  $compKeys  = [
+                      'performance' => 'performance_pct',
+                      'exam'        => 'exam_pct',
+                      'written'     => 'written_pct',
+                      'deportment'  => 'deportment_pct',
+                      'attendance'  => 'attendance_pct'
+                  ];
                   foreach($compNames as $comp => $label):
-                    $avg = $myGrade['components'][$comp] ?? null;
+                    $raw = $myGrade['raw'][$comp] ?? null;
+                    $total = $myGrade['total_items'][$comp] ?? 0;
+                    $trans = $myGrade['transmuted'][$comp] ?? null;
                     $weight = $weights[$compKeys[$comp]] ?? 0;
-                    $contrib = ($avg !== null) ? round($avg * $weight / 100, 2) : null;
+                    $contrib = $myGrade['weighted'][$comp] ?? null;
                   ?>
                   <tr>
                     <td><strong><?php echo $label; ?></strong></td>
                     <td><?php echo $weight; ?>%</td>
-                    <td style="font-weight:700; color:<?php echo $avg>=75?'#166534':'#0f172a'; ?>;"><?php echo $avg !== null ? $avg.'%' : '—'; ?></td>
-                    <td style="font-weight:700; color:#1792bb;"><?php echo $contrib !== null ? $contrib.'%' : '—'; ?></td>
+                    <td><?php echo ($raw !== null && $total > 0) ? ($raw . ' / ' . $total) : '—'; ?></td>
+                    <td style="font-weight:700; color:<?php echo $trans>=75?'#166534':'#0f172a'; ?>;"><?php echo $trans !== null ? number_format($trans, 2) : '—'; ?></td>
+                    <td style="font-weight:700; color:#1792bb;"><?php echo $contrib !== null ? number_format($contrib, 2).'%' : '—'; ?></td>
                   </tr>
                   <?php endforeach; ?>
                 </tbody>
@@ -684,24 +560,27 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
             </thead>
             <tbody>
               <?php 
-              $myDepCols = array_filter($columns, fn($c) => !empty($c['is_f2f']));
+              $myDepCols = array_filter($columns, fn($c) => ($c['component'] === 'deportment'));
               if(empty($myDepCols)): ?>
               <tr><td colspan="4" style="text-align:center; color:#94a3b8; padding:32px;">No deportment grades recorded yet.</td></tr>
               <?php else: ?>
               <?php foreach($myDepCols as $col): 
                 $sc = $scores[$col['id']] ?? null;
+                $colMax = floatval($col['max_score'] ?? 10);
               ?>
               <tr>
                 <td><strong><?php echo htmlspecialchars($col['title']); ?></strong></td>
                 <td><?php echo date('M d, Y', strtotime($col['created_at'])); ?></td>
                 <td style="text-align:center; font-weight:700;">
-                  <?php echo $sc !== null ? ($sc == 1 ? 'Present (1.00 / 1.00)' : 'Absent (0.00 / 1.00)') : '—'; ?>
+                  <?php echo $sc !== null ? ($sc . ' / ' . $colMax) : '—'; ?>
                 </td>
                 <td style="text-align:center;">
-                  <?php if($sc !== null && $sc == 1): ?>
-                    <span class="status-badge badge-pass"><i class="fa fa-check"></i> Passed</span>
-                  <?php elseif($sc !== null && $sc == 0): ?>
-                    <span class="status-badge badge-fail"><i class="fa fa-times"></i> Failed</span>
+                  <?php if($sc !== null): 
+                    $pct = ($colMax > 0) ? ($sc / $colMax) * 100 : 0;
+                  ?>
+                    <span class="status-badge <?php echo $pct >= 75 ? 'badge-pass' : 'badge-fail'; ?>">
+                      <?php echo round($pct, 1); ?>%
+                    </span>
                   <?php else: ?>
                     <span class="status-badge badge-pending">Unrecorded</span>
                   <?php endif; ?>
@@ -734,13 +613,13 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
               <tr><td colspan="4" style="text-align:center; color:#94a3b8; padding:32px;">No live session attendance logs recorded yet.</td></tr>
               <?php else: ?>
               <?php foreach($sessions as $sess): 
-                $statusHtml = '<span class="status-badge badge-fail"><i class="fa fa-times"></i> Absent</span>';
+                $statusHtml = '<span class="status-badge badge-fail"><i class="fa fa-times"></i> Absent (0 pts)</span>';
                 if(!empty($sess['joined_at'])) {
                     $startedTime = strtotime($sess['started_at']);
                     $joinedTime = strtotime($sess['joined_at']);
                     $diffMinutes = ($joinedTime - $startedTime) / 60;
                     if($diffMinutes >= 15) {
-                        $statusHtml = '<span class="status-badge badge-pending" style="background:#fff3cd; color:#856404;"><i class="fa fa-exclamation-triangle"></i> Late (1 pt)</span>';
+                        $statusHtml = '<span class="status-badge badge-pending" style="background:#fff3cd; color:#856404;"><i class="fa fa-clock-o"></i> Late (1 pt)</span>';
                     } else {
                         $statusHtml = '<span class="status-badge badge-pass"><i class="fa fa-check"></i> Present (2 pts)</span>';
                     }
@@ -766,8 +645,8 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
   <footer class="sd-footer" style="text-align:center; padding:16px; border-top:1px solid #e2e8f0; font-size:11px; color:#94a3b8; background:#fff; margin-top:40px;">CenLearn &mdash; Powered by TechnoPal</footer>
 </div>
 
-<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
-<script src="/cenlearn/system/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="../bower_components/jquery/dist/jquery.min.js"></script>
+<script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
 <script>
 function switchTab(tabId, btn) {
   document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
@@ -777,17 +656,6 @@ function switchTab(tabId, btn) {
 }
 function openSidebar(){ document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebarOverlay').classList.add('active'); }
 function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.remove('active'); }
-function toggleProfileMenu(e) {
-  e.stopPropagation();
-  var m = document.getElementById('profileMenu');
-  if(m) m.classList.toggle('show');
-}
-document.addEventListener('click', function(e) {
-  var m = document.getElementById('profileMenu');
-  if(m && !m.contains(e.target)) m.classList.remove('show');
-});
 </script>
-
-<?php include '../includes/student_profile_modal.php'; ?>
 </body>
 </html>

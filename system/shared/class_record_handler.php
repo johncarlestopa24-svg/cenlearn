@@ -1,6 +1,7 @@
 <?php
 session_start();
 include '../includes/conn.php';
+require_once __DIR__ . '/grading_engine.php';
 
 // Run migrations
 safeAddColumns($conn, 'class_record_columns', [
@@ -8,6 +9,8 @@ safeAddColumns($conn, 'class_record_columns', [
     'is_f2f' => 'tinyint(1) NOT NULL DEFAULT 0'
 ]);
 safeAddColumns($conn, 'class_record_weights', [
+    'attendance_pct' => 'int(11) NOT NULL DEFAULT 10',
+    'deportment_pct' => 'int(11) NOT NULL DEFAULT 10',
     'grading_method' => "varchar(20) NOT NULL DEFAULT 'sum_of_points'",
     'base_grade' => 'int(11) NOT NULL DEFAULT 0',
     'midterm_weight' => 'int(11) NOT NULL DEFAULT 40',
@@ -108,6 +111,8 @@ if($action === 'save_score'){
     $col_id  = intval($_POST['col_id'] ?? 0);
     $stu     = $conn->real_escape_string($_POST['student_code'] ?? '');
     $score   = ($_POST['score'] ?? '') === '' ? 'NULL' : floatval($_POST['score'] ?? 0);
+    $statusParam = strtolower(trim($_POST['status'] ?? ''));
+
     // Bug 2 fix: class_id was missing — caused silent INSERT failure since column is NOT NULL
     $conn->query("INSERT INTO class_record_scores (column_id,class_id,student_code,score) VALUES ($col_id,$class_id,'$stu',$score)
                   ON DUPLICATE KEY UPDATE score=$score");
@@ -116,24 +121,112 @@ if($action === 'save_score'){
     $colRow = $conn->query("SELECT attendance_session_id, session_id, is_f2f FROM class_record_columns WHERE id=$col_id LIMIT 1")->fetch_assoc();
     $asid = intval($colRow['attendance_session_id'] ?? ($colRow['is_f2f'] ? $colRow['session_id'] : 0));
     if($asid > 0 && $score !== 'NULL'){
-        $status = ($score >= 1.00) ? 'present' : (($score >= 0.50) ? 'late' : 'absent');
+        if(in_array($statusParam, ['present', 'late', 'absent', 'excused'])) {
+            $status = $statusParam;
+        } else {
+            $status = ($score >= 1.50) ? 'present' : (($score >= 0.50) ? 'late' : 'absent');
+        }
         $conn->query("INSERT INTO class_attendance_records (session_id, class_id, student_code, status)
                       VALUES ($asid, $class_id, '$stu', '$status')
                       ON DUPLICATE KEY UPDATE status='$status'");
     }
 
-    echo json_encode(['success'=>true]);
+    // Return updated real-time calculations for this student
+    $term = trim($_POST['term'] ?? 'midterm');
+    if(!in_array($term, ['midterm', 'final'])) $term = 'midterm';
+
+    // Weights
+    $wq = $conn->query("SELECT * FROM class_record_weights WHERE class_id=$class_id");
+    $weights = $wq->num_rows > 0 ? array_merge(GradingEngine::DEFAULT_WEIGHTS, $wq->fetch_assoc()) : GradingEngine::DEFAULT_WEIGHTS;
+
+    // Load columns for both terms
+    $allColsQ = $conn->query("SELECT * FROM class_record_columns WHERE class_id=$class_id ORDER BY component, sort_order, id");
+    $midColsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'deportment'=>[],'attendance'=>[]];
+    $finColsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'deportment'=>[],'attendance'=>[]];
+    while($col = $allColsQ->fetch_assoc()) {
+        $cTerm = $col['term'] === 'final' ? 'final' : 'midterm';
+        $comp = $col['component'];
+        if($cTerm === 'final') {
+            if($comp === 'deportment') $finColsByComp['deportment'][] = $col;
+            elseif(!empty($col['session_id']) || $comp === 'attendance') $finColsByComp['attendance'][] = $col;
+            else {
+                if(!isset($finColsByComp[$comp])) $finColsByComp[$comp] = [];
+                $finColsByComp[$comp][] = $col;
+            }
+        } else {
+            if($comp === 'deportment') $midColsByComp['deportment'][] = $col;
+            elseif(!empty($col['session_id']) || $comp === 'attendance') $midColsByComp['attendance'][] = $col;
+            else {
+                if(!isset($midColsByComp[$comp])) $midColsByComp[$comp] = [];
+                $midColsByComp[$comp][] = $col;
+            }
+        }
+    }
+
+    // Fetch scores for this student
+    $scoresQ = $conn->query("SELECT column_id, score FROM class_record_scores WHERE class_id=$class_id AND student_code='$stu'");
+    $stuScores = [];
+    while($sr = $scoresQ->fetch_assoc()) $stuScores[$sr['column_id']][$stu] = $sr['score'];
+
+    $activeColsByComp = ($term === 'midterm') ? $midColsByComp : $finColsByComp;
+    $gradeResult = GradingEngine::computeStudentGrade($stu, $activeColsByComp, $stuScores, $weights);
+    $midGrade = GradingEngine::computeStudentGrade($stu, $midColsByComp, $stuScores, $weights);
+    $finGrade = GradingEngine::computeStudentGrade($stu, $finColsByComp, $stuScores, $weights);
+
+    $midVal = $midGrade['final'];
+    $finVal = $finGrade['final'];
+    $midPct = floatval($weights['midterm_weight'] ?? 40) / 100;
+    $finPct = floatval($weights['final_weight'] ?? 60) / 100;
+    $overall = null;
+    if ($midVal !== null && $finVal !== null) $overall = round(($midVal * $midPct) + ($finVal * $finPct), 2);
+    elseif ($midVal !== null) $overall = $midVal;
+    elseif ($finVal !== null) $overall = $finVal;
+
+    $transmutedScale = '—';
+    if($overall !== null) {
+        $rVal = round(floatval($overall));
+        if($rVal >= 98) $transmutedScale = '1.00'; elseif($rVal >= 95) $transmutedScale = '1.25'; elseif($rVal >= 92) $transmutedScale = '1.50';
+        elseif($rVal >= 89) $transmutedScale = '1.75'; elseif($rVal >= 86) $transmutedScale = '2.00'; elseif($rVal >= 83) $transmutedScale = '2.25';
+        elseif($rVal >= 80) $transmutedScale = '2.50'; elseif($rVal >= 77) $transmutedScale = '2.75'; elseif($rVal >= 75) $transmutedScale = '3.00';
+        else $transmutedScale = '5.00';
+    }
+
+    $remarks = ($overall !== null) ? ($overall >= 75 ? 'Passed' : 'Failed') : '—';
+    $remarksColor = ($overall !== null && $overall >= 75) ? '#166534' : '#991b1b';
+    $remarksBg = ($overall !== null && $overall >= 75) ? '#dcfce7' : '#fee2e2';
+
+    // Calculate raw component percentage averages for display
+    $compAverages = [];
+    foreach(['written', 'performance', 'exam', 'deportment', 'attendance'] as $ck) {
+        $raw = $gradeResult['raw'][$ck] ?? null;
+        $tot = $gradeResult['total_items'][$ck] ?? 0;
+        $compAverages[$ck] = ($raw !== null && $tot > 0) ? round(($raw / $tot) * 100, 1) : null;
+    }
+
+    echo json_encode([
+        'success'        => true,
+        'student_code'   => $stu,
+        'term_grade'     => $gradeResult['final'],
+        'overall_grade'  => $overall,
+        'transmuted'     => $transmutedScale,
+        'remarks'        => $remarks,
+        'remarks_color'  => $remarksColor,
+        'remarks_bg'     => $remarksBg,
+        'comp_averages'  => $compAverages,
+        'components'     => $gradeResult['components']
+    ]);
     exit;
 }
 
 // ── Save weights ──────────────────────────────────────────────────────────
 if($action === 'save_weights'){
-    $w  = intval($_POST['written_pct']     ?? 20);
-    $p  = intval($_POST['performance_pct'] ?? 40);
-    $e  = intval($_POST['exam_pct']        ?? 30);
     $a  = intval($_POST['attendance_pct']  ?? 10);
+    $w  = intval($_POST['written_pct']     ?? 20);
+    $p  = intval($_POST['performance_pct'] ?? 20);
+    $e  = intval($_POST['exam_pct']        ?? 40);
+    $d  = intval($_POST['deportment_pct']  ?? 10);
     $method = $conn->real_escape_string($_POST['grading_method'] ?? 'sum_of_points');
-    $base   = intval($_POST['base_grade'] ?? 0);
+    $base   = intval($_POST['base_grade'] ?? 50);
     $mid    = intval($_POST['midterm_weight'] ?? 40);
     $fin    = intval($_POST['final_weight'] ?? 60);
 
@@ -141,13 +234,13 @@ if($action === 'save_weights'){
     $extras = json_decode($extraRaw, true);
     if(!is_array($extras)) $extras = [];
     $extraSum = array_sum(array_column($extras, 'pct'));
-    if($w+$p+$e+$a+$extraSum !== 100){ echo json_encode(['success'=>false,'msg'=>'Weights must total 100%']); exit; }
-    if($mid + $fin !== 100){ echo json_encode(['success'=>false,'msg'=>'Term weights must total 100%']); exit; }
+    if($a+$w+$p+$e+$d+$extraSum !== 100){ echo json_encode(['success'=>false,'msg'=>'Weights must total exactly 100%']); exit; }
+    if($mid + $fin !== 100){ echo json_encode(['success'=>false,'msg'=>'Term weights must total exactly 100%']); exit; }
 
     $extraJson = $conn->real_escape_string(json_encode($extras));
-    $conn->query("INSERT INTO class_record_weights (class_id,written_pct,performance_pct,exam_pct,attendance_pct,extra_weights,grading_method,base_grade,midterm_weight,final_weight)
-                  VALUES ($class_id,$w,$p,$e,$a,'$extraJson','$method',$base,$mid,$fin)
-                  ON DUPLICATE KEY UPDATE written_pct=$w,performance_pct=$p,exam_pct=$e,attendance_pct=$a,extra_weights='$extraJson',grading_method='$method',base_grade=$base,midterm_weight=$mid,final_weight=$fin");
+    $conn->query("INSERT INTO class_record_weights (class_id,attendance_pct,written_pct,performance_pct,exam_pct,deportment_pct,extra_weights,grading_method,base_grade,midterm_weight,final_weight)
+                  VALUES ($class_id,$a,$w,$p,$e,$d,'$extraJson','$method',$base,$mid,$fin)
+                  ON DUPLICATE KEY UPDATE attendance_pct=$a,written_pct=$w,performance_pct=$p,exam_pct=$e,deportment_pct=$d,extra_weights='$extraJson',grading_method='$method',base_grade=$base,midterm_weight=$mid,final_weight=$fin");
     echo json_encode(['success'=>true]);
     exit;
 }
@@ -159,19 +252,7 @@ if($action === 'publish_grades'){
 
     // Fetch weights
     $wq = $conn->query("SELECT * FROM class_record_weights WHERE class_id=$class_id");
-    $weights = $wq->num_rows > 0 ? $wq->fetch_assoc() : [
-        'written_pct'=>20,
-        'performance_pct'=>40,
-        'exam_pct'=>30,
-        'attendance_pct'=>10,
-        'grading_method'=>'sum_of_points',
-        'base_grade'=>0,
-        'midterm_weight'=>40,
-        'final_weight'=>60,
-        'extra_weights'=>'[]'
-    ];
-    if(!isset($weights['grading_method'])) $weights['grading_method'] = 'sum_of_points';
-    if(!isset($weights['base_grade'])) $weights['base_grade'] = 0;
+    $weights = $wq->num_rows > 0 ? array_merge(GradingEngine::DEFAULT_WEIGHTS, $wq->fetch_assoc()) : GradingEngine::DEFAULT_WEIGHTS;
     if(!isset($weights['midterm_weight'])) $weights['midterm_weight'] = 40;
     if(!isset($weights['final_weight'])) $weights['final_weight'] = 60;
     if(!isset($weights['extra_weights'])) $weights['extra_weights'] = '[]';
@@ -184,11 +265,31 @@ if($action === 'publish_grades'){
     $midtermCols = array_filter($columns, fn($c) => $c['term'] === 'midterm');
     $finalCols   = array_filter($columns, fn($c) => $c['term'] === 'final');
 
-    $midtermColsByComp = ['written'=>[],'performance'=>[],'exam'=>[]];
-    foreach($midtermCols as $col) $midtermColsByComp[$col['component']][] = $col;
+    $midtermColsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'deportment'=>[],'attendance'=>[]];
+    foreach($midtermCols as $col) {
+        if($col['component'] === 'deportment') {
+            $midtermColsByComp['deportment'][] = $col;
+        } elseif(!empty($col['session_id']) || $col['component'] === 'attendance') {
+            $midtermColsByComp['attendance'][] = $col;
+        } else {
+            $compKey = $col['component'];
+            if(!isset($midtermColsByComp[$compKey])) $midtermColsByComp[$compKey] = [];
+            $midtermColsByComp[$compKey][] = $col;
+        }
+    }
 
-    $finalColsByComp = ['written'=>[],'performance'=>[],'exam'=>[]];
-    foreach($finalCols as $col) $finalColsByComp[$col['component']][] = $col;
+    $finalColsByComp = ['written'=>[],'performance'=>[],'exam'=>[],'deportment'=>[],'attendance'=>[]];
+    foreach($finalCols as $col) {
+        if($col['component'] === 'deportment') {
+            $finalColsByComp['deportment'][] = $col;
+        } elseif(!empty($col['session_id']) || $col['component'] === 'attendance') {
+            $finalColsByComp['attendance'][] = $col;
+        } else {
+            $compKey = $col['component'];
+            if(!isset($finalColsByComp[$compKey])) $finalColsByComp[$compKey] = [];
+            $finalColsByComp[$compKey][] = $col;
+        }
+    }
 
     // Fetch scores
     $scoresQ = $conn->query("SELECT s.* FROM class_record_scores s JOIN class_record_columns col ON s.column_id=col.id WHERE col.class_id=$class_id");
@@ -200,115 +301,16 @@ if($action === 'publish_grades'){
 
     function _transmute($grade) {
         if($grade === null) return '—';
-        if($grade >= 99) return '1.00'; if($grade >= 96) return '1.25'; if($grade >= 93) return '1.50';
-        if($grade >= 90) return '1.75'; if($grade >= 87) return '2.00'; if($grade >= 84) return '2.25';
-        if($grade >= 81) return '2.50'; if($grade >= 78) return '2.75'; if($grade >= 75) return '3.00';
+        $r = round(floatval($grade));
+        if($r >= 98) return '1.00'; if($r >= 95) return '1.25'; if($r >= 92) return '1.50';
+        if($r >= 89) return '1.75'; if($r >= 86) return '2.00'; if($r >= 83) return '2.25';
+        if($r >= 80) return '2.50'; if($r >= 77) return '2.75'; if($r >= 75) return '3.00';
         return '5.00';
     }
 
     function _computeGrade($studentCode, $colsByComp, $scores, $weights) {
-        $method = $weights['grading_method'] ?? 'sum_of_points';
-        $base = (int)($weights['base_grade'] ?? 0);
-        if ($base < 0 || $base >= 100) $base = 0;
-
-        $compAvg = [];
-        foreach(['written','performance','exam'] as $comp) {
-            $cols = $colsByComp[$comp];
-            $regularCols = array_filter($cols, fn($c) => empty($c['session_id']) && empty($c['is_f2f']));
-            if(empty($regularCols)){ $compAvg[$comp] = null; }
-            else {
-                if ($method === 'avg_of_pct') {
-                    $pcts = [];
-                    foreach($regularCols as $col) {
-                        $sc = $scores[$col['id']][$studentCode] ?? null;
-                        if($sc !== null && $col['max_score'] > 0){
-                            $pcts[] = ($sc / $col['max_score']) * 100;
-                        }
-                    }
-                    $raw = count($pcts) ? (array_sum($pcts) / count($pcts)) : null;
-                } else {
-                    $total = 0; $max = 0; $hasAny = false;
-                    foreach($regularCols as $col) {
-                        $sc = $scores[$col['id']][$studentCode] ?? null;
-                        if($sc !== null){ 
-                            $total += $sc; 
-                            $max += $col['max_score']; 
-                            $hasAny = true; 
-                        }
-                    }
-                    $raw = ($hasAny && $max > 0) ? ($total / $max) * 100 : null;
-                }
-
-                if ($raw !== null) {
-                    $compAvg[$comp] = round($raw * (100 - $base) / 100 + $base, 2);
-                } else {
-                    $compAvg[$comp] = null;
-                }
-            }
-        }
-
-        $attCols = [];
-        foreach($colsByComp as $comp => $cols) {
-            foreach($cols as $col) {
-                if(!empty($col['is_f2f']) || !empty($col['session_id']) || $comp === 'attendance' || ($col['component'] ?? '') === 'attendance') {
-                    $attCols[] = $col;
-                }
-            }
-        }
-        if(!empty($attCols)) {
-            if ($method === 'avg_of_pct') {
-                $pcts = [];
-                foreach($attCols as $col) {
-                    $sc = $scores[$col['id']][$studentCode] ?? null;
-                    if($sc !== null && $col['max_score'] > 0){
-                        $pcts[] = ($sc / $col['max_score']) * 100;
-                    }
-                }
-                $raw = count($pcts) ? (array_sum($pcts) / count($pcts)) : null;
-            } else {
-                $attTotal = 0; $attMax = 0; $attHas = false;
-                foreach($attCols as $col) {
-                    $sc = $scores[$col['id']][$studentCode] ?? null;
-                    if($sc !== null){ 
-                        $attTotal += $sc; 
-                        $attMax += $col['max_score']; 
-                        $attHas = true; 
-                    }
-                }
-                $raw = ($attHas && $attMax > 0) ? ($attTotal / $attMax) * 100 : null;
-            }
-
-            if ($raw !== null) {
-                $compAvg['attendance'] = round($raw * (100 - $base) / 100 + $base, 2);
-            } else {
-                $compAvg['attendance'] = null;
-            }
-        } else {
-            $compAvg['attendance'] = null;
-        }
-
-        $wTotal = 0; $wWeight = 0;
-        $compMap = [
-            'written'    => 'written_pct',
-            'performance'=> 'performance_pct',
-            'exam'       => 'exam_pct',
-            'attendance' => 'attendance_pct',
-        ];
-        foreach($compMap as $comp => $key) {
-            if(isset($compAvg[$comp]) && $compAvg[$comp] !== null && isset($weights[$key])) {
-                $wTotal  += $compAvg[$comp] * $weights[$key];
-                $wWeight += $weights[$key];
-            }
-        }
-        if(!empty($weights['extra_weights'])){
-            $extraArr = json_decode($weights['extra_weights'], true);
-            if(is_array($extraArr)){
-                foreach($extraArr as $ew){
-                    $wWeight += intval($ew['pct'] ?? 0);
-                }
-            }
-        }
-        return $wWeight > 0 ? round($wTotal / $wWeight, 2) : null;
+        $res = GradingEngine::computeStudentGrade($studentCode, $colsByComp, $scores, $weights);
+        return $res['final'];
     }
 
     $midPct = floatval($weights['midterm_weight'] ?? 40) / 100;
@@ -335,7 +337,7 @@ if($action === 'publish_grades'){
 
         if($gradeVal !== null){
             $trans = _transmute($gradeVal);
-            $rem   = $gradeVal >= 75 ? 'Passed' : 'Failed';
+            $rem   = round(floatval($gradeVal)) >= 75 ? 'Passed' : 'Failed';
             $conn->query("INSERT INTO published_grades (class_id,term,student_code,grade,transmuted,remarks,published_at)
                           VALUES ($class_id,'$term','$sc',$gradeVal,'$trans','$rem',NOW())
                           ON DUPLICATE KEY UPDATE grade=$gradeVal,transmuted='$trans',remarks='$rem',published_at=NOW()");

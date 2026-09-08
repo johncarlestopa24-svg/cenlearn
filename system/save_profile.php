@@ -95,7 +95,13 @@ function autoEnrollStudent($conn, $user_code, $program_code, $year_level, $secti
     if($sec) $where[] = "(c.section='' OR c.section IS NULL OR UPPER(c.section)='$sec')";
     $restrict = "((c.program_code!='' AND c.program_code IS NOT NULL) OR (c.year_level!=0 AND c.year_level IS NOT NULL) OR (c.section!='' AND c.section IS NOT NULL))";
     $clause = $restrict . (!empty($where) ? ' AND '.implode(' AND ',$where) : '');
-    $res = $conn->query("SELECT c.id FROM classes c WHERE $clause AND NOT EXISTS (SELECT 1 FROM class_members cm WHERE cm.class_id=c.id AND cm.user_code='$uc')");
+    $res = $conn->query("
+        SELECT c.id FROM classes c 
+        WHERE $clause 
+          AND (c.is_subject_only = 0 OR c.is_subject_only IS NULL)
+          AND (c.is_archived = 0 OR c.is_archived IS NULL)
+          AND NOT EXISTS (SELECT 1 FROM class_members cm WHERE cm.class_id=c.id AND cm.user_code='$uc')
+    ");
     if($res) while($cl=$res->fetch_assoc())
         $conn->query("INSERT IGNORE INTO class_members (class_id,user_code) VALUES ({$cl['id']},'$uc')");
 }

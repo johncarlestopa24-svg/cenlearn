@@ -5,11 +5,15 @@ header('Cache-Control: post-check=0, pre-check=0', false);
 header('Pragma: no-cache');
 header('Expires: Sat, 01 Jan 2000 00:00:00 GMT');
 
-// Helper: redirect to login
+// Helper: redirect to login at the correct depth
 function redirectToLogin(){
     $callerDir = str_replace('\\', '/', realpath(dirname($_SERVER['SCRIPT_FILENAME'])));
+    $systemDir = str_replace('\\', '/', realpath(__DIR__ . '/..'));
+    $rel       = ltrim(str_replace($systemDir, '', $callerDir), '/');
+    $depth     = ($rel === '') ? 0 : (substr_count($rel, '/') + 1);
+    $prefix    = str_repeat('../', $depth);
     $query     = (strpos($callerDir, '/admin') !== false) ? '?from=admin' : '';
-    header('location: /cenlearn/login' . $query);
+    header('location: ' . $prefix . 'index.php' . $query);
     exit;
 }
 
@@ -37,7 +41,12 @@ if($uc && $token){
             }
             session_destroy();
             // Redirect with a message flag
-            header('location: /cenlearn/login?kicked=1');
+            $callerDir = str_replace('\\', '/', realpath(dirname($_SERVER['SCRIPT_FILENAME'])));
+            $systemDir = str_replace('\\', '/', realpath(__DIR__ . '/..'));
+            $rel       = ltrim(str_replace($systemDir, '', $callerDir), '/');
+            $depth     = ($rel === '') ? 0 : (substr_count($rel, '/') + 1);
+            $prefix    = str_repeat('../', $depth);
+            header('location: ' . $prefix . 'index.php?kicked=1');
             exit;
         }
     }

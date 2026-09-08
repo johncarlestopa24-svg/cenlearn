@@ -1,16 +1,17 @@
 <?php
 include '../includes/session.php';
 include '../includes/conn.php';
+require_once __DIR__ . '/grading_engine.php';
 
 $class_id = intval($_GET['id'] ?? 0);
 $tc       = $conn->real_escape_string($user['user_code']);
 $role     = strtoupper($user['user_group']);
 
 if($role !== 'TEACHER'){
-    if(empty($user)){ header('location: /cenlearn/login'); exit; }
-    header('location: /cenlearn/dashboard'); exit;
+    // Bug 11 fix: was incorrectly redirecting to teacher dashboard for non-teachers
+    header('location: ../student/dashboard.php'); exit;
 }
-if(!$class_id){ header('location: /cenlearn/teacher/dashboard'); exit; }
+if(!$class_id){ header('location: ../teacher/dashboard.php'); exit; }
 
 $cq = $conn->query("SELECT c.*, u.first_name AS tf, u.last_name AS tl FROM classes c LEFT JOIN users u ON c.teacher_code=u.user_code WHERE c.id=$class_id AND c.teacher_code='$tc'");
 if($cq->num_rows === 0){ die('Access denied.'); }
@@ -183,6 +184,19 @@ if ($lsList) {
     }
 }
 
+// Clean up any duplicate attendance columns pointing to the same session
+$conn->query("DELETE c1 FROM class_record_columns c1
+              JOIN class_record_columns c2 
+              ON c1.class_id = c2.class_id 
+              AND c1.component = 'attendance' 
+              AND c2.component = 'attendance' 
+              AND c1.term = c2.term
+              AND c1.id > c2.id
+              AND (
+                  (c1.attendance_session_id > 0 AND c1.attendance_session_id = c2.attendance_session_id)
+                  OR (c1.session_id > 0 AND c1.session_id = c2.session_id AND c1.is_f2f = c2.is_f2f)
+              )");
+
 // 4. Sync Attendance Sessions (Calendar & Matrix Attendance)
 $casList = $conn->query("SELECT id, title, attendance_date, term FROM class_attendance_sessions WHERE class_id=$class_id");
 if ($casList) {
@@ -198,11 +212,11 @@ if ($casList) {
         $colCheck = $conn->query("SELECT id FROM class_record_columns WHERE class_id=$class_id AND (attendance_session_id=$cas_id OR (is_f2f=1 AND session_id=$cas_id) OR (is_f2f=1 AND created_at LIKE '$cas_date%')) LIMIT 1");
         if (!$colCheck || $colCheck->num_rows === 0) {
             $conn->query("INSERT INTO class_record_columns (class_id, component, title, max_score, sort_order, term, session_id, attendance_session_id, is_f2f, created_at)
-                          VALUES ($class_id, 'attendance', '$castitle', 1.00, 0, '$cas_term', $cas_id, $cas_id, 1, '$cas_created')");
+                          VALUES ($class_id, 'attendance', '$castitle', 2.00, 0, '$cas_term', $cas_id, $cas_id, 1, '$cas_created')");
             $col_id = $conn->insert_id;
         } else {
             $col_id = intval($colCheck->fetch_assoc()['id']);
-            $conn->query("UPDATE class_record_columns SET title='$castitle', term='$cas_term', session_id=$cas_id, attendance_session_id=$cas_id, is_f2f=1, created_at='$cas_created' WHERE id=$col_id");
+            $conn->query("UPDATE class_record_columns SET title='$castitle', term='$cas_term', max_score = 2.00, session_id=$cas_id, attendance_session_id=$cas_id, is_f2f=1, created_at='$cas_created' WHERE id=$col_id");
         }
         
         // Sync individual records
@@ -211,10 +225,10 @@ if ($casList) {
             while ($rec = $recsQ->fetch_assoc()) {
                 $rec_uc = $conn->real_escape_string($rec['student_code']);
                 $st = strtolower($rec['status']);
-                $score = 1.00;
-                if ($st === 'late') $score = 0.50;
+                $score = 2.00;
+                if ($st === 'late') $score = 1.00;
                 if ($st === 'absent') $score = 0.00;
-                if ($st === 'excused') $score = 1.00;
+                if ($st === 'excused') $score = 2.00;
                 
                 $conn->query("INSERT INTO class_record_scores (column_id, class_id, student_code, score)
                               VALUES ($col_id, $class_id, '$rec_uc', $score)
@@ -255,22 +269,7 @@ $scores = [];
 while($r = $scoresQ->fetch_assoc()) $scores[$r['column_id']][$r['student_code']] = $r['score'];
 
 $wq = $conn->query("SELECT * FROM class_record_weights WHERE class_id=$class_id");
-$weights = $wq->num_rows > 0 ? $wq->fetch_assoc() : [
-    'written_pct'=>20,
-    'performance_pct'=>40,
-    'exam_pct'=>30,
-    'attendance_pct'=>10,
-    'grading_method'=>'sum_of_points',
-    'base_grade'=>0,
-    'midterm_weight'=>40,
-    'final_weight'=>60,
-    'extra_weights'=>'[]'
-];
-if(!isset($weights['grading_method'])) $weights['grading_method'] = 'sum_of_points';
-if(!isset($weights['base_grade'])) $weights['base_grade'] = 0;
-if(!isset($weights['midterm_weight'])) $weights['midterm_weight'] = 40;
-if(!isset($weights['final_weight'])) $weights['final_weight'] = 60;
-if(!isset($weights['extra_weights'])) $weights['extra_weights'] = '[]';
+$weights = $wq->num_rows > 0 ? array_merge(GradingEngine::DEFAULT_WEIGHTS, $wq->fetch_assoc()) : GradingEngine::DEFAULT_WEIGHTS;
 // Normalize column name differences between old and new schema
 if(!isset($weights['written_pct']) && isset($weights['written_works_pct']))   $weights['written_pct'] = $weights['written_works_pct'];
 if(!isset($weights['exam_pct'])    && isset($weights['term_exam_pct']))        $weights['exam_pct']    = $weights['term_exam_pct'];
@@ -318,87 +317,7 @@ foreach($finalCols as $col) {
 
 if(!function_exists('computeGrade')):
 function computeGrade($studentCode, $colsByComp, $scores, $weights) {
-    $method = $weights['grading_method'] ?? 'sum_of_points';
-    $base = (int)($weights['base_grade'] ?? 0);
-    if ($base < 0 || $base >= 100) $base = 0;
-
-    $compAvg = [];
-    foreach(['written','performance','exam','deportment'] as $comp) {
-        $cols = $colsByComp[$comp] ?? [];
-        $regularCols = array_filter($cols, fn($c) => empty($c['session_id']));
-        if(empty($regularCols)){ $compAvg[$comp] = null; }
-        else {
-            if ($method === 'avg_of_pct') {
-                $pcts = [];
-                foreach($regularCols as $col) {
-                    $sc = $scores[$col['id']][$studentCode] ?? null;
-                    if($sc !== null && $col['max_score'] > 0){
-                        $pcts[] = ($sc / $col['max_score']) * 100;
-                    }
-                }
-                $raw = count($pcts) ? (array_sum($pcts) / count($pcts)) : null;
-            } else {
-                $total = 0; $max = 0; $hasAny = false;
-                foreach($regularCols as $col) {
-                    $sc = $scores[$col['id']][$studentCode] ?? null;
-                    if($sc !== null){ 
-                        $total += $sc; 
-                        $max += $col['max_score']; 
-                        $hasAny = true; 
-                    }
-                }
-                $raw = ($hasAny && $max > 0) ? ($total / $max) * 100 : null;
-            }
-
-            if ($raw !== null) {
-                $compAvg[$comp] = round($raw * (100 - $base) / 100 + $base, 2);
-            } else {
-                $compAvg[$comp] = null;
-            }
-        }
-    }
-
-    // Attendance average from attendance columns
-    $attCols = $colsByComp['attendance'] ?? [];
-    if(!empty($attCols)) {
-        $attTotal = 0; $attMax = 0; $attHas = false;
-        foreach($attCols as $col) {
-            $sc = $scores[$col['id']][$studentCode] ?? null;
-            if($sc !== null){ 
-                $attTotal += $sc; 
-                $attMax += $col['max_score']; 
-                $attHas = true; 
-            }
-        }
-        $compAvg['attendance'] = ($attHas && $attMax > 0) ? round(($attTotal / $attMax) * 100, 1) : null;
-    } else {
-        $compAvg['attendance'] = null;
-    }
-
-    // Weighted final grade
-    $wTotal = 0; $wWeight = 0;
-    $compMap = [
-        'written'    => 'written_pct',
-        'performance'=> 'performance_pct',
-        'exam'       => 'exam_pct',
-        'deportment' => 'attendance_pct', // Maps to deportment weight (10%)
-    ];
-    foreach($compMap as $comp => $key) {
-        if(isset($compAvg[$comp]) && $compAvg[$comp] !== null && isset($weights[$key])) {
-            $wTotal  += $compAvg[$comp] * $weights[$key];
-            $wWeight += $weights[$key];
-        }
-    }
-    if(!empty($weights['extra_weights'])){
-        $extraArr = json_decode($weights['extra_weights'], true);
-        if(is_array($extraArr)){
-            foreach($extraArr as $ew){
-                $wWeight += intval($ew['pct'] ?? 0);
-            }
-        }
-    }
-    $final = $wWeight > 0 ? round($wTotal / $wWeight, 2) : null;
-    return ['components'=>$compAvg,'final'=>$final];
+    return GradingEngine::computeStudentGrade($studentCode, $colsByComp, $scores, $weights);
 }
 endif;
 
@@ -433,16 +352,17 @@ foreach($studentRows as $s) {
 if(!function_exists('transmute')):
 function transmute($grade) {
     if($grade === null) return '—';
-    if($grade >= 99) return '1.00'; if($grade >= 96) return '1.25'; if($grade >= 93) return '1.50';
-    if($grade >= 90) return '1.75'; if($grade >= 87) return '2.00'; if($grade >= 84) return '2.25';
-    if($grade >= 81) return '2.50'; if($grade >= 78) return '2.75'; if($grade >= 75) return '3.00';
+    $r = round(floatval($grade));
+    if($r >= 98) return '1.00'; if($r >= 95) return '1.25'; if($r >= 92) return '1.50';
+    if($r >= 89) return '1.75'; if($r >= 86) return '2.00'; if($r >= 83) return '2.25';
+    if($r >= 80) return '2.50'; if($r >= 77) return '2.75'; if($r >= 75) return '3.00';
     return '5.00';
 }
 endif;
 if(!function_exists('gradeStatus')):
 function gradeStatus($grade) {
     if($grade === null) return ['—','#94a3b8','#f1f5f9'];
-    if($grade >= 75) return ['Passed','#166534','#dcfce7'];
+    if(round(floatval($grade)) >= 75) return ['Passed','#166534','#dcfce7'];
     return ['Failed','#991b1b','#fee2e2'];
 }
 endif;
@@ -470,6 +390,15 @@ while($ls = $sessionsQ->fetch_assoc()) $liveSessions[] = $ls;
 foreach($liveSessions as $ls) {
     $attQ = $conn->query("SELECT student_code FROM live_attendance WHERE session_id={$ls['id']}");
     while($a = $attQ->fetch_assoc()) $attendanceData[$ls['id']][$a['student_code']] = true;
+}
+
+// Attendance statuses from class_attendance_records
+$attStatuses = [];
+$attStatusQ = $conn->query("SELECT session_id, student_code, status FROM class_attendance_records WHERE class_id=$class_id");
+if($attStatusQ) {
+    while($asRow = $attStatusQ->fetch_assoc()) {
+        $attStatuses[intval($asRow['session_id'])][$asRow['student_code']] = strtolower($asRow['status']);
+    }
 }
 
 // Quiz scores
@@ -558,10 +487,10 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Class Record — <?php echo htmlspecialchars($class['class_name']); ?></title>
-  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
+  <link rel="stylesheet" href="../dist/css/cenlearn.css">
   <style>
     *{box-sizing:border-box;}
     .t-sidebar{position:fixed;top:0;left:0;width:260px;height:100vh;background:linear-gradient(180deg,#0f2027 0%,#203a43 55%,#2c5364 100%);display:flex;flex-direction:column;z-index:200;transition:transform .3s cubic-bezier(.4,0,.2,1);transform:translateX(-260px);}
@@ -641,8 +570,9 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
     .comp-hdr-performance{background:#dcfce7;color:#166534;}
     .comp-hdr-exam{background:#ede9fe;color:#5b21b6;}
     .comp-hdr-grade{background:#fef3c7;color:#92400e;}
-    .score-input{width:50px;border:none;background:transparent;text-align:center;font-size:12px;font-family:'Inter',sans-serif;color:#0f172a;padding:4px;}
-    .score-input:focus{outline:2px solid #10b981;border-radius:4px;background:#f0fdf4;}
+    .score-input{width:52px;height:28px;box-sizing:border-box;border:1px solid transparent;border-radius:4px;background:transparent;text-align:center;font-size:12px;font-family:'Inter',sans-serif;color:#0f172a;padding:2px 4px;transition:border-color 0.15s ease,box-shadow 0.15s ease;}
+    .score-input:hover{border-color:#cbd5e1;background:#f8fafc;}
+    .score-input:focus{outline:none;border-color:#10b981;background:#ffffff;box-shadow:0 0 0 2px rgba(16,185,129,0.15);}
     .grade-cell{font-weight:700;font-size:12px;}
     .grade-pass{color:#166534;} .grade-fail{color:#991b1b;}
 
@@ -726,6 +656,57 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
     .btn-f2f.unrecorded:hover {
       background-color: #e2e8f0;
     }
+    .btn-att-icon {
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      border: 1.5px solid transparent;
+      cursor: pointer;
+      transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+      background: transparent;
+      padding: 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      margin: 2px auto;
+    }
+    .btn-att-icon:hover {
+      transform: scale(1.15);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+    }
+    .btn-att-icon.present { background: #dcfce7; color: #15803d; border-color: #86efac; }
+    .btn-att-icon.present:hover { background: #bbf7d0; }
+    .btn-att-icon.late { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+    .btn-att-icon.late:hover { background: #fef3c7; }
+    .btn-att-icon.excused { background: #e0f2fe; color: #0284c7; border-color: #bae6fd; }
+    .btn-att-icon.excused:hover { background: #bae6fd; }
+    .btn-att-icon.absent { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+    .btn-att-icon.absent:hover { background: #fecaca; }
+
+    .btn-att-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      font-family: inherit;
+    }
+    .btn-att-status.present { background: #dcfce7; color: #15803d; border-color: #bbf7d0; }
+    .btn-att-status.present:hover { background: #bbf7d0; transform: translateY(-1px); }
+    .btn-att-status.late { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+    .btn-att-status.late:hover { background: #fef3c7; transform: translateY(-1px); }
+    .btn-att-status.absent { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+    .btn-att-status.absent:hover { background: #fee2e2; transform: translateY(-1px); }
+
 
     /* Modal */
     .cr-modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;z-index:1000;opacity:0;pointer-events:none;transition:opacity .2s;backdrop-filter:blur(4px);}
@@ -773,22 +754,21 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
   <nav class="sb-nav">
     <div class="sb-nav-sec">Main</div>
     <ul>
-      <li><a href="/cenlearn/teacher/dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="../teacher/dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
       <li class="active">
-        <a href="/cenlearn/teacher/classes"><i class="fa fa-book"></i> Classes</a>
+        <a href="../teacher/classes.php"><i class="fa fa-book"></i> Classes</a>
         <ul class="sb-submenu" id="classSubmenu" style="display: block;">
-          <li><a href="class_view?id=<?php echo $class_id;?>&tab=materials" id="subMaterials"><i class="fa fa-folder-open"></i> Materials</a></li>
-          <li><a href="class_view?id=<?php echo $class_id;?>&tab=classwork" id="subClasswork"><i class="fa fa-tasks"></i> Classwork</a></li>
-          <li><a href="live_class?id=<?php echo $class_id;?>" id="subLiveClass"><i class="fa fa-video-camera"></i> Online Class</a></li>
-          <li><a href="class_view?id=<?php echo $class_id;?>&tab=performance" id="subPerformance"><i class="fa fa-line-chart"></i> Performance &amp; Analytics</a></li>
-          <li class="active"><a href="class_record_detail?id=<?php echo $class_id;?>" id="subRecord"><i class="fa fa-book"></i> Subject Class Record</a></li>
+          <li><a href="class_view.php?id=<?php echo $class_id;?>&tab=materials" id="subMaterials"><i class="fa fa-folder-open"></i> Materials</a></li>
+          <li><a href="class_view.php?id=<?php echo $class_id;?>&tab=classwork" id="subClasswork"><i class="fa fa-tasks"></i> Classwork</a></li>
+          <li><a href="live_class.php?id=<?php echo $class_id;?>" id="subLiveClass"><i class="fa fa-video-camera"></i> Live Class</a></li>
+          <li><a href="class_view.php?id=<?php echo $class_id;?>&tab=performance" id="subPerformance"><i class="fa fa-line-chart"></i> Performance &amp; Analytics</a></li>
+          <li class="active"><a href="class_record_detail.php?id=<?php echo $class_id;?>" id="subRecord"><i class="fa fa-book"></i> Subject Class Record</a></li>
         </ul>
       </li>
-      <li><a href="/cenlearn/teacher/quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="/cenlearn/teacher/assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="/cenlearn/teacher/attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="/cenlearn/teacher/logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="/cenlearn/teacher/class_record"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="../teacher/quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="../teacher/assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="../teacher/attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="../teacher/class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -799,7 +779,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
         <span>Teacher</span>
       </div>
     </div>
-    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -853,12 +833,13 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
       <div class="weights-bar">
         <i class="fa fa-sliders" style="color:#10b981;font-size:15px;"></i>
         <strong style="font-size:12px;color:#0f172a;">Grade Weights:</strong>
-        <label>Quiz <input type="number" id="wWritten" value="<?php echo $weights['written_pct']; ?>" min="0" max="100">%</label>
-        <label>Performance Task <input type="number" id="wPerformance" value="<?php echo $weights['performance_pct']; ?>" min="0" max="100">%</label>
-        <label>Exam <input type="number" id="wExam" value="<?php echo $weights['exam_pct']; ?>" min="0" max="100">%</label>
-        <label><i class="fa fa-smile-o" style="color:#1d4ed8;"></i> Deportment <input type="number" id="wAttendance" value="<?php echo $weights['attendance_pct'] ?? 10; ?>" min="0" max="100">%</label>
+        <label><i class="fa fa-calendar-check-o" style="color:#1d4ed8;"></i> Attendance <input type="number" id="wAttendance" value="<?php echo $weights['attendance_pct'] ?? 10; ?>" min="0" max="100">%</label>
+        <label><i class="fa fa-pencil" style="color:#15803d;"></i> Quiz <input type="number" id="wWritten" value="<?php echo $weights['written_pct']; ?>" min="0" max="100">%</label>
+        <label><i class="fa fa-tasks" style="color:#b45309;"></i> Performance Task <input type="number" id="wPerformance" value="<?php echo $weights['performance_pct']; ?>" min="0" max="100">%</label>
+        <label><i class="fa fa-graduation-cap" style="color:#6b21a8;"></i> Exam <input type="number" id="wExam" value="<?php echo $weights['exam_pct']; ?>" min="0" max="100">%</label>
+        <label><i class="fa fa-smile-o" style="color:#0284c7;"></i> Deportment <input type="number" id="wDeportment" value="<?php echo $weights['deportment_pct'] ?? 10; ?>" min="0" max="100">%</label>
         <span id="weightTotal" style="font-size:12px;font-weight:700;color:#10b981;">= <?php
-          echo ($weights['written_pct']+$weights['performance_pct']+$weights['exam_pct']+($weights['attendance_pct']??10));
+          echo (($weights['attendance_pct']??10)+$weights['written_pct']+$weights['performance_pct']+$weights['exam_pct']+($weights['deportment_pct']??10));
         ?>%</span>
 
         <button type="button" class="btn-ghost-sm" onclick="openFormulaModal()" style="border: 1.5px solid #10b981; color: #10b981; background: transparent; padding: 5px 10px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; border-radius: 8px; font-weight: 600; cursor: pointer; margin-left: auto; font-family: 'Inter', sans-serif;">
@@ -884,10 +865,20 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
               <tr>
                 <th rowspan="2" class="col-no">#</th>
                 <th rowspan="2" class="col-name" style="text-align:left;">Student Name</th>
-                <th colspan="<?php echo count($termAttendanceCols) + 1; ?>" style="background:#eff6ff;color:#1d4ed8;border-bottom:2px solid #3b82f6;font-weight:700;"><i class="fa fa-calendar-check-o"></i> Attendance Log</th>
+                <th colspan="<?php echo count($termAttendanceCols) + 1; ?>" style="background:#eff6ff;color:#1d4ed8;border-bottom:2px solid #3b82f6;font-weight:700;">
+                  <div style="display:inline-flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">
+                    <span><i class="fa fa-calendar-check-o"></i> ATTENDANCE (<?php echo $weights['attendance_pct'] ?? 10; ?>%)</span>
+                    <span style="font-size:9.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.85);padding:1px 8px;border-radius:12px;border:1px solid #bfdbfe;">
+                      <span style="color:#15803d;"><i class="fa fa-check"></i> Present</span>
+                      <span style="color:#b45309;"><i class="fa fa-clock-o"></i> Late</span>
+                      <span style="color:#0284c7;"><i class="fa fa-shield"></i> Excused</span>
+                      <span style="color:#dc2626;"><i class="fa fa-times"></i> Absent</span>
+                    </span>
+                  </div>
+                </th>
                 <th colspan="<?php echo count($termDeportmentCols) + 1; ?>" style="background:#f0f9ff;color:#0369a1;border-bottom:2px solid #0284c7;font-weight:700;">
                   <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
-                    <span><i class="fa fa-smile-o"></i> DEPORTMENT (<?php echo $weights['attendance_pct'] ?? 10; ?>%)</span>
+                    <span><i class="fa fa-smile-o"></i> DEPORTMENT (<?php echo $weights['deportment_pct'] ?? 10; ?>%)</span>
                     <button type="button" class="btn-ghost-sm" style="border: 1.5px dashed #0284c7; color: #0284c7; background: #ffffff; width: 22px; height: 22px; padding: 0; font-size: 11px; border-radius: 50%; cursor: pointer; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: all .15s;" title="Add Deportment Column" onclick="quickAddDeportment(this)">
                       <i class="fa fa-plus"></i>
                     </button>
@@ -944,7 +935,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                        $subDate = '';
                    }
                 ?>
-                <th style="min-width:70px;background:#f8fafc;">
+                <th style="min-width:54px;text-align:center;background:#f8fafc;">
                   <span style="font-weight:700;font-size:12px;color:#1e40af;"><?php echo htmlspecialchars(strtoupper($displayTitle)); ?></span>
                   <?php if(!empty($subDate) && strcasecmp(trim($displayTitle), trim($subDate)) !== 0): ?>
                     <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo strtoupper($subDate); ?></span>
@@ -965,7 +956,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                 <th style="min-width:65px;background:#f0f9ff;">
                   <span style="font-weight:700;font-size:12px;color:#0369a1;"><?php echo htmlspecialchars($cleanTitle); ?></span><br>
                   <div style="display:inline-flex;align-items:center;justify-content:center;margin:2px 0;">
-                    <input type="number" min="1" max="1000" 
+                    <input type="number" tabindex="-1" min="1" max="1000" 
                       value="<?php echo (int)$col['max_score']; ?>" 
                       style="width:38px;height:18px;font-size:10.5px;font-weight:700;color:#334155;background:#fff;border:1px solid #cbd5e1;border-radius:4px;text-align:center;padding:0;outline:none;" 
                       title="Adjust max score"
@@ -975,7 +966,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                   <?php if($colDate): ?>
                     <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo $colDate; ?></span>
                   <?php endif; ?>
-                  <button class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
+                  <button type="button" tabindex="-1" class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
                 </th>
                 <?php endforeach; ?>
                 <th style="min-width:65px;background:#f0f9ff;color:#0369a1;font-weight:700;">Dep %</th>
@@ -997,7 +988,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                 <th style="min-width:65px;background:#f9fbf9;">
                   <span style="font-weight:700;font-size:12px;color:#15803d;"><?php echo htmlspecialchars($cleanTitle); ?></span><br>
                   <div style="display:inline-flex;align-items:center;justify-content:center;margin:2px 0;">
-                    <input type="number" min="1" max="1000" 
+                    <input type="number" tabindex="-1" min="1" max="1000" 
                       value="<?php echo (int)$col['max_score']; ?>" 
                       style="width:38px;height:18px;font-size:10.5px;font-weight:700;color:#334155;background:#fff;border:1px solid #cbd5e1;border-radius:4px;text-align:center;padding:0;outline:none;" 
                       title="Adjust max score"
@@ -1007,7 +998,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                   <?php if($colDate): ?>
                     <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo $colDate; ?></span>
                   <?php endif; ?>
-                  <button class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
+                  <button type="button" tabindex="-1" class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
                 </th>
                 <?php endforeach; ?>
                 <th style="min-width:65px;background:#f0fdf4;color:#15803d;font-weight:700;">Avg %</th>
@@ -1029,7 +1020,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                 <th style="min-width:65px;background:#fffdfa;">
                   <span style="font-weight:700;font-size:12px;color:#b45309;"><?php echo htmlspecialchars($cleanTitle); ?></span><br>
                   <div style="display:inline-flex;align-items:center;justify-content:center;margin:2px 0;">
-                    <input type="number" min="1" max="1000" 
+                    <input type="number" tabindex="-1" min="1" max="1000" 
                       value="<?php echo (int)$col['max_score']; ?>" 
                       style="width:38px;height:18px;font-size:10.5px;font-weight:700;color:#334155;background:#fff;border:1px solid #cbd5e1;border-radius:4px;text-align:center;padding:0;outline:none;" 
                       title="Adjust max score"
@@ -1039,7 +1030,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                   <?php if($colDate): ?>
                     <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo $colDate; ?></span>
                   <?php endif; ?>
-                  <button class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
+                  <button type="button" tabindex="-1" class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
                 </th>
                 <?php endforeach; ?>
                 <th style="min-width:65px;background:#fffdfa;color:#b45309;font-weight:700;">Avg %</th>
@@ -1056,7 +1047,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                 <th style="min-width:65px;background:#fdfbfe;">
                   <span style="font-weight:700;font-size:12px;color:#6b21a8;"><?php echo htmlspecialchars($cleanTitle); ?></span><br>
                   <div style="display:inline-flex;align-items:center;justify-content:center;margin:2px 0;">
-                    <input type="number" min="1" max="1000" 
+                    <input type="number" tabindex="-1" min="1" max="1000" 
                       value="<?php echo (int)$col['max_score']; ?>" 
                       style="width:38px;height:18px;font-size:10.5px;font-weight:700;color:#334155;background:#fff;border:1px solid #cbd5e1;border-radius:4px;text-align:center;padding:0;outline:none;" 
                       title="Adjust max score"
@@ -1066,7 +1057,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                   <?php if($colDate): ?>
                     <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo $colDate; ?></span>
                   <?php endif; ?>
-                  <button class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
+                  <button type="button" tabindex="-1" class="btn-del-col" onclick="deleteCol(<?php echo $col['id']; ?>)" title="Delete"><i class="fa fa-times"></i></button>
                 </th>
                 <?php endforeach; ?>
                 <th style="min-width:65px;background:#fdfbfe;color:#6b21a8;font-weight:700;">Avg %</th>
@@ -1086,7 +1077,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                 [$overallStatus,$overallSClr,$overallSBg] = gradeStatus($overallGrade);
                 $initials = strtoupper(substr($s['first_name'],0,1).substr($s['last_name'],0,1));
               ?>
-              <tr>
+              <tr data-student="<?php echo htmlspecialchars($uc); ?>">
                 <td style="color:#94a3b8;font-size:11px;"><?php echo $i+1; ?></td>
                 <td class="col-name">
                   <div style="display:flex;align-items:center;gap:7px;">
@@ -1102,31 +1093,47 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                 <?php 
                 $attTotalEarned = 0;
                 $attTotalMax = 0;
+                foreach($termAttendanceCols as $col) {
+                    $attTotalMax += floatval($col['max_score'] ?: 2.00);
+                }
                 foreach($termAttendanceCols as $col):
-                  $sc = $scores[$col['id']][$uc] ?? '';
-                  $scVal = ($sc !== '') ? floatval($sc) : null;
-                  $maxScore = floatval($col['max_score'] ?: 1.00);
-                  if ($scVal !== null) {
+                  $colId = $col['id'];
+                  $sc = $scores[$colId][$uc] ?? '';
+                  $maxScore = floatval($col['max_score'] ?: 2.00);
+                  $hasScore = ($sc !== '' && $sc !== null);
+                  $scVal = $hasScore ? floatval($sc) : 0.00;
+                  $sessionId = intval($col['attendance_session_id'] ?: ($col['session_id'] ?? 0));
+                  $recStatus = $attStatuses[$sessionId][$uc] ?? '';
+                  if ($hasScore) {
                       $attTotalEarned += $scVal;
-                      $attTotalMax += $maxScore;
+                  } elseif ($recStatus === 'present' || $recStatus === 'excused') {
+                      $attTotalEarned += 2.00;
+                  } elseif ($recStatus === 'late') {
+                      $attTotalEarned += 1.00;
                   }
-                  $pct = ($scVal !== null && $maxScore > 0) ? ($scVal / $maxScore) * 100 : null;
+                  $pct = ($maxScore > 0) ? ($scVal / $maxScore) * 100 : 0;
                 ?>
-                <td>
-                  <?php if($scVal !== null): ?>
-                    <?php if($pct >= 75): ?>
-                      <span style="display:inline-block;padding:3px 8px;background:#dcfce7;color:#15803d;border-radius:6px;font-size:11px;font-weight:700;"><i class="fa fa-check"></i> Present</span>
-                    <?php elseif($pct >= 40): ?>
-                      <span style="display:inline-block;padding:3px 8px;background:#fffbeb;color:#b45309;border-radius:6px;font-size:11px;font-weight:700;"><i class="fa fa-clock-o"></i> Late</span>
-                    <?php else: ?>
-                      <span style="display:inline-block;padding:3px 8px;background:#fef2f2;color:#b91c1c;border-radius:6px;font-size:11px;font-weight:700;"><i class="fa fa-times"></i> Absent</span>
-                    <?php endif; ?>
+                <td style="text-align:center;padding:4px 6px;">
+                  <?php if($recStatus === 'excused'): ?>
+                    <button type="button" tabindex="-1" class="btn-att-icon excused" onclick="cycleAttendanceScore(<?php echo $colId; ?>,'<?php echo addslashes($uc); ?>', 0.00, 'absent', this)" title="Excused (2 pts) — Click to mark Absent">
+                      <i class="fa fa-shield"></i>
+                    </button>
+                  <?php elseif($recStatus === 'late' || ($hasScore && $scVal >= 0.5 && $scVal < 1.5)): ?>
+                    <button type="button" tabindex="-1" class="btn-att-icon late" onclick="cycleAttendanceScore(<?php echo $colId; ?>,'<?php echo addslashes($uc); ?>', 0.00, 'absent', this)" title="Late (1 pt) — Click to mark Absent">
+                      <i class="fa fa-clock-o"></i>
+                    </button>
+                  <?php elseif($recStatus === 'present' || ($hasScore && $scVal >= 1.5)): ?>
+                    <button type="button" tabindex="-1" class="btn-att-icon present" onclick="cycleAttendanceScore(<?php echo $colId; ?>,'<?php echo addslashes($uc); ?>', 1.00, 'late', this)" title="Present (2 pts) — Click to mark Late">
+                      <i class="fa fa-check"></i>
+                    </button>
                   <?php else: ?>
-                    <span style="color:#cbd5e1;">—</span>
+                    <button type="button" tabindex="-1" class="btn-att-icon absent" onclick="cycleAttendanceScore(<?php echo $colId; ?>,'<?php echo addslashes($uc); ?>', 2.00, 'present', this)" title="Absent (0 pts) — Click to mark Present">
+                      <i class="fa fa-times"></i>
+                    </button>
                   <?php endif; ?>
                 </td>
                 <?php endforeach; ?>
-                <td class="grade-cell <?php echo ($attTotalMax > 0 && ($attTotalEarned/$attTotalMax)>=0.75) ? 'grade-pass' : 'grade-fail'; ?>" style="background:#eff6ff;color:#1d4ed8;font-weight:800;">
+                <td class="grade-cell cell-att-pct <?php echo ($attTotalMax > 0 && ($attTotalEarned/$attTotalMax)>=0.75) ? 'grade-pass' : 'grade-fail'; ?>" style="background:#eff6ff;color:#1d4ed8;font-weight:800;">
                   <?php echo $attTotalMax > 0 ? round(($attTotalEarned / $attTotalMax) * 100, 1) . '%' : '—'; ?>
                 </td>
 
@@ -1138,10 +1145,14 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                   <input type="number" class="score-input" min="0" max="<?php echo $col['max_score']; ?>"
                     value="<?php echo $sc !== '' ? htmlspecialchars($sc) : ''; ?>"
                     placeholder="—"
-                    onchange="saveScore(<?php echo $col['id']; ?>,'<?php echo addslashes($uc); ?>',this.value)">
+                    data-col-id="<?php echo $col['id']; ?>"
+                    data-student="<?php echo htmlspecialchars($uc); ?>"
+                    onclick="this.select()"
+                    onfocus="this.select()"
+                    onchange="saveScore(<?php echo $col['id']; ?>,'<?php echo addslashes($uc); ?>',this.value, this)">
                 </td>
                 <?php endforeach; ?>
-                <td class="grade-cell <?php echo $g['components']['deportment']!==null&&$g['components']['deportment']>=75?'grade-pass':'grade-fail'; ?>" style="background:#f0f9ff;color:#0369a1;font-weight:800;">
+                <td class="grade-cell cell-dep-pct <?php echo $g['components']['deportment']!==null&&$g['components']['deportment']>=75?'grade-pass':'grade-fail'; ?>" style="background:#f0f9ff;color:#0369a1;font-weight:800;">
                   <?php echo $g['components']['deportment'] !== null ? $g['components']['deportment'] . '%' : '—'; ?>
                 </td>
 
@@ -1160,11 +1171,15 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                     <input type="number" class="score-input" min="0" max="<?php echo $col['max_score']; ?>"
                       value="<?php echo $sc !== '' ? htmlspecialchars($sc) : ''; ?>"
                       placeholder="—"
-                      onchange="saveScore(<?php echo $col['id']; ?>,'<?php echo addslashes($uc); ?>',this.value)">
+                      data-col-id="<?php echo $col['id']; ?>"
+                      data-student="<?php echo htmlspecialchars($uc); ?>"
+                      onclick="this.select()"
+                      onfocus="this.select()"
+                      onchange="saveScore(<?php echo $col['id']; ?>,'<?php echo addslashes($uc); ?>',this.value, this)">
                   <?php endif; ?>
                 </td>
                 <?php endforeach; ?>
-                <td class="grade-cell <?php echo $g['components']['written']!==null&&$g['components']['written']>=75?'grade-pass':'grade-fail'; ?>" style="background:#f9fbf9;">
+                <td class="grade-cell cell-quiz-pct <?php echo $g['components']['written']!==null&&$g['components']['written']>=75?'grade-pass':'grade-fail'; ?>" style="background:#f9fbf9;">
                   <?php echo $g['components']['written'] !== null ? $g['components']['written'].'%' : '—'; ?>
                 </td>
 
@@ -1183,11 +1198,15 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                     <input type="number" class="score-input" min="0" max="<?php echo $col['max_score']; ?>"
                       value="<?php echo $sc !== '' ? htmlspecialchars($sc) : ''; ?>"
                       placeholder="—"
-                      onchange="saveScore(<?php echo $col['id']; ?>,'<?php echo addslashes($uc); ?>',this.value)">
+                      data-col-id="<?php echo $col['id']; ?>"
+                      data-student="<?php echo htmlspecialchars($uc); ?>"
+                      onclick="this.select()"
+                      onfocus="this.select()"
+                      onchange="saveScore(<?php echo $col['id']; ?>,'<?php echo addslashes($uc); ?>',this.value, this)">
                   <?php endif; ?>
                 </td>
                 <?php endforeach; ?>
-                <td class="grade-cell <?php echo $g['components']['performance']!==null&&$g['components']['performance']>=75?'grade-pass':'grade-fail'; ?>" style="background:#fffdfa;">
+                <td class="grade-cell cell-perf-pct <?php echo $g['components']['performance']!==null&&$g['components']['performance']>=75?'grade-pass':'grade-fail'; ?>" style="background:#fffdfa;">
                   <?php echo $g['components']['performance'] !== null ? $g['components']['performance'].'%' : '—'; ?>
                 </td>
 
@@ -1199,23 +1218,27 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                   <input type="number" class="score-input" min="0" max="<?php echo $col['max_score']; ?>"
                     value="<?php echo $sc !== '' ? htmlspecialchars($sc) : ''; ?>"
                     placeholder="—"
-                    onchange="saveScore(<?php echo $col['id']; ?>,'<?php echo addslashes($uc); ?>',this.value)">
+                    data-col-id="<?php echo $col['id']; ?>"
+                    data-student="<?php echo htmlspecialchars($uc); ?>"
+                    onclick="this.select()"
+                    onfocus="this.select()"
+                    onchange="saveScore(<?php echo $col['id']; ?>,'<?php echo addslashes($uc); ?>',this.value, this)">
                 </td>
                 <?php endforeach; ?>
-                <td class="grade-cell <?php echo $g['components']['exam']!==null&&$g['components']['exam']>=75?'grade-pass':'grade-fail'; ?>" style="background:#fdfbfe;">
+                <td class="grade-cell cell-exam-pct <?php echo $g['components']['exam']!==null&&$g['components']['exam']>=75?'grade-pass':'grade-fail'; ?>" style="background:#fdfbfe;">
                   <?php echo $g['components']['exam'] !== null ? $g['components']['exam'].'%' : '—'; ?>
                 </td>
 
                 <!-- Final Consolidated Values -->
-                <td class="grade-cell" style="color:<?php echo $g['final']!==null&&$g['final']>=75?'#166534':'#991b1b'; ?>;">
+                <td class="grade-cell cell-term-grade" style="color:<?php echo $g['final']!==null&&$g['final']>=75?'#166534':'#991b1b'; ?>;">
                   <?php echo $g['final'] !== null ? $g['final'].'%' : '—'; ?>
                 </td>
-                <td class="grade-cell" style="background:#fef3c7;color:<?php echo $overallGrade!==null&&$overallGrade>=75?'#92400e':'#7f1d1d'; ?>;">
+                <td class="grade-cell cell-overall-grade" style="background:#fef3c7;color:<?php echo $overallGrade!==null&&$overallGrade>=75?'#92400e':'#7f1d1d'; ?>;">
                   <?php echo $overallGrade !== null ? $overallGrade.'%' : '—'; ?>
                 </td>
-                <td style="font-weight:700;color:#5b21b6;"><?php echo transmute($overallGrade); ?></td>
+                <td class="cell-transmuted" style="font-weight:700;color:#5b21b6;"><?php echo transmute($overallGrade); ?></td>
                 <td>
-                  <span style="background:<?php echo $overallSBg; ?>;color:<?php echo $overallSClr; ?>;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700;">
+                  <span class="cell-remarks-badge" style="background:<?php echo $overallSBg; ?>;color:<?php echo $overallSClr; ?>;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:700;">
                     <?php echo $overallStatus; ?>
                   </span>
                 </td>
@@ -1234,13 +1257,13 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
     <div class="tab-panel" id="tab-attendance">
       <!-- Section 1: Attendance Table -->
       <div class="cr-section-title">
-        <span><i class="fa fa-smile-o" style="color:#3b82f6;"></i> Deportment Record (<?php echo $weights['attendance_pct'] ?? 10; ?>%)</span>
-        <button type="button" class="btn-add-col" style="border-color:#3b82f6;color:#3b82f6;" onclick="openModal('addF2FModal')">
-          <i class="fa fa-plus"></i> Add F2F Deportment
+        <span><i class="fa fa-calendar-check-o" style="color:#10b981;"></i> Attendance Record (<?php echo $weights['attendance_pct'] ?? 10; ?>%)</span>
+        <button type="button" class="btn-add-col" style="border-color:#10b981;color:#10b981;" onclick="openModal('addF2FModal')">
+          <i class="fa fa-plus"></i> Add Attendance Session
         </button>
       </div>
-      <?php if(empty($termDeportmentCols)): ?>
-      <div class="empty-state"><i class="fa fa-smile-o"></i><p>No deportment sessions recorded yet.</p></div>
+      <?php if(empty($termAttendanceCols)): ?>
+      <div class="empty-state"><i class="fa fa-calendar-times-o"></i><p>No attendance sessions recorded yet for this term.</p></div>
       <?php else: ?>
       <div class="cr-table-wrap" style="margin-bottom: 24px;">
         <div class="cr-table-scroll">
@@ -1249,7 +1272,7 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
               <tr>
                 <th class="col-no">#</th>
                 <th class="col-name" style="text-align:left;">Student Name</th>
-                <?php foreach($termDeportmentCols as $col): 
+                <?php foreach($termAttendanceCols as $col): 
                    $rawDate = !empty($col['attendance_date']) ? $col['attendance_date'] : (!empty($col['created_at']) ? $col['created_at'] : null);
                    $displayTitle = trim($col['title'] ?? '');
                    $colDate = '';
@@ -1262,57 +1285,80 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
                    }
                 ?>
                 <th style="min-width:90px;">
-                  <span style="display:inline-flex;align-items:center;gap:2px;background:#dbeafe;color:#1e4ed8;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;">BEHAVIOR</span><br>
+                  <span style="display:inline-flex;align-items:center;gap:2px;background:#dcfce7;color:#15803d;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;">SESSION (2 pts)</span><br>
                   <span style="font-weight:700;"><?php echo htmlspecialchars(strtoupper($displayTitle)); ?></span>
                   <?php if($colDate && strcasecmp(trim($displayTitle), trim($colDate)) !== 0): ?>
                     <span style="font-size:10px;font-weight:600;color:#64748b;display:block;"><?php echo strtoupper($colDate); ?></span>
                   <?php endif; ?>
                 </th>
                 <?php endforeach; ?>
-                <th style="min-width:55px;">Present</th>
-                <th style="min-width:60px;">Avg %</th>
+                <th style="min-width:70px;">Earned Pts</th>
+                <th style="min-width:65px;">Att %</th>
               </tr>
             </thead>
             <tbody>
-              <?php foreach($studentRows as $i => $s):
+              <?php 
+              $termAttMaxTotal = count($termAttendanceCols) * 2.0;
+              foreach($studentRows as $i => $s):
                 $uc = $s['user_code'];
-                $presentCount = 0;
-                $totalDeportment = 0;
-                foreach($termDeportmentCols as $col) {
-                  $sc = $scores[$col['id']][$uc] ?? '';
-                  if($sc !== '') {
-                      $totalDeportment++;
-                      if($sc == 1) $presentCount++;
+                $earnedPoints = 0;
+                foreach($termAttendanceCols as $col) {
+                  $sc = $scores[$col['id']][$uc] ?? null;
+                  $sessionId = intval($col['attendance_session_id'] ?: ($col['session_id'] ?? 0));
+                  $recStatus = $attStatuses[$sessionId][$uc] ?? '';
+                  if($sc !== null && $sc !== '') {
+                      $earnedPoints += floatval($sc);
+                  } elseif ($recStatus === 'present' || $recStatus === 'excused') {
+                      $earnedPoints += 2.00;
+                  } elseif ($recStatus === 'late') {
+                      $earnedPoints += 1.00;
                   }
                 }
-                $attPct = $studentGrades[$uc]['components']['attendance'];
+                $attPct = ($termAttMaxTotal > 0) ? round(($earnedPoints / $termAttMaxTotal) * 100, 1) : null;
                 $initials = strtoupper(substr($s['first_name'],0,1).substr($s['last_name'],0,1));
               ?>
               <tr>
                 <td style="color:#94a3b8;font-size:11px;"><?php echo $i+1; ?></td>
                 <td class="col-name">
                   <div style="display:flex;align-items:center;gap:7px;">
-                    <div style="width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0;"><?php echo $initials; ?></div>
+                    <div style="width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,#10b981,#059669);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0;"><?php echo $initials; ?></div>
                     <div>
                       <div style="font-size:12px;font-weight:700;color:#0f172a;"><?php echo htmlspecialchars($s['last_name'].', '.$s['first_name']); ?></div>
                       <div style="font-size:10px;color:#94a3b8;"><?php echo htmlspecialchars($uc); ?></div>
                     </div>
                   </div>
                 </td>
-                <?php foreach($termDeportmentCols as $col): ?>
-                <?php $sc = $scores[$col['id']][$uc] ?? ''; ?>
-                <td>
-                  <?php if($sc !== '' && $sc == 1): ?>
-                    <button class="btn-f2f present" onclick="toggleF2F(<?php echo $col['id']; ?>,'<?php echo addslashes($uc); ?>',0)"><i class="fa fa-check"></i> Present</button>
-                  <?php elseif($sc !== '' && $sc == 0): ?>
-                    <button class="btn-f2f absent" onclick="toggleF2F(<?php echo $col['id']; ?>,'<?php echo addslashes($uc); ?>',1)"><i class="fa fa-times"></i> Absent</button>
+                <?php foreach($termAttendanceCols as $col): ?>
+                <?php 
+                  $colId = $col['id'];
+                  $sc = $scores[$colId][$uc] ?? null; 
+                  $scVal = ($sc !== null) ? floatval($sc) : 0.00;
+                  $hasScore = ($sc !== null && $sc !== '');
+                  $sessionId = intval($col['attendance_session_id'] ?: ($col['session_id'] ?? 0));
+                  $recStatus = $attStatuses[$sessionId][$uc] ?? '';
+                ?>
+                <td style="text-align:center;padding:4px 6px;">
+                  <?php if($recStatus === 'excused'): ?>
+                    <button type="button" tabindex="-1" class="btn-att-icon excused" onclick="cycleAttendanceScore(<?php echo $colId; ?>,'<?php echo addslashes($uc); ?>', 0.00, 'absent')" title="Excused (2 pts) — Click to mark Absent">
+                      <i class="fa fa-shield"></i>
+                    </button>
+                  <?php elseif($recStatus === 'late' || ($hasScore && $scVal >= 0.5 && $scVal < 1.5)): ?>
+                    <button type="button" tabindex="-1" class="btn-att-icon late" onclick="cycleAttendanceScore(<?php echo $colId; ?>,'<?php echo addslashes($uc); ?>', 0.00, 'absent')" title="Late (1 pt) — Click to mark Absent">
+                      <i class="fa fa-clock-o"></i>
+                    </button>
+                  <?php elseif($recStatus === 'present' || ($hasScore && $scVal >= 1.5)): ?>
+                    <button type="button" tabindex="-1" class="btn-att-icon present" onclick="cycleAttendanceScore(<?php echo $colId; ?>,'<?php echo addslashes($uc); ?>', 1.00, 'late')" title="Present (2 pts) — Click to mark Late">
+                      <i class="fa fa-check"></i>
+                    </button>
                   <?php else: ?>
-                    <button class="btn-f2f unrecorded" onclick="toggleF2F(<?php echo $col['id']; ?>,'<?php echo addslashes($uc); ?>',1)"><i class="fa fa-minus"></i> Unrecorded</button>
+                    <button type="button" tabindex="-1" class="btn-att-icon absent" onclick="cycleAttendanceScore(<?php echo $colId; ?>,'<?php echo addslashes($uc); ?>', 2.00, 'present')" title="Absent (0 pts) — Click to mark Present">
+                      <i class="fa fa-times"></i>
+                    </button>
                   <?php endif; ?>
                 </td>
                 <?php endforeach; ?>
-                <td style="font-weight:700;color:#0f172a;"><?php echo $presentCount; ?>/<?php echo $totalDeportment; ?></td>
-                <td class="<?php echo $attPct >= 75 ? 'att-pct-high' : 'att-pct-low'; ?>">
+                <td style="font-weight:700;color:#0f172a;"><?php echo $earnedPoints; ?> / <?php echo $termAttMaxTotal; ?></td>
+                <td class="<?php echo ($attPct !== null && $attPct >= 75) ? 'att-pct-high' : 'att-pct-low'; ?>" style="font-weight:800;">
                   <?php echo $attPct !== null ? $attPct.'%' : '—'; ?>
                 </td>
               </tr>
@@ -1577,9 +1623,13 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
       
       <!-- Weights Config -->
       <h5 style="font-weight:700; font-size:13px; color:#0f172a; margin-top:0; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">1. Component Weights</h5>
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-bottom:14px;">
         <div class="cr-field">
-          <label>Quiz Weight (%)</label>
+          <label>Attendance (%)</label>
+          <input type="number" id="modalWAttendance" class="cr-fc" value="<?php echo $weights['attendance_pct'] ?? 10; ?>" min="0" max="100">
+        </div>
+        <div class="cr-field">
+          <label>Quiz (%)</label>
           <input type="number" id="modalWWritten" class="cr-fc" value="<?php echo $weights['written_pct']; ?>" min="0" max="100">
         </div>
         <div class="cr-field">
@@ -1587,12 +1637,12 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
           <input type="number" id="modalWPerformance" class="cr-fc" value="<?php echo $weights['performance_pct']; ?>" min="0" max="100">
         </div>
         <div class="cr-field">
-          <label>Exam Weight (%)</label>
+          <label>Exam (%)</label>
           <input type="number" id="modalWExam" class="cr-fc" value="<?php echo $weights['exam_pct']; ?>" min="0" max="100">
         </div>
         <div class="cr-field">
-          <label>Deportment Weight (%)</label>
-          <input type="number" id="modalWAttendance" class="cr-fc" value="<?php echo $weights['attendance_pct'] ?? 10; ?>" min="0" max="100">
+          <label>Deportment (%)</label>
+          <input type="number" id="modalWDeportment" class="cr-fc" value="<?php echo $weights['deportment_pct'] ?? 10; ?>" min="0" max="100">
         </div>
       </div>
 
@@ -1645,8 +1695,51 @@ $avgAssignPct = count($assignAvgPcts) ? round(array_sum($assignAvgPcts)/count($a
   </div>
 </div>
 
-<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
-<script src="/cenlearn/system/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<!-- Add Attendance Session Modal -->
+<div class="cr-modal-overlay" id="addF2FModal">
+  <div class="cr-modal" style="max-width: 440px;">
+    <div class="cr-modal-head" style="background: linear-gradient(135deg, #10b981, #059669);">
+      <h4 style="color:#fff;margin:0;font-size:15px;display:flex;align-items:center;gap:8px;">
+        <i class="fa fa-calendar-plus-o"></i> Add Attendance Session
+      </h4>
+      <button class="cr-modal-x" onclick="closeModal('addF2FModal')">&times;</button>
+    </div>
+    <div class="cr-modal-body" style="padding: 20px;">
+      <div style="margin-bottom: 14px;">
+        <label style="display:block;font-size:12px;font-weight:700;color:#334155;margin-bottom:5px;">Session Title / Date</label>
+        <input type="text" id="addF2FTitle" class="form-control" placeholder="e.g. Session 1, Aug 25" style="border-radius:8px;font-size:13px;" value="<?php echo date('M d'); ?>">
+      </div>
+      <div style="margin-bottom: 14px;">
+        <label style="display:block;font-size:12px;font-weight:700;color:#334155;margin-bottom:5px;">Term</label>
+        <select id="addF2FTerm" class="form-control" style="border-radius:8px;font-size:13px;">
+          <option value="midterm" <?php echo $term==='midterm'?'selected':''; ?>>Midterm</option>
+          <option value="final" <?php echo $term==='final'?'selected':''; ?>>Final Term</option>
+        </select>
+      </div>
+      <div style="margin-bottom: 14px;">
+        <label style="display:block;font-size:12px;font-weight:700;color:#334155;margin-bottom:5px;">Date</label>
+        <input type="date" id="addF2FDate" class="form-control" value="<?php echo date('Y-m-d'); ?>" style="border-radius:8px;font-size:13px;">
+      </div>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px;font-size:11.5px;color:#166534;">
+        <i class="fa fa-info-circle"></i> Attendance sessions are scored out of <strong>2.00 points</strong>:
+        <ul style="margin:4px 0 0;padding-left:16px;">
+          <li><strong>Present:</strong> 2.00 points</li>
+          <li><strong>Late:</strong> 1.00 point</li>
+          <li><strong>Absent:</strong> 0.00 points</li>
+        </ul>
+      </div>
+      <div id="addF2FAlert" style="display:none;margin-top:10px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:8px;font-size:12px;"></div>
+    </div>
+    <div class="cr-modal-foot">
+      <button class="btn-ghost-sm" onclick="closeModal('addF2FModal')">Cancel</button>
+      <button class="btn-green" id="btnSubmitF2F" onclick="submitAddF2F()"><i class="fa fa-plus"></i> Create Session</button>
+    </div>
+  </div>
+</div>
+
+<script src="../bower_components/jquery/dist/jquery.min.js"></script>
+<script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="../dist/js/grading_engine.js"></script>
 <script>
 var CLASS_ID     = <?php echo $class_id; ?>;
 var CURRENT_TERM = '<?php echo $term; ?>';
@@ -1719,7 +1812,7 @@ function quickAddDeportment(btn){
     class_id: CLASS_ID,
     component: 'deportment',
     title: title,
-    max_score: 100,
+    max_score: 10,
     term: CURRENT_TERM
   }, function(r){
     if(r && r.success){
@@ -1734,21 +1827,56 @@ function quickAddDeportment(btn){
   });
 }
 
-// Toggle F2F Attendance
-function toggleF2F(colId, studentCode, newScore) {
+// Interactive Attendance Cycling (2 pts Present -> 1 pt Late -> 0 pts Absent -> 2 pts Present)
+function cycleAttendanceScore(colId, studentCode, nextScore, nextStatus, btnEl) {
   $.post('class_record_handler.php', {
     action: 'save_score',
     class_id: CLASS_ID,
     col_id: colId,
     student_code: studentCode,
-    score: newScore
+    score: nextScore,
+    status: nextStatus || '',
+    term: CURRENT_TERM
   }, function(r) {
-    if(r.success) {
-      location.reload();
+    if(r && r.success) {
+      if(btnEl) {
+        btnEl.classList.remove('present', 'late', 'absent', 'excused');
+        btnEl.classList.add(nextStatus);
+        var icons = {
+          present: '<i class="fa fa-check"></i>',
+          late: '<i class="fa fa-clock-o"></i>',
+          excused: '<i class="fa fa-shield"></i>',
+          absent: '<i class="fa fa-times"></i>'
+        };
+        btnEl.innerHTML = icons[nextStatus] || icons.absent;
+
+        var nextCycle = {
+          present: {score: 1.00, status: 'late', title: 'Late (1 pt)'},
+          late: {score: 0.00, status: 'absent', title: 'Absent (0 pts)'},
+          excused: {score: 0.00, status: 'absent', title: 'Absent (0 pts)'},
+          absent: {score: 2.00, status: 'present', title: 'Present (2 pts)'}
+        };
+        var nxt = nextCycle[nextStatus] || nextCycle.absent;
+        btnEl.setAttribute('onclick', 'cycleAttendanceScore(' + colId + ',\'' + studentCode + '\',' + nxt.score + ',\'' + nxt.status + '\', this)');
+        btnEl.setAttribute('title', (nextStatus.charAt(0).toUpperCase() + nextStatus.slice(1)) + ' — Click to mark ' + nxt.title);
+      }
+      if(typeof updateStudentRowDOM === 'function') {
+        updateStudentRowDOM(studentCode, r);
+      }
     } else {
-      alert(r.msg || 'Failed to save attendance');
+      alert(r && r.msg ? r.msg : 'Failed to save attendance');
     }
-  }, 'json');
+  }, 'json').fail(function(){
+    alert('Network error saving attendance.');
+  });
+}
+
+function toggleF2F(colId, studentCode, currentScore) {
+  var next = 2.00;
+  if(currentScore >= 1.5) next = 1.00;
+  else if(currentScore >= 0.5) next = 0.00;
+  else next = 2.00;
+  cycleAttendanceScore(colId, studentCode, next);
 }
 
 // Add F2F modal submit
@@ -1823,35 +1951,237 @@ function deleteCol(colId){
   },'json');
 }
 
-// Bug 1 fix: saveScore previously called location.reload() after every save,
-// interrupting the teacher mid-typing in another cell.
-// Now: only reload when ALL pending saves have completed (no pending timers).
+// Smooth in-place auto-save: No page reload, zero screen blink / motion flicker
 var _saveTimer = {};
-function saveScore(colId, stuCode, val){
+function saveScore(colId, stuCode, val, inputEl, immediate){
   var key = colId + '_' + stuCode;
   clearTimeout(_saveTimer[key]);
-  _saveTimer[key] = setTimeout(function(){
-    delete _saveTimer[key]; // Remove from pending map before AJAX
-    $.post('class_record_handler.php',{
-      action:'save_score', class_id:CLASS_ID,
-      col_id:colId, student_code:stuCode, score:val
+
+  var doSave = function(){
+    delete _saveTimer[key];
+    $.post('class_record_handler.php', {
+      action: 'save_score',
+      class_id: CLASS_ID,
+      col_id: colId,
+      student_code: stuCode,
+      score: val,
+      term: CURRENT_TERM
     }, function(r){
-      if(r.success){
-        // Only reload when there are no other saves still queued
-        if(Object.keys(_saveTimer).length === 0){
-          location.reload();
-        }
+      if(r && r.success){
+        updateStudentRowDOM(stuCode, r);
       }
-    }, 'json');
-  }, 1000); // 1s debounce — slightly longer than before to let teacher move between cells
+    }, 'json').fail(function(){
+      if(inputEl) inputEl.style.borderColor = '#ef4444';
+    });
+  };
+
+  if(immediate){
+    doSave();
+  } else {
+    _saveTimer[key] = setTimeout(doSave, 350);
+  }
 }
 
+function updateStudentRowDOM(stuCode, data) {
+  if(!data) return;
+  var row = document.querySelector('tr[data-student="' + stuCode + '"]');
+  if(!row) return;
+
+  if(data.comp_averages) {
+    var attCell = row.querySelector('.cell-att-pct');
+    if(attCell && data.comp_averages.attendance !== null) {
+      attCell.textContent = data.comp_averages.attendance + '%';
+      attCell.className = 'grade-cell cell-att-pct ' + (data.comp_averages.attendance >= 75 ? 'grade-pass' : 'grade-fail');
+    }
+
+    var depCell = row.querySelector('.cell-dep-pct');
+    if(depCell) {
+      depCell.textContent = data.comp_averages.deportment !== null ? data.comp_averages.deportment + '%' : '—';
+      depCell.className = 'grade-cell cell-dep-pct ' + (data.comp_averages.deportment !== null && data.comp_averages.deportment >= 75 ? 'grade-pass' : 'grade-fail');
+    }
+
+    var quizCell = row.querySelector('.cell-quiz-pct');
+    if(quizCell) {
+      quizCell.textContent = data.comp_averages.written !== null ? data.comp_averages.written + '%' : '—';
+      quizCell.className = 'grade-cell cell-quiz-pct ' + (data.comp_averages.written !== null && data.comp_averages.written >= 75 ? 'grade-pass' : 'grade-fail');
+    }
+
+    var perfCell = row.querySelector('.cell-perf-pct');
+    if(perfCell) {
+      perfCell.textContent = data.comp_averages.performance !== null ? data.comp_averages.performance + '%' : '—';
+      perfCell.className = 'grade-cell cell-perf-pct ' + (data.comp_averages.performance !== null && data.comp_averages.performance >= 75 ? 'grade-pass' : 'grade-fail');
+    }
+
+    var examCell = row.querySelector('.cell-exam-pct');
+    if(examCell) {
+      examCell.textContent = data.comp_averages.exam !== null ? data.comp_averages.exam + '%' : '—';
+      examCell.className = 'grade-cell cell-exam-pct ' + (data.comp_averages.exam !== null && data.comp_averages.exam >= 75 ? 'grade-pass' : 'grade-fail');
+    }
+  }
+
+  var termCell = row.querySelector('.cell-term-grade');
+  if(termCell) {
+    termCell.textContent = data.term_grade !== null ? data.term_grade + '%' : '—';
+    termCell.style.color = (data.term_grade !== null && data.term_grade >= 75) ? '#166534' : '#991b1b';
+  }
+
+  var overallCell = row.querySelector('.cell-overall-grade');
+  if(overallCell) {
+    overallCell.textContent = data.overall_grade !== null ? data.overall_grade + '%' : '—';
+    overallCell.style.color = (data.overall_grade !== null && data.overall_grade >= 75) ? '#92400e' : '#7f1d1d';
+  }
+
+  var transCell = row.querySelector('.cell-transmuted');
+  if(transCell && data.transmuted) {
+    transCell.textContent = data.transmuted;
+  }
+
+  var remarkBadge = row.querySelector('.cell-remarks-badge');
+  if(remarkBadge && data.remarks) {
+    remarkBadge.textContent = data.remarks;
+    remarkBadge.style.color = data.remarks_color;
+    remarkBadge.style.backgroundColor = data.remarks_bg;
+  }
+}
+
+// Rapid grading keyboard navigation:
+// Enter / Tab: move to next student in the same column (skips attendance entirely!)
+// Shift+Enter / Shift+Tab: move to previous student in the same column
+// ArrowDown / ArrowUp: navigate vertically between students
+// ArrowLeft / ArrowRight: navigate horizontally between score columns for that student
+$(document).on('keydown', '.score-input', function(e) {
+  var key = e.key;
+  if(key !== 'Enter' && key !== 'Tab' && key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'ArrowRight' && key !== 'ArrowLeft') {
+    return;
+  }
+
+  var currentInput = this;
+  var colId = currentInput.getAttribute('data-col-id');
+  var stuCode = currentInput.getAttribute('data-student');
+  var table = document.getElementById('tableRecord');
+  if(!table) return;
+
+  function getScoreColumnIds() {
+    var cIds = [];
+    table.querySelectorAll('tbody input.score-input').forEach(function(inp) {
+      var cid = inp.getAttribute('data-col-id');
+      if(cid && cIds.indexOf(cid) === -1) {
+        cIds.push(cid);
+      }
+    });
+    return cIds;
+  }
+
+  if(key === 'Enter' || key === 'Tab') {
+    e.preventDefault();
+
+    // Flush/save score immediately without debounce delay
+    if(colId && stuCode) {
+      saveScore(colId, stuCode, currentInput.value, currentInput, true);
+    }
+
+    var colInputs = Array.from(table.querySelectorAll('tbody input.score-input[data-col-id="' + colId + '"]'));
+    var currIdx = colInputs.indexOf(currentInput);
+
+    if(e.shiftKey) {
+      // Move UP to previous student in this column
+      if(currIdx > 0) {
+        var target = colInputs[currIdx - 1];
+        target.focus();
+        target.select();
+        target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } else {
+        // At top student: navigate to bottom of previous score column if any
+        var allCols = getScoreColumnIds();
+        var colIdx = allCols.indexOf(colId);
+        if(colIdx > 0) {
+          var prevColInputs = Array.from(table.querySelectorAll('tbody input.score-input[data-col-id="' + allCols[colIdx - 1] + '"]'));
+          if(prevColInputs.length > 0) {
+            var target = prevColInputs[prevColInputs.length - 1];
+            target.focus();
+            target.select();
+            target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          }
+        }
+      }
+    } else {
+      // Move DOWN to next student in this column
+      if(currIdx !== -1 && currIdx < colInputs.length - 1) {
+        var target = colInputs[currIdx + 1];
+        target.focus();
+        target.select();
+        target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } else if(currIdx === colInputs.length - 1) {
+        // At bottom student: navigate to first student of the NEXT score column!
+        var allCols = getScoreColumnIds();
+        var colIdx = allCols.indexOf(colId);
+        if(colIdx !== -1 && colIdx < allCols.length - 1) {
+          var nextColInputs = Array.from(table.querySelectorAll('tbody input.score-input[data-col-id="' + allCols[colIdx + 1] + '"]'));
+          if(nextColInputs.length > 0) {
+            var target = nextColInputs[0];
+            target.focus();
+            target.select();
+            target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          }
+        }
+      }
+    }
+  } else if(key === 'ArrowDown') {
+    e.preventDefault();
+    var colInputs = Array.from(table.querySelectorAll('tbody input.score-input[data-col-id="' + colId + '"]'));
+    var currIdx = colInputs.indexOf(currentInput);
+    if(currIdx !== -1 && currIdx < colInputs.length - 1) {
+      var target = colInputs[currIdx + 1];
+      target.focus();
+      target.select();
+      target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  } else if(key === 'ArrowUp') {
+    e.preventDefault();
+    var colInputs = Array.from(table.querySelectorAll('tbody input.score-input[data-col-id="' + colId + '"]'));
+    var currIdx = colInputs.indexOf(currentInput);
+    if(currIdx > 0) {
+      var target = colInputs[currIdx - 1];
+      target.focus();
+      target.select();
+      target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  } else if(key === 'ArrowRight') {
+    var row = currentInput.closest('tr');
+    if(row) {
+      var rowInputs = Array.from(row.querySelectorAll('input.score-input'));
+      var rIdx = rowInputs.indexOf(currentInput);
+      if(rIdx !== -1 && rIdx < rowInputs.length - 1) {
+        e.preventDefault();
+        var target = rowInputs[rIdx + 1];
+        target.focus();
+        target.select();
+        target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    }
+  } else if(key === 'ArrowLeft') {
+    var row = currentInput.closest('tr');
+    if(row) {
+      var rowInputs = Array.from(row.querySelectorAll('input.score-input'));
+      var rIdx = rowInputs.indexOf(currentInput);
+      if(rIdx > 0) {
+        e.preventDefault();
+        var target = rowInputs[rIdx - 1];
+        target.focus();
+        target.select();
+        target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    }
+  }
+});
+
 function updateWeightTotal(){
+  var a = Math.min(100, Math.max(0, parseInt(document.getElementById('wAttendance').value)||0));
   var w = Math.min(100, Math.max(0, parseInt(document.getElementById('wWritten').value)||0));
   var p = Math.min(100, Math.max(0, parseInt(document.getElementById('wPerformance').value)||0));
   var e = Math.min(100, Math.max(0, parseInt(document.getElementById('wExam').value)||0));
-  var a = Math.min(100, Math.max(0, parseInt(document.getElementById('wAttendance').value)||0));
-  var total = w+p+e+a;
+  var d = Math.min(100, Math.max(0, parseInt(document.getElementById('wDeportment').value)||0));
+  var total = a+w+p+e+d;
   var el = document.getElementById('weightTotal');
   el.textContent = '= '+total+'%';
   el.style.color = total===100 ? '#10b981' : '#ef4444';
@@ -1859,26 +2189,29 @@ function updateWeightTotal(){
   if(saveBtn) saveBtn.disabled = (total !== 100);
 }
 
-['wWritten','wPerformance','wExam','wAttendance'].forEach(function(id){
+['wAttendance','wWritten','wPerformance','wExam','wDeportment'].forEach(function(id){
   var el = document.getElementById(id);
-  el.addEventListener('input', function(){
-    if(this.value > 100) this.value = 100;
-    if(this.value < 0)   this.value = 0;
-    updateWeightTotal();
-  });
+  if(el){
+    el.addEventListener('input', function(){
+      if(this.value > 100) this.value = 100;
+      if(this.value < 0)   this.value = 0;
+      updateWeightTotal();
+    });
+  }
 });
 
 function saveWeights(){
+  var a = document.getElementById('wAttendance').value;
   var w = document.getElementById('wWritten').value;
   var p = document.getElementById('wPerformance').value;
   var e = document.getElementById('wExam').value;
-  var a = document.getElementById('wAttendance').value;
-  if(parseInt(w)+parseInt(p)+parseInt(e)+parseInt(a) !== 100){
+  var d = document.getElementById('wDeportment').value;
+  if(parseInt(a)+parseInt(w)+parseInt(p)+parseInt(e)+parseInt(d) !== 100){
     alert('Weights must total exactly 100%.'); return;
   }
   $.post('class_record_handler.php',{
     action:'save_weights', class_id:CLASS_ID,
-    written_pct:w, performance_pct:p, exam_pct:e, attendance_pct:a,
+    attendance_pct:a, written_pct:w, performance_pct:p, exam_pct:e, deportment_pct:d,
     grading_method: '<?php echo $weights['grading_method']; ?>',
     base_grade: '<?php echo $weights['base_grade']; ?>',
     midterm_weight: '<?php echo $weights['midterm_weight']; ?>',
@@ -1932,11 +2265,12 @@ var baseInput = document.getElementById('modalBaseGradeVal');
 if(baseInput) baseInput.addEventListener('input', updateFormulaExplanation);
 
 function updateModalWeightsTotal() {
+  var a = Math.min(100, Math.max(0, parseInt(document.getElementById('modalWAttendance').value)||0));
   var w = Math.min(100, Math.max(0, parseInt(document.getElementById('modalWWritten').value)||0));
   var p = Math.min(100, Math.max(0, parseInt(document.getElementById('modalWPerformance').value)||0));
   var e = Math.min(100, Math.max(0, parseInt(document.getElementById('modalWExam').value)||0));
-  var a = Math.min(100, Math.max(0, parseInt(document.getElementById('modalWAttendance').value)||0));
-  var total = w+p+e+a;
+  var d = Math.min(100, Math.max(0, parseInt(document.getElementById('modalWDeportment').value)||0));
+  var total = a+w+p+e+d;
   var label = document.getElementById('modalWeightsTotalLabel');
   if(label) {
     label.textContent = total + '%';
@@ -1956,16 +2290,17 @@ function updateModalWeightsTotal() {
   }
 }
 
-['modalWWritten','modalWPerformance','modalWExam','modalWAttendance'].forEach(function(id){
+['modalWAttendance','modalWWritten','modalWPerformance','modalWExam','modalWDeportment'].forEach(function(id){
   var el = document.getElementById(id);
   if(el) el.addEventListener('input', updateModalWeightsTotal);
 });
 
 function submitModalWeights() {
+  var a = document.getElementById('modalWAttendance').value;
   var w = document.getElementById('modalWWritten').value;
   var p = document.getElementById('modalWPerformance').value;
   var e = document.getElementById('modalWExam').value;
-  var a = document.getElementById('modalWAttendance').value;
+  var d = document.getElementById('modalWDeportment').value;
   
   var method = 'sum_of_points';
   var baseSelect = document.getElementById('modalBaseGradeSelect').value;
@@ -1974,7 +2309,7 @@ function submitModalWeights() {
   var mid = parseInt(document.getElementById('modalTermMidterm').value)||0;
   var fin = parseInt(document.getElementById('modalTermFinal').value)||0;
   
-  if(parseInt(w)+parseInt(p)+parseInt(e)+parseInt(a) !== 100){
+  if(parseInt(a)+parseInt(w)+parseInt(p)+parseInt(e)+parseInt(d) !== 100){
     alert('Combined weights must total exactly 100%.'); return;
   }
   if(mid + fin !== 100) {
@@ -1985,10 +2320,11 @@ function submitModalWeights() {
   $.post('class_record_handler.php', {
     action: 'save_weights',
     class_id: CLASS_ID,
+    attendance_pct: a,
     written_pct: w,
     performance_pct: p,
     exam_pct: e,
-    attendance_pct: a,
+    deportment_pct: d,
     grading_method: method,
     base_grade: baseVal,
     midterm_weight: mid,

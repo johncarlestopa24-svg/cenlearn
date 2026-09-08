@@ -4,7 +4,7 @@ include '../includes/conn.php';
 include '../includes/programs.php';
 
 if(strtoupper($user['user_group']) !== 'TEACHER'){
-    header('location: dashboard'); exit;
+    header('location: dashboard.php'); exit;
 }
 
 $tc = $conn->real_escape_string($user['user_code']);
@@ -105,10 +105,10 @@ $absentPctTotal  = $totalMarksPossible > 0 ? round(($absentCountTotal / $totalMa
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn — Teacher Attendance Dashboard</title>
-  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
+  <link rel="stylesheet" href="../dist/css/cenlearn.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { font-family: 'Inter', sans-serif; background: #f0f4f8; margin: 0; color: #1e293b; }
@@ -388,14 +388,13 @@ $absentPctTotal  = $totalMarksPossible > 0 ? round(($absentCountTotal / $totalMa
   <nav class="sb-nav">
     <div class="sb-section">Teacher Menu</div>
     <ul>
-      <li><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes"><i class="fa fa-book"></i> Classes</a></li>
-      <li><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li class="active"><a href="attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="class_record"><i class="fa fa-table"></i> Class Record</a></li>
-      <li><a href="subject_repository"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
+      <li><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="classes.php"><i class="fa fa-book"></i> Classes</a></li>
+      <li><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li class="active"><a href="attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="subject_repository.php"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -406,7 +405,7 @@ $absentPctTotal  = $totalMarksPossible > 0 ? round(($absentCountTotal / $totalMa
         <span>Teacher</span>
       </div>
     </div>
-    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 
@@ -463,7 +462,7 @@ $absentPctTotal  = $totalMarksPossible > 0 ? round(($absentCountTotal / $totalMa
         </div>
 
         <?php if($selected_class_id): ?>
-          <a href="../shared/class_record_detail?id=<?php echo $selected_class_id; ?>&term=<?php echo $active_term; ?>" class="btn-outline">
+          <a href="../shared/class_record_detail.php?id=<?php echo $selected_class_id; ?>&term=<?php echo $active_term; ?>" class="btn-outline">
             <i class="fa fa-table" style="color:#10b981;"></i> Open Class Record
           </a>
         <?php endif; ?>
@@ -532,9 +531,9 @@ $absentPctTotal  = $totalMarksPossible > 0 ? round(($absentCountTotal / $totalMa
         <div class="table-header">
           <h4><i class="fa fa-th-list" style="color:#10b981;"></i> Attendance Matrix Sheet &bull; <?php echo ucfirst($active_term); ?> Term</h4>
           <span style="font-size:11px;color:#64748b;font-weight:600;">
-            <span style="color:#15803d;">● Present (1.0)</span> &bull;
-            <span style="color:#b45309;">● Late (0.5)</span> &bull;
-            <span style="color:#b91c1c;">● Absent (0.0)</span>
+            <span style="color:#15803d;">● Present (2 pts)</span> &bull;
+            <span style="color:#b45309;">● Late (1 pt)</span> &bull;
+            <span style="color:#b91c1c;">● Absent (0 pts)</span>
           </span>
         </div>
 
@@ -581,8 +580,8 @@ $absentPctTotal  = $totalMarksPossible > 0 ? round(($absentCountTotal / $totalMa
                     elseif($stStatus === 'absent') $stAbsent++;
                     elseif($stStatus === 'excused') $stExcused++;
                   }
-                  $stTotalEarned = ($stPresent * 1.0) + ($stLate * 0.5) + ($stExcused * 1.0);
-                  $stTotalMax    = count($sessions) * 1.0;
+                  $stTotalEarned = ($stPresent * 2.0) + ($stLate * 1.0) + ($stExcused * 2.0);
+                  $stTotalMax    = count($sessions) * 2.0;
                   $stPct         = $stTotalMax > 0 ? round(($stTotalEarned / $stTotalMax) * 100, 1) : 0;
                 ?>
                 <tr>
@@ -674,19 +673,19 @@ $absentPctTotal  = $totalMarksPossible > 0 ? round(($absentCountTotal / $totalMa
                   <div class="status-radio-group">
                     <label class="status-radio-item opt-present">
                       <input type="radio" name="roster_status_<?php echo $st['user_code']; ?>" value="present">
-                      <span>Present</span>
+                      <span>Present (2 pts)</span>
                     </label>
                     <label class="status-radio-item opt-late">
                       <input type="radio" name="roster_status_<?php echo $st['user_code']; ?>" value="late">
-                      <span>Late</span>
+                      <span>Late (1 pt)</span>
                     </label>
                     <label class="status-radio-item opt-absent">
                       <input type="radio" name="roster_status_<?php echo $st['user_code']; ?>" value="absent">
-                      <span>Absent</span>
+                      <span>Absent (0 pts)</span>
                     </label>
                     <label class="status-radio-item opt-excused">
                       <input type="radio" name="roster_status_<?php echo $st['user_code']; ?>" value="excused">
-                      <span>Excused</span>
+                      <span>Excused (2 pts)</span>
                     </label>
                   </div>
                 </td>
@@ -706,8 +705,8 @@ $absentPctTotal  = $totalMarksPossible > 0 ? round(($absentCountTotal / $totalMa
   </div>
 </div>
 
-<script src="/cenlearn/system/bower_components/jquery/dist/jquery.min.js"></script>
-<script src="/cenlearn/system/bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="../bower_components/jquery/dist/jquery.min.js"></script>
+<script src="../bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
 <script>
 var CLASS_ID = <?php echo $selected_class_id; ?>;
 var STUDENTS = <?php echo json_encode(array_column($studentRows, 'user_code')); ?>;

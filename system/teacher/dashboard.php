@@ -3,47 +3,89 @@ include '../includes/session.php';
 include '../includes/conn.php';
 include '../includes/programs.php';
 
-$tc = $conn->real_escape_string($user['user_code']);
-
-$totalClasses  = $conn->query("SELECT COUNT(*) AS c FROM classes WHERE teacher_code='$tc' AND (is_subject_only=0 OR is_subject_only IS NULL)")->fetch_assoc()['c'];
-$totalStudents = $conn->query("SELECT COUNT(DISTINCT cm.user_code) AS c FROM class_members cm JOIN classes c ON cm.class_id=c.id JOIN users u ON cm.user_code=u.user_code WHERE c.teacher_code='$tc' AND u.user_group='STUDENT' AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)")->fetch_assoc()['c'];
-$totalAssign   = $conn->query("SELECT COUNT(*) AS c FROM assignments a JOIN classes c ON a.class_id=c.id WHERE c.teacher_code='$tc' AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)")->fetch_assoc()['c'];
-$totalQuizzes  = $conn->query("SELECT COUNT(*) AS c FROM quizzes q JOIN classes c ON q.class_id=c.id WHERE c.teacher_code='$tc' AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)")->fetch_assoc()['c'];
-
-$recentSubs = $conn->query("
-    SELECT s.submitted_at, u.first_name, u.last_name, a.title AS assign_title, c.class_name
-    FROM assignment_submissions s JOIN assignments a ON s.assignment_id=a.id
-    JOIN classes c ON a.class_id=c.id JOIN users u ON s.student_code=u.user_code
-    WHERE c.teacher_code='$tc' AND (c.is_subject_only=0 OR c.is_subject_only IS NULL) ORDER BY s.submitted_at DESC LIMIT 6
-");
-$recentQuizSubs = $conn->query("
-    SELECT qs.submitted_at, qs.score, qs.total_points, u.first_name, u.last_name, q.title AS quiz_title, c.class_name
-    FROM quiz_submissions qs JOIN quizzes q ON qs.quiz_id=q.id
-    JOIN classes c ON q.class_id=c.id JOIN users u ON qs.student_code=u.user_code
-    WHERE c.teacher_code='$tc' AND (c.is_subject_only=0 OR c.is_subject_only IS NULL) ORDER BY qs.submitted_at DESC LIMIT 6
-");
-$liveSession = $conn->query("
-    SELECT ls.*, c.class_name FROM live_sessions ls JOIN classes c ON ls.class_id=c.id
-    WHERE c.teacher_code='$tc' AND ls.status='live' AND (c.is_subject_only=0 OR c.is_subject_only IS NULL) LIMIT 1
-")->fetch_assoc();
-
-$sectionsQ = $conn->query("SELECT DISTINCT section FROM users WHERE section!='' AND section IS NOT NULL AND user_group='STUDENT' ORDER BY section");
-$sections = [];
-while($s = $sectionsQ->fetch_assoc()) $sections[] = $s['section'];
-
-$subjects_query = $conn->query("
-    SELECT id, class_code, subject, class_name, program_code FROM classes 
-    WHERE teacher_code='$tc' AND is_subject_only=1 
-    ORDER BY subject ASC
-");
-$managed_subjects = [];
-if ($subjects_query) {
-    while($row = $subjects_query->fetch_assoc()) {
-        $managed_subjects[] = $row;
-    }
+// Auto-heal missing columns if running on an older database
+if (function_exists('safeAddColumns')) {
+    safeAddColumns($conn, 'classes', [
+        'is_subject_only' => 'tinyint(1) NOT NULL DEFAULT 0',
+        'is_archived'     => 'tinyint(1) NOT NULL DEFAULT 0',
+        'school_year'     => 'varchar(20) DEFAULT NULL',
+        'schedule_json'   => 'text DEFAULT NULL'
+    ]);
 }
 
-$initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name'],0,1));
+$tc = $conn->real_escape_string($user['user_code'] ?? '');
+
+$fetchCount = function($sql) use ($conn) {
+    try {
+        $r = $conn->query($sql);
+        if ($r && ($row = $r->fetch_assoc())) {
+            return (int)($row['c'] ?? 0);
+        }
+    } catch (\Throwable $e) {}
+    return 0;
+};
+
+$totalClasses  = $fetchCount("SELECT COUNT(*) AS c FROM classes WHERE teacher_code='$tc' AND (is_subject_only=0 OR is_subject_only IS NULL)");
+$totalStudents = $fetchCount("SELECT COUNT(DISTINCT cm.user_code) AS c FROM class_members cm JOIN classes c ON cm.class_id=c.id JOIN users u ON cm.user_code=u.user_code WHERE c.teacher_code='$tc' AND u.user_group='STUDENT' AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)");
+$totalAssign   = $fetchCount("SELECT COUNT(*) AS c FROM assignments a JOIN classes c ON a.class_id=c.id WHERE c.teacher_code='$tc' AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)");
+$totalQuizzes  = $fetchCount("SELECT COUNT(*) AS c FROM quizzes q JOIN classes c ON q.class_id=c.id WHERE c.teacher_code='$tc' AND (c.is_subject_only=0 OR c.is_subject_only IS NULL)");
+
+$recentSubs = null;
+try {
+    $recentSubs = $conn->query("
+        SELECT s.submitted_at, u.first_name, u.last_name, a.title AS assign_title, c.class_name
+        FROM assignment_submissions s JOIN assignments a ON s.assignment_id=a.id
+        JOIN classes c ON a.class_id=c.id JOIN users u ON s.student_code=u.user_code
+        WHERE c.teacher_code='$tc' AND (c.is_subject_only=0 OR c.is_subject_only IS NULL) ORDER BY s.submitted_at DESC LIMIT 6
+    ");
+} catch (\Throwable $e) {}
+
+$recentQuizSubs = null;
+try {
+    $recentQuizSubs = $conn->query("
+        SELECT qs.submitted_at, qs.score, qs.total_points, u.first_name, u.last_name, q.title AS quiz_title, c.class_name
+        FROM quiz_submissions qs JOIN quizzes q ON qs.quiz_id=q.id
+        JOIN classes c ON q.class_id=c.id JOIN users u ON qs.student_code=u.user_code
+        WHERE c.teacher_code='$tc' AND (c.is_subject_only=0 OR c.is_subject_only IS NULL) ORDER BY qs.submitted_at DESC LIMIT 6
+    ");
+} catch (\Throwable $e) {}
+
+$liveSession = null;
+try {
+    $lsRes = $conn->query("
+        SELECT ls.*, c.class_name FROM live_sessions ls JOIN classes c ON ls.class_id=c.id
+        WHERE c.teacher_code='$tc' AND ls.status='live' AND (c.is_subject_only=0 OR c.is_subject_only IS NULL) LIMIT 1
+    ");
+    if ($lsRes && $lsRes->num_rows > 0) {
+        $liveSession = $lsRes->fetch_assoc();
+    }
+} catch (\Throwable $e) {}
+
+$sections = [];
+try {
+    $sectionsQ = $conn->query("SELECT DISTINCT section FROM users WHERE section!='' AND section IS NOT NULL AND user_group='STUDENT' ORDER BY section");
+    if ($sectionsQ) {
+        while($s = $sectionsQ->fetch_assoc()) {
+            if (!empty($s['section'])) $sections[] = $s['section'];
+        }
+    }
+} catch (\Throwable $e) {}
+
+$managed_subjects = [];
+try {
+    $subjects_query = $conn->query("
+        SELECT id, class_code, subject, class_name, program_code FROM classes 
+        WHERE teacher_code='$tc' AND is_subject_only=1 
+        ORDER BY subject ASC
+    ");
+    if ($subjects_query) {
+        while($row = $subjects_query->fetch_assoc()) {
+            $managed_subjects[] = $row;
+        }
+    }
+} catch (\Throwable $e) {}
+
+$initials = strtoupper(substr($user['first_name'] ?? 'T',0,1).substr($user['last_name'] ?? 'U',0,1));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -51,10 +93,10 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CenLearn — Teacher Dashboard</title>
-  <link rel="stylesheet" href="/cenlearn/system/bower_components/bootstrap/dist/css/bootstrap.min.css">
-  <link rel="stylesheet" href="/cenlearn/system/bower_components/font-awesome/css/font-awesome.min.css">
+  <link rel="stylesheet" href="../bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="../bower_components/font-awesome/css/font-awesome.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/cenlearn/system/dist/css/cenlearn.css">
+  <link rel="stylesheet" href="../dist/css/cenlearn.css">
   <style>
     *{box-sizing:border-box;}
     html,body{margin:0;padding:0;overflow-x:hidden;}
@@ -178,14 +220,13 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
   <nav class="sb-nav">
     <div class="sb-section">Teacher Menu</div>
     <ul>
-      <li class="active"><a href="dashboard"><i class="fa fa-th-large"></i> Dashboard</a></li>
-      <li><a href="classes"><i class="fa fa-book"></i> Classes</a></li>
-      <li><a href="quizzes"><i class="fa fa-question-circle"></i> Quizzes</a></li>
-      <li><a href="assignments"><i class="fa fa-tasks"></i> Assignments</a></li>
-      <li><a href="attendance"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
-      <li><a href="logbook"><i class="fa fa-pencil-square-o"></i> Manage Subject</a></li>
-      <li><a href="class_record"><i class="fa fa-table"></i> Class Record</a></li>
-      <li><a href="subject_repository"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
+      <li class="active"><a href="dashboard.php"><i class="fa fa-th-large"></i> Dashboard</a></li>
+      <li><a href="classes.php"><i class="fa fa-book"></i> Classes</a></li>
+      <li><a href="quizzes.php"><i class="fa fa-question-circle"></i> Quizzes</a></li>
+      <li><a href="assignments.php"><i class="fa fa-tasks"></i> Assignments</a></li>
+      <li><a href="attendance.php"><i class="fa fa-calendar-check-o"></i> Attendance</a></li>
+      <li><a href="class_record.php"><i class="fa fa-table"></i> Class Record</a></li>
+      <li><a href="subject_repository.php"><i class="fa fa-archive"></i> Past Subject Repository</a></li>
     </ul>
   </nav>
   <div class="sb-footer">
@@ -196,7 +237,7 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
         <span>Teacher</span>
       </div>
     </div>
-    <a href="/cenlearn/logout" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
+    <a href="../logout.php" class="sb-out"><i class="fa fa-sign-out"></i> Sign Out</a>
   </div>
 </aside>
 <div class="td-main">
@@ -218,7 +259,7 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
         <div style="font-size:13px;font-weight:700;color:#fff;">🔴 Live Session Active</div>
         <div style="font-size:12px;color:rgba(255,255,255,.85);"><?php echo htmlspecialchars($liveSession['title']?:'Live Class'); ?> &mdash; <?php echo htmlspecialchars($liveSession['class_name']); ?></div>
       </div>
-      <a href="../shared/live_class?id=<?php echo $liveSession['class_id']; ?>" style="background:rgba(255,255,255,.2);color:#fff;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;border:1px solid rgba(255,255,255,.3);"><i class="fa fa-video-camera"></i> Rejoin</a>
+      <a href="../shared/live_class.php?id=<?php echo $liveSession['class_id']; ?>" style="background:rgba(255,255,255,.2);color:#fff;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:700;text-decoration:none;border:1px solid rgba(255,255,255,.3);"><i class="fa fa-video-camera"></i> Rejoin</a>
     </div>
     <?php endif; ?>
 
@@ -251,17 +292,17 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
       <div class="td-card">
         <div class="td-card-hdr"><h4><i class="fa fa-bolt" style="color:#f59e0b;"></i> Quick Actions</h4></div>
         <div class="qa-grid">
-          <a href="classes" class="qa-btn"><i class="fa fa-book" style="color:#10b981;"></i> Classes</a>
-          <a href="quizzes" class="qa-btn"><i class="fa fa-question-circle" style="color:#8b5cf6;"></i> Quizzes</a>
-          <a href="subject_repository" class="qa-btn"><i class="fa fa-archive" style="color:#0ea5e9;"></i> Past Subjects</a>
-          <a href="class_record" class="qa-btn"><i class="fa fa-table" style="color:#10b981;"></i> Class Record</a>
+          <a href="classes.php" class="qa-btn"><i class="fa fa-book" style="color:#10b981;"></i> Classes</a>
+          <a href="quizzes.php" class="qa-btn"><i class="fa fa-question-circle" style="color:#8b5cf6;"></i> Quizzes</a>
+          <a href="subject_repository.php" class="qa-btn"><i class="fa fa-archive" style="color:#0ea5e9;"></i> Past Subjects</a>
+          <a href="class_record.php" class="qa-btn"><i class="fa fa-table" style="color:#10b981;"></i> Class Record</a>
         </div>
       </div>
 
       <!-- Recent Submissions -->
       <div class="td-card">
         <div class="td-card-hdr"><h4><i class="fa fa-upload" style="color:#f59e0b;"></i> Recent Submissions</h4></div>
-        <?php if($recentSubs->num_rows===0): ?>
+        <?php if(!$recentSubs || $recentSubs->num_rows===0): ?>
         <div class="empty-msg"><i class="fa fa-inbox"></i>No submissions yet.</div>
         <?php else: ?>
         <?php while($s=$recentSubs->fetch_assoc()): ?>
@@ -280,7 +321,7 @@ $initials = strtoupper(substr($user['first_name'],0,1).substr($user['last_name']
       <!-- Recent Quiz Results -->
       <div class="td-card" style="grid-column:1/-1;">
         <div class="td-card-hdr"><h4><i class="fa fa-question-circle" style="color:#8b5cf6;"></i> Recent Quiz Results</h4></div>
-        <?php if($recentQuizSubs->num_rows===0): ?>
+        <?php if(!$recentQuizSubs || $recentQuizSubs->num_rows===0): ?>
         <div class="empty-msg"><i class="fa fa-inbox"></i>No quiz submissions yet.</div>
         <?php else: ?>
         <?php while($s=$recentQuizSubs->fetch_assoc()):
@@ -443,7 +484,7 @@ $('#btnCreate').on('click', function(){
   var subject = $('#create_subject').val().trim();
   if(!subject){ showAlert('#createAlert','danger','Subject name is required.'); return; }
   $(this).prop('disabled',true).html('<i class="fa fa-spinner fa-spin"></i> Creating...');
-  $.post('/cenlearn/shared/class_save',{
+  $.post('../shared/class_save.php',{
     action:'create', subject:subject,
     program_code:$('#create_program').val().trim().toUpperCase(),
     year_level:$('#create_year').val(),

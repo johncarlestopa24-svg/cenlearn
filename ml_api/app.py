@@ -219,26 +219,50 @@ def retrain():
 @app.route("/topic_analytics", methods=["POST"])
 def topic_analytics():
     """
-    Analyze student topic performance and provide insights.
+    Analyze student topic performance and recommend ONLY modules that are
+    relevant to the student's current class/subject and weak topic.
+
     Expected JSON body:
     {
+        "student_class_id": 12,
+        "student_subject": "Mathematics",   # optional if class_id is reliable
         "student_topics": [
-            {"topic": "Algebra", "score_pct": 45.0, "attempts": 3},
-            {"topic": "Geometry", "score_pct": 85.0, "attempts": 2}
+            {"topic": "Algebra", "score_pct": 45.0, "attempts": 3}
         ],
         "available_modules": [
-            {"id": 1, "title": "Introduction to Algebra", "original_name": "alg1.pdf", "topic": "Algebra"}
+            {
+                "id": 1,
+                "title": "Introduction to Algebra",
+                "original_name": "alg1.pdf",
+                "topic": "Algebra",
+                "class_id": 12,
+                "class_name": "Mathematics"
+            }
         ]
     }
+
+    Important behavior:
+    - A weak topic alone is NOT enough to recommend a module.
+    - If student_class_id is supplied, a module must belong to that class.
+    - If no class scope is supplied, the endpoint does not guess a module.
+    - A module must also pass MODULE_RELEVANCE_THRESHOLD (or an exact topic match).
+    - If nothing relevant passes, "modules" is an empty list (No Module Yet).
     """
     data = request.get_json(force=True, silent=True)
     if not data or "student_topics" not in data:
         return jsonify({"error": "Invalid request"}), 400
 
-    student_topics = data.get("student_topics", [])
-    available_modules = data.get("available_modules", [])
-    
-    # Calculate weak topics (score < 75%)
+    student_topics = data.get("student_topics", []) or []
+    available_modules = data.get("available_modules", []) or []
+    student_class_id = data.get("student_class_id")
+    student_subject = data.get("student_subject")
+
+    # Minimum relevance required before a module can be recommended.
+    # This is a configurable engineering threshold, not a scientific accuracy score.
+    MODULE_RELEVANCE_THRESHOLD = float(data.get("module_relevance_threshold", 0.50))
+    MODULE_RELEVANCE_THRESHOLD = max(0.0, min(1.0, MODULE_RELEVANCE_THRESHOLD))
+
+    # Calculate weak topics (score < 75%).
     weak_topics = []
     for st in student_topics:
         score_pct = st.get("score_pct", 0)
@@ -249,59 +273,124 @@ def topic_analytics():
                 "attempts": st.get("attempts", 0),
                 "priority": "High" if score_pct < 50 else "Medium"
             })
-    
-    # Sort weak topics by priority and score (lowest first)
+
+    # Sort weak topics by priority and score (lowest first).
     weak_topics.sort(key=lambda x: (x["priority"] != "High", x["score_pct"]))
-    
-    # Simple ML-based token similarity matcher to find weak modules
+
     def get_tokens(text):
         if not text:
             return set()
-        # Lowercase, replace non-alphanumeric with spaces, and split into tokens
         import re
-        text = re.sub(r'[^a-zA-Z0-9\s]', ' ', str(text).lower())
+        text = re.sub(r"[^a-zA-Z0-9\s]", " ", str(text).lower())
         return set(t for t in text.split() if len(t) > 2)
 
+    def normalize(text):
+        return " ".join(sorted(get_tokens(text)))
+
+    def same_class(mod):
+        """Hard class boundary: never recommend another class when class_id is known."""
+        if student_class_id is None or student_class_id == "":
+            return False
+        mod_class_id = mod.get("class_id")
+        if mod_class_id is None or mod_class_id == "":
+            return False
+        return str(mod_class_id).strip() == str(student_class_id).strip()
+
+    def subject_matches(mod):
+        """Optional subject boundary. Only enforce it when both sides provide it."""
+        if not student_subject:
+            return True
+
+        module_subject = (
+            mod.get("subject")
+            or mod.get("class_name")
+            or mod.get("course_name")
+            or ""
+        )
+        if not module_subject:
+            return False
+
+        student_subject_tokens = get_tokens(student_subject)
+        module_subject_tokens = get_tokens(module_subject)
+        if not student_subject_tokens or not module_subject_tokens:
+            return False
+
+        return bool(student_subject_tokens.intersection(module_subject_tokens))
+
     recommendations = []
-    for wt in weak_topics[:3]:  # Top 3 weak topics
-        topic_name = wt["topic"]
+    for wt in weak_topics[:3]:
+        topic_name = wt.get("topic") or ""
         topic_tokens = get_tokens(topic_name)
-        
+        topic_normalized = normalize(topic_name)
         matched_mods = []
-        for mod in available_modules:
+
+        # Strict scope: without a student class, do not guess which class's module to use.
+        if student_class_id is not None and student_class_id != "":
+            scoped_modules = [
+                mod for mod in available_modules
+                if same_class(mod) and subject_matches(mod)
+            ]
+        else:
+            scoped_modules = []
+
+        for mod in scoped_modules:
             mod_topic = mod.get("topic") or ""
             mod_title = mod.get("title") or ""
             mod_filename = mod.get("original_name") or ""
-            
-            # Combine all text fields for the module
-            mod_text = f"{mod_topic} {mod_title} {mod_filename}"
-            mod_tokens = get_tokens(mod_text)
-            
-            # Jaccard similarity (intersection over union of tokens)
-            if topic_tokens and mod_tokens:
+            mod_subject = (
+                mod.get("subject")
+                or mod.get("class_name")
+                or mod.get("course_name")
+                or ""
+            )
+
+            # Topic/title/file name are used for topic relevance only after class scope.
+            mod_topic_tokens = get_tokens(mod_topic)
+            mod_title_tokens = get_tokens(mod_title)
+            mod_filename_tokens = get_tokens(mod_filename)
+            mod_tokens = mod_topic_tokens | mod_title_tokens | mod_filename_tokens
+
+            if not topic_tokens or not mod_tokens:
+                similarity = 0.0
+            else:
                 intersection = topic_tokens.intersection(mod_tokens)
                 union = topic_tokens.union(mod_tokens)
-                similarity = len(intersection) / len(union)
-            else:
-                similarity = 0.0
-                
-            # If explicit topic match exists, boost similarity
-            if mod_topic and topic_name and mod_topic.strip().lower() == topic_name.strip().lower():
-                similarity = max(similarity, 1.0)
-                
-            if similarity > 0:
+                similarity = len(intersection) / len(union) if union else 0.0
+
+            # Exact topic match is a strong signal, but class scope is still mandatory.
+            exact_topic = bool(
+                mod_topic and topic_name and
+                normalize(mod_topic) == topic_normalized
+            )
+            if exact_topic:
+                similarity = 1.0
+
+            # Also allow a strong topic-title match, but never a weak single-token coincidence.
+            title_similarity = 0.0
+            if topic_tokens and mod_title_tokens:
+                title_intersection = topic_tokens.intersection(mod_title_tokens)
+                title_union = topic_tokens.union(mod_title_tokens)
+                title_similarity = (
+                    len(title_intersection) / len(title_union)
+                    if title_union else 0.0
+                )
+            similarity = max(similarity, title_similarity)
+
+            if exact_topic or similarity >= MODULE_RELEVANCE_THRESHOLD:
                 matched_mods.append({
                     "id": mod.get("id"),
                     "title": mod.get("title"),
                     "original_name": mod.get("original_name"),
+                    "topic": mod_topic,
+                    "subject": mod_subject,
                     "class_id": mod.get("class_id"),
                     "class_name": mod.get("class_name"),
-                    "similarity": similarity
+                    "similarity": round(float(similarity), 4),
+                    "relevance": "exact_topic" if exact_topic else "topic_match"
                 })
-        
-        # Sort matched modules by similarity score descending
+
         matched_mods.sort(key=lambda m: m["similarity"], reverse=True)
-        
+
         score_val = wt["score_pct"]
         if score_val < 40:
             bloom_level = "Level 1-2: Remember & Understand"
@@ -323,14 +412,20 @@ def topic_analytics():
             "score_pct": score_val,
             "bloom_level": bloom_level,
             "standard_code": std_code,
-            "modules": matched_mods[:3]  # Return top 3 matched modules
+            "modules": matched_mods[:3],
+            "module_status": "recommended" if matched_mods else "no_module_yet",
+            "class_scope_applied": bool(student_class_id is not None and student_class_id != ""),
+            "relevance_threshold": MODULE_RELEVANCE_THRESHOLD
         })
-    
+
     return jsonify({
         "success": True,
         "weak_topics": weak_topics,
         "recommendations": recommendations,
-        "total_topics_analyzed": len(student_topics)
+        "total_topics_analyzed": len(student_topics),
+        "student_class_id": student_class_id,
+        "student_subject": student_subject,
+        "module_relevance_threshold": MODULE_RELEVANCE_THRESHOLD
     })
 
 @app.route("/class_topic_insights", methods=["POST"])

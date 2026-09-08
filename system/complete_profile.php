@@ -10,14 +10,14 @@ $user = $_SESSION['user'];
 
 // Only students need to complete profile
 if($user['user_group'] !== 'STUDENT'){
-    header('Location: dashboard');
+    header('Location: student/dashboard.php');
     exit;
 }
 
 // If profile is already complete, skip this page
 $needsProfile = empty($user['first_name']) || empty($user['program_code']) || empty($user['year_level']) || empty($user['section']);
 if(!$needsProfile){
-    header('Location: dashboard');
+    header('Location: student/dashboard.php');
     exit;
 }
 
@@ -293,7 +293,7 @@ $('#profileForm').on('submit', function(e){
   $('#btnSave').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>&nbsp; Saving...');
 
   $.ajax({
-    url: 'save_profile',
+    url: 'save_profile.php',
     method: 'POST',
     dataType: 'json',
     data: {
@@ -306,7 +306,7 @@ $('#profileForm').on('submit', function(e){
     },
     success: function(res){
       if(res.success){
-        window.location.href = 'dashboard';
+        window.location.href = 'student/dashboard.php';
       } else {
         showErr(res.msg || 'Failed to save profile. Please try again.');
         $('#btnSave').prop('disabled', false).html('<i class="fa fa-check-circle"></i>&nbsp; Save &amp; Continue to Dashboard');

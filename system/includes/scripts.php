@@ -1,5 +1,9 @@
 <?php
-$_prefix = '/cenlearn/system/';
+$callerDir = str_replace('\\', '/', realpath(dirname($_SERVER['SCRIPT_FILENAME'] ?? __FILE__)));
+$systemDir = str_replace('\\', '/', realpath(__DIR__ . '/..'));
+$rel = ltrim(str_replace($systemDir, '', $callerDir), '/');
+$depth = ($rel === '') ? 0 : (substr_count($rel, '/') + 1);
+$_prefix = str_repeat('../', $depth);
 ?>
 <script src="<?php echo $_prefix; ?>bower_components/jquery/dist/jquery.min.js"></script>
 <script src="<?php echo $_prefix; ?>bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
